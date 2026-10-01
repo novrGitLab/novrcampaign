@@ -87,7 +87,8 @@ npm run dev
 
 Frontend: `http://localhost:5173` · Backend: `http://localhost:4000`
 
-Log in with `admin@novrcampaign.local` / `admin12345`.
+Log in with the seeded team account (`SEED_EMAIL` / `SEED_PASSWORD`, defaults to
+`admin@novrcampaign.local` / `admin12345` for local dev only).
 
 ## Plunk setup
 
