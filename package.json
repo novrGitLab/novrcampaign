@@ -1,0 +1,28 @@
+{
+  "name": "novrcampaign",
+  "version": "1.0.0",
+  "private": true,
+  "description": "In-house email campaign platform built on Zoho Campaigns",
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "dev": "concurrently -n backend,frontend -c blue,magenta \"npm:dev:backend\" \"npm:dev:frontend\"",
+    "dev:backend": "npm -w backend run dev",
+    "dev:frontend": "npm -w frontend run dev",
+    "build": "npm -w backend run build && npm -w frontend run build",
+    "start": "npm -w backend start",
+    "lint": "npm -w backend run lint && npm -w frontend run lint",
+    "db:generate": "npm -w backend run db:generate",
+    "db:migrate:dev": "npm -w backend run db:migrate:dev",
+    "db:migrate": "npm -w backend run db:migrate",
+    "db:seed": "npm -w backend run db:seed"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

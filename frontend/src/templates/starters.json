@@ -1,0 +1,26 @@
+[
+  {
+    "id": "newsletter-dark",
+    "name": "Cybersecurity Weekly · Dark Intel",
+    "subject": "Cybersecurity Weekly: top threats & insights",
+    "type": "MARKETING",
+    "file": "newsletter-dark.html",
+    "description": "Dark intel-card layout matching the current newsletter — hero pill, lavender week band, news + quiz."
+  },
+  {
+    "id": "newsletter-light",
+    "name": "Weekly Brief · Light",
+    "subject": "Your 3-minute cyber briefing",
+    "type": "MARKETING",
+    "file": "newsletter-light.html",
+    "description": "Light layout with threat-meter strip, story cards, weekly actions and CTA button."
+  },
+  {
+    "id": "newsletter-minimal",
+    "name": "Threat Alert · Minimal",
+    "subject": "Cybersecurity Weekly: threats, breaches & fixes",
+    "type": "MARKETING",
+    "file": "newsletter-minimal.html",
+    "description": "Minimal numbered-stories layout with tip callout — fastest to fill each week."
+  }
+]

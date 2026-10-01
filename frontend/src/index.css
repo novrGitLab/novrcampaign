@@ -1,0 +1,239 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  /* Surface tokens (light defaults; .dark overrides below flip the app) */
+  --color-background: hsl(0 0% 100%);
+  --color-foreground: hsl(240 10% 3.9%);
+  --color-card: hsl(0 0% 100%);
+  --color-card-foreground: hsl(240 10% 3.9%);
+  --color-secondary: hsl(240 4.8% 95.9%);
+  --color-secondary-foreground: hsl(240 5.9% 10%);
+  --color-muted: hsl(240 4.8% 95.9%);
+  --color-muted-foreground: hsl(240 3.8% 46.1%);
+  --color-accent: hsl(240 4.8% 95.9%);
+  --color-accent-foreground: hsl(240 5.9% 10%);
+  --color-border: hsl(240 5.9% 90%);
+  --color-input: hsl(240 5.9% 90%);
+  --color-ring: #662f8e;
+
+  /* CyberNovr brand — purple primary, blue secondary, red accent */
+  --color-primary: #662f8e;
+  --color-primary-foreground: hsl(0 0% 98%);
+  --color-destructive: #eb2027;
+  --color-destructive-foreground: hsl(0 0% 98%);
+
+  --color-brand-blue: #4451a2;
+  --color-brand-purple: #662f8e;
+  --color-brand-red: #eb2027;
+  --color-brand-ink: #0c0c13;
+
+  /* Full purple scale for charts, tiles, illustrations */
+  --color-purple-50: #f6f1fb;
+  --color-purple-100: #ebdff4;
+  --color-purple-200: #d8bfe9;
+  --color-purple-300: #bc94d8;
+  --color-purple-400: #9a67be;
+  --color-purple-500: #7e43a6;
+  --color-purple-600: #662f8e;
+  --color-purple-700: #552778;
+  --color-purple-800: #452062;
+  --color-purple-900: #38204f;
+  --color-purple-950: #231130;
+
+  --color-success: hsl(142 71% 45%);
+  --color-success-foreground: hsl(0 0% 98%);
+  --color-warning: hsl(38 92% 50%);
+  --color-warning-foreground: hsl(0 0% 98%);
+
+  --font-sans: "Inter Variable", Inter, system-ui, sans-serif;
+  --font-display: "Space Grotesk Variable", "Space Grotesk", "Inter Variable", Inter, system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* NOTE: no fill mode — a retained transform would become the containing
+     block for position:fixed descendants (modals, palette) and break them */
+  --animate-fade-rise: fade-rise 180ms ease-out;
+  --animate-shimmer: shimmer 1.6s linear infinite;
+}
+
+@keyframes fade-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  .dark {
+    color-scheme: dark;
+    --color-background: hsl(240 23% 6%);
+    --color-foreground: hsl(0 0% 96%);
+    --color-card: hsl(240 18% 10%);
+    --color-card-foreground: hsl(0 0% 96%);
+    --color-secondary: hsl(240 10% 14%);
+    --color-secondary-foreground: hsl(0 0% 96%);
+    --color-muted: hsl(240 10% 14%);
+    --color-muted-foreground: hsl(240 5% 65%);
+    --color-accent: hsl(240 10% 17%);
+    --color-accent-foreground: hsl(0 0% 96%);
+    --color-border: hsl(240 8% 18%);
+    --color-input: hsl(240 8% 24%);
+    --color-ring: #9a67be;
+    --color-primary: #9a67be;
+    --color-primary-foreground: hsl(275 48% 13%);
+    --color-destructive: hsl(0 84% 62%);
+    --color-destructive-foreground: hsl(0 0% 98%);
+  }
+
+  /* v4 default border color is currentColor — restore the token */
+  *,
+  ::after,
+  ::before {
+    border-color: var(--color-border);
+  }
+
+  body {
+    @apply bg-secondary text-foreground antialiased;
+    font-feature-settings: 'rlig' 1, 'calt' 1;
+  }
+
+  h1, h2, h3, .card-title {
+    @apply font-display;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--color-primary) 25%, transparent);
+  }
+}
+
+@utility btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  white-space: nowrap;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition-property: color, background-color, border-color;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+
+  &:disabled {
+    pointer-events: none;
+    opacity: 0.5;
+  }
+}
+
+@layer components {
+  /* shadcn/ui-style primitives, defined as utilities so they compose with clsx */
+
+  .btn-primary {
+    @apply btn bg-primary px-4 py-2 text-primary-foreground hover:bg-primary/90;
+  }
+
+  .btn-secondary {
+    @apply btn border border-input bg-background px-4 py-2 hover:bg-accent hover:text-accent-foreground;
+  }
+
+  .btn-ghost {
+    @apply btn px-3 py-2 hover:bg-accent hover:text-accent-foreground;
+  }
+
+  .btn-danger {
+    @apply btn bg-destructive px-4 py-2 text-destructive-foreground hover:bg-destructive/90;
+  }
+
+  .btn-sm {
+    @apply px-3 py-1.5 text-xs;
+  }
+
+  .input {
+    @apply flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm
+           ring-offset-background placeholder:text-muted-foreground
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2
+           disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .label {
+    @apply text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70;
+  }
+
+  .card {
+    @apply rounded-lg border bg-card text-card-foreground shadow-sm;
+  }
+
+  .card-header {
+    @apply flex flex-col space-y-1.5 p-6;
+  }
+
+  .card-title {
+    @apply text-lg font-semibold leading-none tracking-tight;
+  }
+
+  .card-content {
+    @apply p-6 pt-0;
+  }
+
+  .badge {
+    @apply inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors;
+  }
+
+  .table {
+    @apply w-full caption-bottom text-sm;
+    min-width: 640px;
+  }
+
+  .table th {
+    @apply h-12 px-4 text-left align-middle text-[11px] font-semibold uppercase tracking-wider text-muted-foreground;
+  }
+
+  .table td {
+    @apply p-4 align-middle;
+  }
+
+  /* Skeleton shimmer + route-enter motion (respects reduced motion) */
+  .skeleton {
+    @apply rounded-md bg-secondary;
+    background-image: linear-gradient(90deg, transparent, rgb(128 128 140 / 0.25), transparent);
+    background-size: 200% 100%;
+    animation: shimmer 1.6s linear infinite;
+  }
+
+  .page-enter {
+    animation: fade-rise 180ms ease-out;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .page-enter, .skeleton {
+      animation: none;
+    }
+  }
+
+  /* Tiptap rich email editor content — fixed light email canvas, immune to dark mode */
+  .tiptap { background-color: #ffffff; color: #1e1e26; }
+  .tiptap p { @apply my-2 leading-relaxed; }
+  .tiptap h1 { @apply my-3 font-display text-2xl font-bold tracking-tight; }
+  .tiptap h2 { @apply my-3 font-display text-xl font-bold tracking-tight; }
+  .tiptap h3 { @apply my-2 font-display text-lg font-semibold; }
+  .tiptap ul { @apply my-2 list-disc pl-6; }
+  .tiptap ol { @apply my-2 list-decimal pl-6; }
+  .tiptap blockquote { margin: 0.5rem 0; border-left: 2px solid #e2e2e9; padding-left: 1rem; font-style: italic; color: #63637a; }
+  .tiptap a { color: #2b4bd3; text-decoration: underline; }
+  .tiptap hr { margin: 1rem 0; border-color: #e2e2e9; }
+  .tiptap table { @apply w-full border-collapse; }
+  .tiptap th, .tiptap td { border: 1px solid #e2e2e9; padding: 0.5rem; vertical-align: top; }
+}
