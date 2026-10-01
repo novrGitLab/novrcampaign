@@ -11,6 +11,7 @@
     "lint": "eslint . --ext .js --max-warnings 0",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy",
+    "db:setup": "prisma generate && prisma migrate deploy && node prisma/seed.js",
     "db:migrate:dev": "prisma migrate dev",
     "db:seed": "node prisma/seed.js",
     "seed:templates": "node scripts/seed-templates.mjs",
