@@ -246,7 +246,7 @@ function UploadModal({ open, onClose, importContacts }) {
     onDrop,
     accept: { 'text/csv': ['.csv'] },
     maxFiles: 1,
-    maxSize: 5 * 1024 * 1024,
+    maxSize: 4 * 1024 * 1024,
   });
 
   const onUpload = async () => {
@@ -270,7 +270,7 @@ function UploadModal({ open, onClose, importContacts }) {
       open={open}
       onClose={close}
       title="Import contacts from CSV"
-      description="First column must be `email`; other columns become contact fields. Max 5 MB."
+      description="First column must be `email`; other columns become contact fields. Max 4 MB."
     >
       {!result ? (
         <div className="space-y-4">

@@ -2,7 +2,8 @@
   "name": "novrcampaign",
   "version": "1.0.0",
   "private": true,
-  "description": "In-house email campaign platform built on Zoho Campaigns",
+  "type": "module",
+  "description": "In-house email campaign platform built on Plunk",
   "workspaces": [
     "backend",
     "frontend"

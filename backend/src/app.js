@@ -55,7 +55,8 @@ app.use('/api', routes);
 
 // In production the built frontend is served from this same process, so the
 // internal tool deploys as a single unit (no separate static host needed).
-if (config.isProd) {
+// On Vercel the CDN serves dist instead — skip it there (VERCEL=1 is automatic).
+if (config.isProd && !process.env.VERCEL) {
   const __dirname = path.dirname(fileURLToPath(import.meta.url));
   const frontendDist = path.resolve(__dirname, '../../frontend/dist');
 

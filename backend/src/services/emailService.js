@@ -79,11 +79,14 @@ export function validateCampaignInput(input) {
  * instantly; the buffer itself is forwarded unchanged.
  *
  * @param {Buffer|string} csv
- * @param {{ checkMx?: boolean }} [opts]
+ * @param {{ checkMx?: boolean, maxRows?: number }} [opts]
  * @returns {Promise<{ total: number, valid: number, invalid: Array<{email:string,reason:string}>, duplicates: number }>}
  */
-export async function validateCsv(csv, { checkMx = true } = {}) {
-  const { contacts, stats } = await parseContactsCsv(csv);
+export async function validateCsv(
+  csv,
+  { checkMx = true, maxRows = Number(process.env.CSV_MAX_ROWS ?? 100_000) } = {},
+) {
+  const { contacts, stats } = await parseContactsCsv(csv, { maxRows });
 
   if (!contacts.length) {
     return { total: stats.total, valid: 0, invalid: [], duplicates: 0 };

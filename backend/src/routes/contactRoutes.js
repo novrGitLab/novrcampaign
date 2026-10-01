@@ -5,10 +5,10 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 
 const router = Router();
 
-// CSV uploads are held in memory — no disk files to clean up
+// CSV uploads are held in memory — no disk files to clean up (serverless-safe)
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024, files: 1 },
+  limits: { fileSize: Number(process.env.CSV_MAX_BYTES ?? 5 * 1024 * 1024), files: 1 },
   fileFilter: (_req, file, cb) => {
     const ok =
       ['text/csv', 'text/plain', 'application/vnd.ms-excel'].includes(file.mimetype) ||

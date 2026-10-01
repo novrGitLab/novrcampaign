@@ -28,6 +28,10 @@ yarn-error.log*
 # Prisma generated client (regenerated from schema.prisma)
 backend/src/generated/prisma/
 
+# SQLite leftovers (Supabase Postgres is the database now)
+*.db
+*.db-journal
+
 # Editor / OS
 .vscode/
 .idea/

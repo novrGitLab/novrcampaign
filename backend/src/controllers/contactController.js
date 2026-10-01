@@ -4,7 +4,8 @@ import logger from '../utils/logger.js';
 import * as plunk from '../services/plunkService.js';
 import { validateCsv } from '../services/emailService.js';
 
-const MAX_CSV_BYTES = 5 * 1024 * 1024; // Plunk's importer limit
+// Vercel Hobby request bodies cap at ~4.5 MB — set CSV_MAX_BYTES=4194304 there
+const MAX_CSV_BYTES = Number(process.env.CSV_MAX_BYTES ?? 5 * 1024 * 1024);
 
 const contactSchema = Joi.object({
   email: Joi.string().email().required(),
