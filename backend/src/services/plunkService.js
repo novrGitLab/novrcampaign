@@ -205,25 +205,34 @@ export async function getContacts({ limit = 50, cursor, search } = {}) {
 }
 
 /**
- * Import contacts from a CSV buffer (≤ 5 MB). First column must be `email`;
- * remaining columns map to `data.*`.
+ * Import contacts from a CSV buffer (≤ 5 MB). Plunk takes multipart uploads;
+ * first column must be `email`, remaining columns map to `data.*`.
  * @param {Buffer} csv
  * @returns {Promise<string>} import job id
  */
 export async function importContactsCsv(csv) {
+  const form = new FormData();
+  form.append('file', new Blob([csv], { type: 'text/csv' }), 'contacts.csv');
+
   const res = await fetch(`${config.plunk.baseUrl}/contacts/import`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${config.plunk.apiKey}`,
-      'Content-Type': 'text/csv',
     },
-    body: csv,
+    body: form,
   });
 
   const data = await res.json().catch(() => null);
   if (!res.ok) {
-    const err = new Error(data?.error?.message || `Plunk import failed (${res.status})`);
+    const detail = data?.error ?? data;
+    const reason = detail?.message || `Plunk import failed (${res.status})`;
+    const err = new Error(
+      [reason, detail?.code ? `[${detail.code}]` : null, detail?.requestId ? `(ref ${detail.requestId})` : null]
+        .filter(Boolean)
+        .join(' '),
+    );
     err.status = res.status;
+    err.details = detail?.errors;
     throw err;
   }
 
