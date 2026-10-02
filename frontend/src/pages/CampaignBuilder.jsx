@@ -69,10 +69,29 @@ export default function CampaignBuilder() {
   // savedId is the truth after creating a draft (URL id is empty for new campaigns)
   const effectiveId = savedId ?? id ?? null;
 
+  // Dirty tracking: sending acts on the SAVED campaign in Plunk, so block
+  // send/schedule/test while the form differs from the last save.
+  const [savedSnapshot, setSavedSnapshot] = useState(null);
+  const payloadOf = (f) => {
+    const p = { ...f };
+    if (p.audienceType !== 'SEGMENT') delete p.segmentId;
+    if (!p.segmentId) delete p.segmentId;
+    delete p.templateId;
+    return JSON.stringify(p);
+  };
+  const dirty = Boolean(effectiveId && savedSnapshot !== null && payloadOf(form) !== savedSnapshot);
+  const requireSaved = () => {
+    if (dirty) {
+      setError('You have unsaved changes — save the draft first, otherwise the send uses the older saved version.');
+      return false;
+    }
+    return true;
+  };
+
   // Hydrate when editing
   useEffect(() => {
     if (existing) {
-      setForm({
+      const hydrated = {
         name: existing.name ?? '',
         subject: existing.subject ?? '',
         body: existing.body ?? TEMPLATE,
@@ -80,22 +99,28 @@ export default function CampaignBuilder() {
         audienceType: existing.audienceType ?? 'ALL',
         segmentId: existing.segmentId ?? '',
         templateId: '',
-      });
+      };
+      setForm(hydrated);
       setSavedId(existing.id);
+      setSavedSnapshot(payloadOf(hydrated));
     }
   }, [existing]);
 
   // Hydrate from a template when creating via ?templateId=
   useEffect(() => {
     if (!isEditing && preselectedTemplate) {
-      setForm((f) => ({
-        ...f,
-        name: f.name || `${preselectedTemplate.name} — campaign`,
-        subject: preselectedTemplate.subject ?? f.subject,
-        body: preselectedTemplate.body ?? f.body,
-        type: preselectedTemplate.type ?? f.type,
-        templateId: preselectedTemplate.id,
-      }));
+      setForm((f) => {
+        const next = {
+          ...f,
+          name: f.name || `${preselectedTemplate.name} — campaign`,
+          subject: preselectedTemplate.subject ?? f.subject,
+          body: preselectedTemplate.body ?? f.body,
+          type: preselectedTemplate.type ?? f.type,
+          templateId: preselectedTemplate.id,
+        };
+        setSavedSnapshot(payloadOf(next));
+        return next;
+      });
     }
   }, [isEditing, preselectedTemplate]);
 
@@ -130,9 +155,11 @@ export default function CampaignBuilder() {
       if (isEditing && savedId) {
         const updated = await updateCampaign.mutateAsync({ id: savedId, body: payload });
         setSavedId(updated.id);
+        setSavedSnapshot(JSON.stringify(payload));
       } else {
         const created = await createCampaign.mutateAsync(payload);
         setSavedId(created.id);
+        setSavedSnapshot(JSON.stringify(payload));
         navigate(`/campaigns/${created.id}/edit`, { replace: true });
       }
     } catch (err) {
@@ -142,6 +169,7 @@ export default function CampaignBuilder() {
 
   const onSend = async () => {
     if (!savedId) return;
+    if (!requireSaved()) return;
     if (!confirm('Send this campaign to all matching contacts now?')) return;
     try {
       await sendCampaign.mutateAsync({ id: savedId });
@@ -153,6 +181,7 @@ export default function CampaignBuilder() {
 
   const onSchedule = async () => {
     setError(null);
+    if (!requireSaved()) return;
     try {
       await scheduleCampaign.mutateAsync({ id: effectiveId, scheduledFor });
       setScheduleOpen(false);
@@ -167,6 +196,7 @@ export default function CampaignBuilder() {
   const onTest = async () => {
     setError(null);
     setTestSent(false);
+    if (!requireSaved()) return;
     try {
       // Plunk only delivers tests to project members — fixed to our own address
       await testCampaign.mutateAsync({ id: effectiveId, email: testRecipient });
@@ -324,6 +354,11 @@ export default function CampaignBuilder() {
             <Save className="h-4 w-4" />
             {saving ? 'Saving…' : isEditing ? 'Save changes' : 'Save draft'}
           </Button>
+          {dirty && (
+            <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-800">
+              Unsaved changes — sends use the last saved version
+            </span>
+          )}
 
           {savedId && !locked && (
             <>

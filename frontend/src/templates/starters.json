@@ -22,5 +22,13 @@
     "type": "MARKETING",
     "file": "newsletter-minimal.html",
     "description": "Minimal numbered-stories layout with tip callout — fastest to fill each week."
+  },
+  {
+    "id": "newsletter-october-week1",
+    "name": "October 2026 Week 1 — full issue",
+    "subject": "Cybersecurity Weekly: CEAP scholarships, rogue networks & AMOS malware",
+    "type": "MARKETING",
+    "file": "newsletter-october-week1.html",
+    "description": "Complete October Week 1 issue (scholarship, NCC advisory, threat, tool, product, case study, events, career, glossary, quiz)."
   }
 ]

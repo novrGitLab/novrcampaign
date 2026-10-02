@@ -103,7 +103,8 @@ export function formatHtml(html) {
 const EmailAttributes = Extension.create({
   name: 'emailAttributes',
   addGlobalAttributes() {
-    const names = ['style', 'width', 'align', 'valign', 'cellpadding', 'cellspacing', 'border', 'bgcolor'];
+    // class is structural here: responsive m-* hooks live on it
+    const names = ['style', 'class', 'width', 'align', 'valign', 'cellpadding', 'cellspacing', 'border', 'bgcolor'];
     const attributes = Object.fromEntries(
       names.map((name) => [
         name,
