@@ -17,6 +17,18 @@ function normalizeHeader(header) {
 }
 
 /**
+ * Brevo/Mailchimp-style exports are often semicolon-delimited — sniff the
+ * first line and use whichever delimiter actually appears.
+ * @param {string} text
+ */
+function detectDelimiter(text) {
+  const firstLine = String(text).split(/\r?\n/, 1)[0] ?? '';
+  const semis = (firstLine.match(/;/g) || []).length;
+  const commas = (firstLine.match(/,/g) || []).length;
+  return semis > commas ? ';' : ',';
+}
+
+/**
  * Build a header → canonical-field index.
  * @param {string[]} headers
  */
@@ -45,6 +57,7 @@ function buildHeaderMap(headers) {
  * }>}
  */
 export async function parseContactsCsv(input, { maxRows = 100_000 } = {}) {
+  const text = Buffer.isBuffer(input) ? input.toString('utf-8') : String(input);
   return new Promise((resolve, reject) => {
     const contacts = [];
     const seenEmails = new Set();
@@ -55,6 +68,7 @@ export async function parseContactsCsv(input, { maxRows = 100_000 } = {}) {
 
     const parser = parse({
       columns: true,
+      delimiter: detectDelimiter(text),
       skip_empty_lines: true,
       trim: true,
       bom: true,
@@ -120,11 +134,7 @@ export async function parseContactsCsv(input, { maxRows = 100_000 } = {}) {
       resolve({ contacts, stats });
     });
 
-    if (Buffer.isBuffer(input)) {
-      parser.write(input.toString('utf-8'));
-    } else {
-      parser.write(input);
-    }
+    parser.write(text);
     parser.end();
   });
 }

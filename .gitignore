@@ -32,6 +32,9 @@ backend/src/generated/prisma/
 *.db
 *.db-journal
 
+# Contact exports (PII — never commit)
+*.csv
+
 # Editor / OS
 .vscode/
 .idea/
