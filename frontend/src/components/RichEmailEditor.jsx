@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import { Extension } from '@tiptap/core';
 import { StarterKit } from '@tiptap/starter-kit';
@@ -14,7 +14,7 @@ import { TableCell } from '@tiptap/extension-table-cell';
 import {
   Bold, Italic, Underline as UnderlineIcon, Strikethrough, Undo2, Redo2,
   List, ListOrdered, Quote, Link as LinkIcon, Unlink, AlignLeft, AlignCenter,
-  AlignRight, Minus, Eraser, Code, Eye, PenLine, User, BellOff, TriangleAlert,
+  AlignRight, Minus, Eraser, Code, Eye, PenLine, User, BellOff, TriangleAlert, Trash2,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -129,6 +129,14 @@ const EmailAttributes = Extension.create({
 
 const hasTableLayout = (html) => /<table[\s>]/i.test(html ?? '');
 
+// Full-document email HTML (head/style/classes/comments) cannot survive a
+// Tiptap parse — Write mode is only lossless for simple rich text.
+const hasComplexEmailHtml = (html) =>
+  /<table[\s>]|<style[\s>]|<head[\s>]|<!--|\sclass=/i.test(html ?? '');
+
+// Tiptap always keeps one empty paragraph — report it as empty instead
+const normalizeEmpty = (html) => (html === '<p></p>' ? '' : html);
+
 function ToolButton({ active, disabled, onClick, title, children }) {
   return (
     <button
@@ -154,14 +162,26 @@ function ToolButton({ active, disabled, onClick, title, children }) {
 export default function RichEmailEditor({ value, onChange, disabled }) {
   // Table layouts open in Preview — Write mode is for simple rich text
   const [view, setView] = useState(() => (hasTableLayout(value) ? 'preview' : 'rich'));
-  const prevValue = useRef(value);
+
+  const emitHtml = (html) => onChange?.(normalizeEmpty(html));
 
   const goView = (next) => {
     if (next === 'code' && (value ?? '') !== '') {
       const formatted = formatHtml(value);
       if (formatted !== value) onChange?.(formatted);
     }
+    if (next === 'rich' && editor) {
+      // Parse lazily and SILENTLY — never write the normalized output back
+      editor.commands.setContent(value || '<p></p>', { emitUpdate: false });
+    }
     setView(next);
+  };
+
+  const onClear = () => {
+    emitHtml('');
+    if (editor) editor.commands.clearContent();
+    // Land in HTML view so the replacement can be pasted losslessly
+    setView('code');
   };
 
   const editor = useEditor({
@@ -185,21 +205,20 @@ export default function RichEmailEditor({ value, onChange, disabled }) {
       // Email canvas stays light in both modes — it previews the sent email
       attributes: { class: 'tiptap min-h-[280px] w-full bg-white px-4 py-3 text-sm text-slate-900 focus:outline-none' },
     },
-    onUpdate: ({ editor: e }) => onChange?.(e.getHTML()),
+    onUpdate: ({ editor: e }) => emitHtml(e.getHTML()),
   });
 
-  // Keep the editor in sync when the parent loads a campaign/template externally.
-  // Table content arriving from outside (starter pick, template hydration) opens
-  // in Preview so newsletter styling is never shown through the lossy Write view.
+  // Sync EXTERNAL loads (template pick, campaign hydration) into an open Write
+  // view — but never while the user is typing, and never write the normalized
+  // parse back. Code/Preview edits flow one way until Write is re-entered.
   useEffect(() => {
-    if (!editor) return;
+    if (!editor || view !== 'rich' || editor.isFocused) return;
     const current = editor.getHTML();
     if ((value ?? '') !== current) {
-      if (hasTableLayout(value) && !hasTableLayout(prevValue.current)) setView('preview');
-      prevValue.current = value;
-      editor.commands.setContent(value || '<p></p>', false);
+      if (hasTableLayout(value) && !hasTableLayout(current)) setView('preview');
+      else editor.commands.setContent(value || '<p></p>', { emitUpdate: false });
     }
-  }, [editor, value]);
+  }, [editor, value, view]);
 
   useEffect(() => {
     if (editor) editor.setEditable(!disabled);
@@ -244,6 +263,17 @@ export default function RichEmailEditor({ value, onChange, disabled }) {
             </button>
           ))}
         </div>
+        <div className="flex shrink-0 gap-1">
+          <button
+            type="button"
+            onClick={onClear}
+            disabled={disabled || !value}
+            title="Clear the canvas completely, then paste fresh HTML"
+            className="flex items-center gap-1 rounded border border-slate-200 bg-white px-2 py-1 text-xs text-slate-500 hover:bg-red-50 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Trash2 className="h-3 w-3" /> Clear
+          </button>
+        </div>
         {view === 'rich' && (
           <div className="hidden gap-1 sm:flex">
             <button type="button" disabled={disabled} onClick={() => insertToken('{{firstName}}')} title="Insert first-name personalisation" className="flex items-center gap-1 rounded border border-slate-200 bg-white px-2 py-1 text-xs text-slate-500 hover:bg-slate-100 hover:text-slate-800">
@@ -256,10 +286,11 @@ export default function RichEmailEditor({ value, onChange, disabled }) {
         )}
       </div>
 
-      {view === 'rich' && hasTableLayout(value) && (
+      {view === 'rich' && hasComplexEmailHtml(value) && (
         <p className="mb-2 flex items-start gap-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
           <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-          Table-based layout — rich editing can drop email styling. Use HTML for structural edits, Preview to check.
+          Full email HTML (tables, styles, classes) — rich editing keeps text but can drop head styles and
+          layout details. Prefer the HTML tab for structural edits, Preview to verify.
         </p>
       )}
 

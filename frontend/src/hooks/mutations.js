@@ -9,13 +9,16 @@ export function useCreateCampaign() {
   });
 }
 
-export function useUpdateCampaign(id) {
+export function useUpdateCampaign() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body) => api(`/campaigns/${id}`, { method: 'PUT', body }).then((r) => r.campaign),
+    mutationFn: ({ id, body }) => {
+      if (!id) throw new Error('Save the draft first — there is no campaign to update yet.');
+      return api(`/campaigns/${id}`, { method: 'PUT', body }).then((r) => r.campaign);
+    },
     onSuccess: (campaign) => {
       qc.invalidateQueries({ queryKey: ['campaigns'] });
-      qc.setQueryData(['campaign', id], campaign);
+      qc.setQueryData(['campaign', campaign.id], campaign);
     },
   });
 }
@@ -37,10 +40,13 @@ export function useSendCampaign() {
   });
 }
 
-export function useScheduleCampaign(id) {
+export function useScheduleCampaign() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (scheduledFor) => api(`/campaigns/${id}/schedule`, { method: 'POST', body: { scheduledFor } }),
+    mutationFn: ({ id, scheduledFor }) => {
+      if (!id) throw new Error('Save the draft first — there is no campaign to schedule yet.');
+      return api(`/campaigns/${id}/schedule`, { method: 'POST', body: { scheduledFor } });
+    },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['campaigns'] }),
   });
 }
@@ -53,9 +59,12 @@ export function useCancelCampaign() {
   });
 }
 
-export function useTestCampaign(id) {
+export function useTestCampaign() {
   return useMutation({
-    mutationFn: (email) => api(`/campaigns/${id}/test`, { method: 'POST', body: { email } }),
+    mutationFn: ({ id, email }) => {
+      if (!id) throw new Error('Save the draft first — there is no campaign to test yet.');
+      return api(`/campaigns/${id}/test`, { method: 'POST', body: { email } });
+    },
   });
 }
 

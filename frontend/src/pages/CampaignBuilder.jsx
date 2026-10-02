@@ -43,10 +43,10 @@ export default function CampaignBuilder() {
   const { data: preselectedTemplate } = useTemplate(isEditing ? null : preselectedTemplateId);
 
   const createCampaign = useCreateCampaign();
-  const updateCampaign = useUpdateCampaign(id);
+  const updateCampaign = useUpdateCampaign();
   const sendCampaign = useSendCampaign();
-  const scheduleCampaign = useScheduleCampaign(id);
-  const testCampaign = useTestCampaign(id);
+  const scheduleCampaign = useScheduleCampaign();
+  const testCampaign = useTestCampaign();
   const cancelCampaign = useCancelCampaign();
 
   const [form, setForm] = useState({
@@ -64,6 +64,8 @@ export default function CampaignBuilder() {
   const [scheduledFor, setScheduledFor] = useState('');
   const [testEmail, setTestEmail] = useState('');
   const [testOpen, setTestOpen] = useState(false);
+  // savedId is the truth after creating a draft (URL id is empty for new campaigns)
+  const effectiveId = savedId ?? id ?? null;
 
   // Hydrate when editing
   useEffect(() => {
@@ -124,7 +126,7 @@ export default function CampaignBuilder() {
       if (!payload.segmentId) delete payload.segmentId;
       delete payload.templateId;
       if (isEditing && savedId) {
-        const updated = await updateCampaign.mutateAsync(payload);
+        const updated = await updateCampaign.mutateAsync({ id: savedId, body: payload });
         setSavedId(updated.id);
       } else {
         const created = await createCampaign.mutateAsync(payload);
@@ -150,19 +152,22 @@ export default function CampaignBuilder() {
   const onSchedule = async () => {
     setError(null);
     try {
-      await scheduleCampaign.mutateAsync(scheduledFor);
+      await scheduleCampaign.mutateAsync({ id: effectiveId, scheduledFor });
       setScheduleOpen(false);
-      navigate(`/campaigns/${savedId}/analytics`);
+      navigate(`/campaigns/${effectiveId}/analytics`);
     } catch (err) {
       setError(err.message);
     }
   };
 
+  const [testSent, setTestSent] = useState(false);
+
   const onTest = async () => {
     setError(null);
+    setTestSent(false);
     try {
-      await testCampaign.mutateAsync(testEmail);
-      setTestOpen(false);
+      await testCampaign.mutateAsync({ id: effectiveId, email: testEmail });
+      setTestSent(true);
     } catch (err) {
       setError(err.message);
     }
@@ -364,24 +369,37 @@ export default function CampaignBuilder() {
 
       <Modal
         open={testOpen}
-        onClose={() => setTestOpen(false)}
+        onClose={() => { setTestOpen(false); setTestSent(false); }}
         title="Send a test"
         description="A single test email to preview rendering and personalisation."
       >
         <div className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="testEmail">Recipient</Label>
-            <Input
-              id="testEmail"
-              type="email"
-              value={testEmail}
-              onChange={(e) => setTestEmail(e.target.value)}
-              placeholder="you@cybernovr.com"
-            />
-          </div>
-          <Button className="w-full" onClick={onTest} disabled={!testEmail || testCampaign.isPending}>
-            {testCampaign.isPending ? 'Sending test…' : 'Send test email'}
-          </Button>
+          {testSent ? (
+            <>
+              <p className="rounded-md bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                Test email sent to {testEmail}. Check the inbox (and spam) in a minute.
+              </p>
+              <Button className="w-full" onClick={() => { setTestOpen(false); setTestSent(false); }}>
+                Done
+              </Button>
+            </>
+          ) : (
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="testEmail">Recipient</Label>
+                <Input
+                  id="testEmail"
+                  type="email"
+                  value={testEmail}
+                  onChange={(e) => setTestEmail(e.target.value)}
+                  placeholder="you@cybernovr.com"
+                />
+              </div>
+              <Button className="w-full" onClick={onTest} disabled={!testEmail || testCampaign.isPending}>
+                {testCampaign.isPending ? 'Sending test…' : 'Send test email'}
+              </Button>
+            </>
+          )}
         </div>
       </Modal>
     </div>
