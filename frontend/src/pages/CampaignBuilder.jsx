@@ -13,6 +13,7 @@ import {
 } from '../hooks/mutations';
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Badge } from '../components/ui';
 import { Modal } from '../components/ui/Modal';
+import { useAuth } from '../hooks/useAuth';
 
 const TYPES = [
   { value: 'MARKETING', label: 'Marketing', hint: 'Auto unsub footer, skips unsubscribed contacts' },
@@ -62,8 +63,9 @@ export default function CampaignBuilder() {
   const [error, setError] = useState(null);
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [scheduledFor, setScheduledFor] = useState('');
-  const [testEmail, setTestEmail] = useState('');
   const [testOpen, setTestOpen] = useState(false);
+  const { user } = useAuth();
+  const testRecipient = user?.email ?? '';
   // savedId is the truth after creating a draft (URL id is empty for new campaigns)
   const effectiveId = savedId ?? id ?? null;
 
@@ -166,7 +168,8 @@ export default function CampaignBuilder() {
     setError(null);
     setTestSent(false);
     try {
-      await testCampaign.mutateAsync({ id: effectiveId, email: testEmail });
+      // Plunk only delivers tests to project members — fixed to our own address
+      await testCampaign.mutateAsync({ id: effectiveId, email: testRecipient });
       setTestSent(true);
     } catch (err) {
       setError(err.message);
@@ -377,7 +380,7 @@ export default function CampaignBuilder() {
           {testSent ? (
             <>
               <p className="rounded-md bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-                Test email sent to {testEmail}. Check the inbox (and spam) in a minute.
+                Test email sent to {testRecipient}. Check the inbox (and spam) in a minute.
               </p>
               <Button className="w-full" onClick={() => { setTestOpen(false); setTestSent(false); }}>
                 Done
@@ -385,17 +388,11 @@ export default function CampaignBuilder() {
             </>
           ) : (
             <>
-              <div className="space-y-2">
-                <Label htmlFor="testEmail">Recipient</Label>
-                <Input
-                  id="testEmail"
-                  type="email"
-                  value={testEmail}
-                  onChange={(e) => setTestEmail(e.target.value)}
-                  placeholder="you@cybernovr.com"
-                />
-              </div>
-              <Button className="w-full" onClick={onTest} disabled={!testEmail || testCampaign.isPending}>
+              <p className="rounded-md bg-secondary/60 px-4 py-3 text-sm text-muted-foreground">
+                Sends to <span className="font-medium text-foreground">{testRecipient || 'your login email'}</span>.
+                Plunk only delivers tests to project members — add addresses under Plunk Settings → Team.
+              </p>
+              <Button className="w-full" onClick={onTest} disabled={!testRecipient || testCampaign.isPending}>
                 {testCampaign.isPending ? 'Sending test…' : 'Send test email'}
               </Button>
             </>
