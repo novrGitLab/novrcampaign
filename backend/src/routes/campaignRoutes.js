@@ -11,6 +11,7 @@ router.put('/:id', asyncHandler(campaignController.updateCampaign));
 router.delete('/:id', asyncHandler(campaignController.deleteCampaign));
 
 router.post('/:id/duplicate', asyncHandler(campaignController.duplicateCampaign));
+router.post('/:id/resend-unsent', asyncHandler(campaignController.resendUnsent));
 router.post('/:id/send', asyncHandler(campaignController.sendCampaign));
 router.post('/:id/schedule', asyncHandler(campaignController.scheduleCampaign));
 router.post('/:id/cancel', asyncHandler(campaignController.cancelCampaign));

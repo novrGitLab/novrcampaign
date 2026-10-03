@@ -22,7 +22,9 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import { useState } from 'react';
 import { useCampaign, useCampaignStats } from '../hooks/queries';
+import { useResendUnsent } from '../hooks/mutations';
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, StatCard } from '../components/ui';
 import { formatNumber, formatRate, formatDate } from '../lib/utils';
 
@@ -43,6 +45,20 @@ export default function CampaignAnalytics() {
   const { id } = useParams();
   const { data: campaign, isLoading: campaignLoading } = useCampaign(id);
   const { data: stats, isLoading: statsLoading, refetch, isFetching } = useCampaignStats(id);
+  const resendUnsent = useResendUnsent();
+  const [resendResult, setResendResult] = useState(null);
+  const [resendError, setResendError] = useState(null);
+
+  const onResendUnsent = async () => {
+    setResendError(null);
+    setResendResult(null);
+    try {
+      const result = await resendUnsent.mutateAsync(id);
+      setResendResult(result);
+    } catch (err) {
+      setResendError(err.message);
+    }
+  };
 
   const loading = campaignLoading || statsLoading;
   const sent = Number(stats?.sentCount ?? campaign?.sentCount ?? 0);
@@ -76,9 +92,45 @@ export default function CampaignAnalytics() {
             <Button variant="secondary" size="sm" onClick={() => refetch()} disabled={isFetching}>
               {isFetching ? 'Refreshing…' : 'Refresh'}
             </Button>
+            {campaign?.status === 'SENT' && (
+              <Button size="sm" onClick={onResendUnsent} disabled={resendUnsent.isPending}>
+                <Send className="h-4 w-4" />
+                {resendUnsent.isPending ? 'Finding unsent…' : 'Resend to unsent'}
+              </Button>
+            )}
           </div>
         </div>
       </div>
+
+      {resendError && (
+        <p className="mb-6 rounded-md bg-destructive/10 px-4 py-3 text-sm text-destructive">{resendError}</p>
+      )}
+
+      {resendResult && (
+        <Card className="mb-6 border-purple-200 bg-purple-50/50 dark:border-purple-900 dark:bg-purple-950/20">
+          <CardContent className="p-6">
+            {resendResult.unsentCount === 0 ? (
+              <p className="text-sm">
+                Everyone was reached — {resendResult.sentCount} sent of {resendResult.audienceCount} in the audience. Nothing to resend.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-sm">
+                  <span className="font-semibold">{resendResult.unsentCount}</span> of {resendResult.audienceCount} contacts
+                  never got this campaign ({resendResult.sentCount} sent). A STATIC segment
+                  {resendResult.segment?.name ? <> “{resendResult.segment.name}”</> : null} was created and a DRAFT
+                  duplicate retargeted at it — <span className="font-medium">nothing has been sent yet</span>.
+                </p>
+                {resendResult.campaign?.id && (
+                  <Link to={`/campaigns/${resendResult.campaign.id}/analytics`}>
+                    <Button size="sm">Review the resend draft</Button>
+                  </Link>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading analytics…</p>

@@ -89,6 +89,17 @@ export function useImportContacts() {
   });
 }
 
+export function useResendUnsent() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id) => api(`/campaigns/${id}/resend-unsent`, { method: 'POST' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['campaigns'] });
+      qc.invalidateQueries({ queryKey: ['segments'] });
+    },
+  });
+}
+
 export function useDuplicateCampaign() {
   const qc = useQueryClient();
   return useMutation({

@@ -543,6 +543,26 @@ export async function computeSegment(segmentId) {
   return plunkRequest(`/segments/${segmentId}/compute`, { method: 'POST' });
 }
 
+// ── Events ────────────────────────────────────────────────────────────────────
+// System events (email.sent/delivery/open/click/bounce/complaint) are tracked
+// automatically per contact and carry data.campaignId for campaign mail.
+
+/**
+ * List events, optionally filtered by exact event name.
+ * NOTE: the filter param is `eventName` (`event` is silently ignored),
+ * and the response is a bare `{ events: [...] }` envelope — no cursor,
+ * so use a generous limit (verified: 500 covers this project's volume).
+ * @param {{ eventName?: string, limit?: number }} [opts]
+ */
+export async function getEvents({ eventName, limit = 500 } = {}) {
+  return plunkRequest('/events', {
+    query: {
+      ...(eventName ? { eventName } : {}),
+      limit,
+    },
+  });
+}
+
 // ── Contacts (single-record detail for Contact 360) ───────────────────────────
 
 /**
@@ -572,6 +592,7 @@ export default {
   getContacts,
   getContact,
   updateContact,
+  getEvents,
   importContactsCsv,
   getImportJob,
   createCampaign,

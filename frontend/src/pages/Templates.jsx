@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, LayoutTemplate, Trash2, Copy } from 'lucide-react';
-import { useTemplates } from '../hooks/queries';
+import { Plus, LayoutTemplate, Trash2, Copy, Eye } from 'lucide-react';
+import { useTemplates, useTemplate } from '../hooks/queries';
 import { useCreateTemplate, useDeleteTemplate, useDuplicateTemplate } from '../hooks/mutations';
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, EmptyState, Input, Label } from '../components/ui';
 import { Modal } from '../components/ui/Modal';
@@ -16,6 +16,7 @@ export default function Templates() {
   const deleteTemplate = useDeleteTemplate();
   const duplicateTemplate = useDuplicateTemplate();
   const [open, setOpen] = useState(false);
+  const [previewId, setPreviewId] = useState(null);
   const [error, setError] = useState(null);
   const [form, setForm] = useState({ name: '', subject: '', body: '', type: 'MARKETING' });
 
@@ -93,14 +94,19 @@ export default function Templates() {
                   {templates.map((t) => (
                     <tr key={t.id} className="border-b last:border-0 hover:bg-accent/40">
                       <td>
-                        <p className="font-medium">{t.name}</p>
-                        <p className="max-w-xs truncate text-xs text-muted-foreground">{t.subject}</p>
+                        <button onClick={() => setPreviewId(t.id)} className="text-left" title="Preview template">
+                          <p className="font-medium hover:underline">{t.name}</p>
+                          <p className="max-w-xs truncate text-xs text-muted-foreground">{t.subject}</p>
+                        </button>
                       </td>
                       <td>
                         <Badge status={t.type}>{t.type}</Badge>
                       </td>
                       <td>
                         <div className="flex justify-end gap-1">
+                          <button onClick={() => setPreviewId(t.id)} className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground" title="Preview" aria-label={`Preview ${t.name}`}>
+                            <Eye className="h-4 w-4" />
+                          </button>
                           <Link
                             to={`/campaigns/new?templateId=${t.id}`}
                             className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
@@ -167,6 +173,48 @@ export default function Templates() {
           </Button>
         </div>
       </Modal>
+
+      <TemplatePreviewModal
+        templateId={previewId}
+        onClose={() => setPreviewId(null)}
+        onDuplicate={onDuplicate}
+        onDelete={(t) => { onDelete(t); setPreviewId(null); }}
+      />
     </div>
+  );
+}
+
+function TemplatePreviewModal({ templateId, onClose, onDuplicate, onDelete }) {
+  const { data: template, isLoading } = useTemplate(templateId);
+
+  return (
+    <Modal open={Boolean(templateId)} onClose={onClose} title={template?.name ?? 'Template preview'} description={template ? `${template.subject ?? ''} · ${template.type ?? ''}` : undefined} className="max-w-3xl">
+      {isLoading || !template ? (
+        <p className="py-8 text-center text-sm text-muted-foreground">Loading preview…</p>
+      ) : (
+        <div className="space-y-4">
+          <iframe
+            title={`Preview of ${template.name}`}
+            srcDoc={template.body ?? ''}
+            sandbox=""
+            className="h-[480px] w-full rounded-md border bg-white"
+          />
+          <div className="flex flex-wrap gap-2">
+            <Link to={`/campaigns/new?templateId=${template.id}`} className="btn-primary btn-sm">
+              <Plus className="h-4 w-4" />
+              Use in new campaign
+            </Link>
+            <Button variant="secondary" size="sm" onClick={() => onDuplicate(template)}>
+              <Copy className="h-4 w-4" />
+              Duplicate
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => onDelete(template)}>
+              <Trash2 className="h-4 w-4" />
+              Delete
+            </Button>
+          </div>
+        </div>
+      )}
+    </Modal>
   );
 }
