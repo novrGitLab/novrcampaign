@@ -43,10 +43,10 @@ export default function Segments() {
   };
 
   return (
-    <div className="mx-auto max-w-[1400px] p-6 sm:p-8">
+    <div className="mx-auto max-w-5xl px-8 py-8">
       <div className="mb-8 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Segments</h1>
+          <h1 className="text-xl font-bold tracking-tight">Segments</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Named audiences from Plunk — target them from the campaign builder.
           </p>
@@ -79,7 +79,7 @@ export default function Segments() {
           ) : (
             <div className="overflow-x-auto">
               <table className="table">
-                <thead className="border-b">
+                <thead className="border-b border-border">
                   <tr>
                     <th>Name</th>
                     <th>Type</th>
@@ -89,7 +89,7 @@ export default function Segments() {
                 </thead>
                 <tbody>
                   {segments.map((s) => (
-                    <tr key={s.id} className="border-b last:border-0 hover:bg-accent/40">
+                    <tr key={s.id} className="border-b border-border last:border-0 hover:bg-secondary/60">
                       <td>
                         <Link to={`/segments/${s.id}`} className="font-medium hover:underline">
                           {s.name}

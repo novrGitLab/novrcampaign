@@ -49,10 +49,10 @@ export default function Templates() {
   };
 
   return (
-    <div className="mx-auto max-w-[1400px] p-6 sm:p-8">
+    <div className="mx-auto max-w-5xl px-8 py-8">
       <div className="mb-8 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Templates</h1>
+          <h1 className="text-xl font-bold tracking-tight">Templates</h1>
           <p className="mt-1 text-sm text-muted-foreground">Reusable subject + HTML presets stored in Plunk. Start a campaign from one.</p>
         </div>
         <Button onClick={() => setOpen(true)}>
@@ -83,7 +83,7 @@ export default function Templates() {
           ) : (
             <div className="overflow-x-auto">
               <table className="table">
-                <thead className="border-b">
+                <thead className="border-b border-border">
                   <tr>
                     <th>Template</th>
                     <th>Type</th>
@@ -92,7 +92,7 @@ export default function Templates() {
                 </thead>
                 <tbody>
                   {templates.map((t) => (
-                    <tr key={t.id} className="border-b last:border-0 hover:bg-accent/40">
+                    <tr key={t.id} className="border-b border-border last:border-0 hover:bg-secondary/60">
                       <td>
                         <button onClick={() => setPreviewId(t.id)} className="text-left" title="Preview template">
                           <p className="font-medium hover:underline">{t.name}</p>

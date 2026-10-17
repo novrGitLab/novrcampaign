@@ -28,30 +28,24 @@ export default function Login() {
   };
 
   return (
-    <div
-      className="flex min-h-screen items-center justify-center bg-brand-ink p-4"
-      style={{
-        backgroundImage:
-          'radial-gradient(600px 300px at 15% 10%, rgba(68,81,162,0.35), transparent), radial-gradient(500px 280px at 85% 15%, rgba(102,47,142,0.30), transparent), radial-gradient(700px 350px at 50% 100%, rgba(235,32,39,0.12), transparent)',
-      }}
-    >
-      <div className="w-full max-w-md">
+    <div className="flex min-h-screen items-center justify-center bg-background p-4">
+      <div className="w-full max-w-sm">
         <div className="mb-6 flex flex-col items-center text-center">
-          <img src="/cybernovr-logo-white.png" alt="CyberNovr" className="h-10 w-auto" />
-          <div className="mt-4 h-1 w-24 rounded-full bg-linear-to-r from-brand-blue via-brand-purple to-brand-red" />
+          <img src="/cybernovr-logo.png" alt="CyberNovr" className="h-9 w-auto" />
+          <div className="mt-3 h-0.5 w-28 rounded-full bg-linear-to-r from-brand-blue via-brand-purple to-brand-red" />
         </div>
 
         <Card>
-          <CardContent className="p-8">
-            <div className="mb-6 text-center">
-              <h1 className="text-xl font-bold">NovrCampaign</h1>
+          <CardContent className="p-6">
+            <div className="mb-5 text-center">
+              <h1 className="text-lg font-bold tracking-tight">NovrCampaign</h1>
               <p className="mt-1 text-sm text-muted-foreground">
                 Internal email campaigns, powered by Plunk
               </p>
             </div>
 
             <form onSubmit={onSubmit} className="space-y-4">
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 <Label htmlFor="email">Email</Label>
                 <Input
                   id="email"
@@ -64,7 +58,7 @@ export default function Login() {
                 />
               </div>
 
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 <Label htmlFor="password">Password</Label>
                 <Input
                   id="password"
@@ -78,7 +72,7 @@ export default function Login() {
               </div>
 
               {error && (
-                <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>
+                <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>
               )}
 
               <Button type="submit" className="w-full" disabled={loading}>
@@ -88,7 +82,7 @@ export default function Login() {
           </CardContent>
         </Card>
 
-        <p className="mt-6 text-center text-xs text-white/40">
+        <p className="mt-6 text-center text-xs text-muted-foreground">
           Internal CyberNovr tool — no self-registration. Ask an admin for access.
         </p>
       </div>

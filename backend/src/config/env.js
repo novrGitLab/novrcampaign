@@ -17,6 +17,18 @@ function asInt(key, fallback) {
   return Number.isInteger(parsed) ? parsed : fallback;
 }
 
+function asExpiry(key, fallback) {
+  const raw = process.env[key]?.trim();
+  if (!raw) return fallback;
+  if (!/^\d+$/.test(raw)) return raw;
+
+  const days = Number(raw);
+  if (!Number.isInteger(days) || days <= 0) {
+    throw new Error(`${key} must be a positive whole number of days (e.g. 7 or 7d), got "${raw}"`);
+  }
+  return `${days}d`;
+}
+
 export const config = {
   env: process.env.NODE_ENV || 'development',
   isProd: process.env.NODE_ENV === 'production',
@@ -31,7 +43,7 @@ export const config = {
 
   jwt: {
     secret: required('JWT_SECRET', 'dev_secret_change_me'),
-    expiresIn: process.env.JWT_EXPIRES_IN || '7d',
+    expiresIn: asExpiry('JWT_EXPIRES_IN', '7d'),
   },
 
   // ── Plunk (email provider) ─────────────────────────────────────────────────

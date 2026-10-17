@@ -3,52 +3,40 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-  /* Surface tokens (light defaults; .dark overrides below flip the app) */
+  /* Plunk-style neutral surfaces (light defaults; .dark overrides below) */
   --color-background: hsl(0 0% 100%);
-  --color-foreground: hsl(240 10% 3.9%);
+  --color-foreground: hsl(0 0% 15%);        /* neutral-800 */
   --color-card: hsl(0 0% 100%);
-  --color-card-foreground: hsl(240 10% 3.9%);
-  --color-secondary: hsl(240 4.8% 95.9%);
-  --color-secondary-foreground: hsl(240 5.9% 10%);
-  --color-muted: hsl(240 4.8% 95.9%);
-  --color-muted-foreground: hsl(240 3.8% 46.1%);
-  --color-accent: hsl(240 4.8% 95.9%);
-  --color-accent-foreground: hsl(240 5.9% 10%);
-  --color-border: hsl(240 5.9% 90%);
-  --color-input: hsl(240 5.9% 90%);
-  --color-ring: #662f8e;
+  --color-card-foreground: hsl(0 0% 9%);
+  --color-secondary: hsl(0 0% 96.5%);      /* neutral-100 */
+  --color-secondary-foreground: hsl(0 0% 9%);
+  --color-muted: hsl(0 0% 96.5%);
+  --color-muted-foreground: hsl(0 0% 45%); /* neutral-500 */
+  --color-accent: hsl(0 0% 96.5%);
+  --color-accent-foreground: hsl(0 0% 9%);
+  --color-border: hsl(0 0% 89.8%);         /* neutral-200 */
+  --color-input: hsl(0 0% 89.8%);
+  --color-ring: #662f8e;                   /* brand purple focus ring */
 
-  /* CyberNovr brand — purple primary, blue secondary, red accent */
-  --color-primary: #662f8e;
+  /* Primary is near-black, like Plunk */
+  --color-primary: hsl(0 0% 3.9%);         /* neutral-950 */
   --color-primary-foreground: hsl(0 0% 98%);
-  --color-destructive: #eb2027;
+  --color-destructive: hsl(0 72% 51%);     /* red-600 */
   --color-destructive-foreground: hsl(0 0% 98%);
 
+  /* Brand accents kept for logo moments */
   --color-brand-blue: #4451a2;
   --color-brand-purple: #662f8e;
   --color-brand-red: #eb2027;
   --color-brand-ink: #0c0c13;
 
-  /* Full purple scale for charts, tiles, illustrations */
-  --color-purple-50: #f6f1fb;
-  --color-purple-100: #ebdff4;
-  --color-purple-200: #d8bfe9;
-  --color-purple-300: #bc94d8;
-  --color-purple-400: #9a67be;
-  --color-purple-500: #7e43a6;
-  --color-purple-600: #662f8e;
-  --color-purple-700: #552778;
-  --color-purple-800: #452062;
-  --color-purple-900: #38204f;
-  --color-purple-950: #231130;
-
-  --color-success: hsl(142 71% 45%);
+  --color-success: hsl(160 84% 39%);       /* emerald-600 */
   --color-success-foreground: hsl(0 0% 98%);
   --color-warning: hsl(38 92% 50%);
   --color-warning-foreground: hsl(0 0% 98%);
 
-  --font-sans: "Inter Variable", Inter, system-ui, sans-serif;
-  --font-display: "Space Grotesk Variable", "Space Grotesk", "Inter Variable", Inter, system-ui, sans-serif;
+  --font-sans: "Inter Variable", Inter, ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Inter Variable", Inter, ui-sans-serif, system-ui, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
 
   /* NOTE: no fill mode — a retained transform would become the containing
@@ -74,22 +62,22 @@
 
   .dark {
     color-scheme: dark;
-    --color-background: hsl(240 23% 6%);
-    --color-foreground: hsl(0 0% 96%);
-    --color-card: hsl(240 18% 10%);
-    --color-card-foreground: hsl(0 0% 96%);
-    --color-secondary: hsl(240 10% 14%);
-    --color-secondary-foreground: hsl(0 0% 96%);
-    --color-muted: hsl(240 10% 14%);
-    --color-muted-foreground: hsl(240 5% 65%);
-    --color-accent: hsl(240 10% 17%);
-    --color-accent-foreground: hsl(0 0% 96%);
-    --color-border: hsl(240 8% 18%);
-    --color-input: hsl(240 8% 24%);
-    --color-ring: #9a67be;
-    --color-primary: #9a67be;
-    --color-primary-foreground: hsl(275 48% 13%);
-    --color-destructive: hsl(0 84% 62%);
+    --color-background: hsl(0 0% 3.9%);
+    --color-foreground: hsl(0 0% 93%);
+    --color-card: hsl(0 0% 7%);
+    --color-card-foreground: hsl(0 0% 93%);
+    --color-secondary: hsl(0 0% 10%);
+    --color-secondary-foreground: hsl(0 0% 93%);
+    --color-muted: hsl(0 0% 12%);
+    --color-muted-foreground: hsl(0 0% 60%);
+    --color-accent: hsl(0 0% 13%);
+    --color-accent-foreground: hsl(0 0% 93%);
+    --color-border: hsl(0 0% 16%);
+    --color-input: hsl(0 0% 20%);
+    --color-ring: hsl(0 0% 40%);
+    --color-primary: hsl(0 0% 98%);
+    --color-primary-foreground: hsl(0 0% 9%);
+    --color-destructive: hsl(0 72% 51%);
     --color-destructive-foreground: hsl(0 0% 98%);
   }
 
@@ -101,12 +89,12 @@
   }
 
   body {
-    @apply bg-secondary text-foreground antialiased;
+    @apply bg-background text-foreground antialiased;
     font-feature-settings: 'rlig' 1, 'calt' 1;
   }
 
   h1, h2, h3, .card-title {
-    @apply font-display;
+    @apply font-display text-foreground;
   }
 
   :focus-visible {
@@ -115,7 +103,7 @@
   }
 
   ::selection {
-    background: color-mix(in oklab, var(--color-primary) 25%, transparent);
+    background: color-mix(in oklab, var(--color-foreground) 15%, transparent);
   }
 }
 
@@ -125,10 +113,12 @@
   justify-content: center;
   gap: 0.5rem;
   white-space: nowrap;
-  border-radius: 0.375rem;
+  height: 2.25rem; /* h-9, Plunk default */
+  border-radius: 0.5rem; /* rounded-lg */
+  padding-inline: 1rem;
   font-size: 0.875rem;
   font-weight: 500;
-  transition-property: color, background-color, border-color;
+  transition-property: color, background-color, border-color, opacity;
   transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
   transition-duration: 150ms;
 
@@ -139,57 +129,57 @@
 }
 
 @layer components {
-  /* shadcn/ui-style primitives, defined as utilities so they compose with clsx */
+  /* Plunk-style primitives, defined as utilities so they compose with clsx */
 
   .btn-primary {
-    @apply btn bg-primary px-4 py-2 text-primary-foreground hover:bg-primary/90;
+    @apply btn bg-primary text-primary-foreground hover:bg-brand-purple hover:text-white;
   }
 
   .btn-secondary {
-    @apply btn border border-input bg-background px-4 py-2 hover:bg-accent hover:text-accent-foreground;
+    @apply btn border border-border bg-background hover:bg-accent hover:text-accent-foreground;
   }
 
   .btn-ghost {
-    @apply btn px-3 py-2 hover:bg-accent hover:text-accent-foreground;
+    @apply btn px-3 hover:bg-accent hover:text-accent-foreground;
   }
 
   .btn-danger {
-    @apply btn bg-destructive px-4 py-2 text-destructive-foreground hover:bg-destructive/90;
+    @apply btn bg-destructive text-destructive-foreground hover:bg-destructive/90;
   }
 
   .btn-sm {
-    @apply px-3 py-1.5 text-xs;
+    @apply h-8 px-3 text-xs;
   }
 
   .input {
-    @apply flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm
-           ring-offset-background placeholder:text-muted-foreground
-           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2
+    @apply flex h-9 w-full rounded-md border border-border bg-transparent px-3 py-1 text-sm
+           text-foreground ring-offset-background placeholder:text-muted-foreground
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0
            disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .label {
-    @apply text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70;
+    @apply text-[13px] font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70;
   }
 
   .card {
-    @apply rounded-lg border bg-card text-card-foreground shadow-sm;
+    @apply rounded-xl border border-border bg-card text-card-foreground shadow-sm;
   }
 
   .card-header {
-    @apply flex flex-col space-y-1.5 p-6;
+    @apply flex flex-col space-y-1.5 p-5;
   }
 
   .card-title {
-    @apply text-lg font-semibold leading-none tracking-tight;
+    @apply text-[15px] font-semibold leading-none tracking-tight text-foreground;
   }
 
   .card-content {
-    @apply p-6 pt-0;
+    @apply p-5 pt-0;
   }
 
   .badge {
-    @apply inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors;
+    @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset transition-colors;
   }
 
   .table {
@@ -198,7 +188,7 @@
   }
 
   .table th {
-    @apply h-12 px-4 text-left align-middle text-[11px] font-semibold uppercase tracking-wider text-muted-foreground;
+    @apply h-11 px-4 text-left align-middle text-xs font-medium uppercase tracking-wider text-muted-foreground;
   }
 
   .table td {
@@ -208,7 +198,7 @@
   /* Skeleton shimmer + route-enter motion (respects reduced motion) */
   .skeleton {
     @apply rounded-md bg-secondary;
-    background-image: linear-gradient(90deg, transparent, rgb(128 128 140 / 0.25), transparent);
+    background-image: linear-gradient(90deg, transparent, rgb(128 128 140 / 0.18), transparent);
     background-size: 200% 100%;
     animation: shimmer 1.6s linear infinite;
   }
@@ -226,9 +216,9 @@
   /* Tiptap rich email editor content — fixed light email canvas, immune to dark mode */
   .tiptap { background-color: #ffffff; color: #1e1e26; }
   .tiptap p { @apply my-2 leading-relaxed; }
-  .tiptap h1 { @apply my-3 font-display text-2xl font-bold tracking-tight; }
-  .tiptap h2 { @apply my-3 font-display text-xl font-bold tracking-tight; }
-  .tiptap h3 { @apply my-2 font-display text-lg font-semibold; }
+  .tiptap h1 { @apply my-3 text-2xl font-bold tracking-tight; }
+  .tiptap h2 { @apply my-3 text-xl font-bold tracking-tight; }
+  .tiptap h3 { @apply my-2 text-lg font-semibold; }
   .tiptap ul { @apply my-2 list-disc pl-6; }
   .tiptap ol { @apply my-2 list-decimal pl-6; }
   .tiptap blockquote { margin: 0.5rem 0; border-left: 2px solid #e2e2e9; padding-left: 1rem; font-style: italic; color: #63637a; }

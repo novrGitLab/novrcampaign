@@ -18,6 +18,7 @@ const upload = multer({
 });
 
 router.get('/', asyncHandler(contactController.getContacts));
+router.get('/suppressions', asyncHandler(contactController.getSuppressions));
 router.post('/', asyncHandler(contactController.createContact));
 router.get('/:id', asyncHandler(contactController.getContact));
 router.patch('/:id', asyncHandler(contactController.updateContact));

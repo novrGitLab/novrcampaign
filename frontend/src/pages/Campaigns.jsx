@@ -1,11 +1,101 @@
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
-import { useNavigate } from 'react-router-dom';
-import { Plus, Mail, Trash2, Copy } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Plus, Mail, Trash2, Copy, Search, Users, MoreHorizontal, Pencil } from 'lucide-react';
 import { useCampaigns } from '../hooks/queries';
 import { useDeleteCampaign, useDuplicateCampaign } from '../hooks/mutations';
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, EmptyState } from '../components/ui';
-import { formatNumber, formatRate, formatDate } from '../lib/utils';
+import { Badge, Button, Card, EmptyState, SearchInput } from '../components/ui';
+import { formatNumber, formatRate, formatDate, cn } from '../lib/utils';
+
+const STATUSES = ['ALL', 'DRAFT', 'SCHEDULED', 'SENDING', 'SENT', 'CANCELLED'];
+
+function CampaignCard({ campaign: c, onDuplicate, onDelete }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef(null);
+  const sent = c.status === 'SENT';
+
+  return (
+    <Card className="relative transition-shadow hover:shadow-md">
+      <div className="p-5">
+        <div className="flex items-start justify-between gap-3">
+          <Link
+            to={`/campaigns/${c.id}/analytics`}
+            className="min-w-0 text-sm font-semibold text-foreground hover:underline"
+          >
+            {c.name}
+          </Link>
+          <Badge status={c.status}>{c.status === 'DRAFT' ? 'Draft' : c.status.charAt(0) + c.status.slice(1).toLowerCase()}</Badge>
+        </div>
+        <p className="mt-1 truncate text-xs text-muted-foreground">{c.subject}</p>
+
+        {sent ? (
+          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+            <span>
+              <span className="font-semibold text-foreground">{formatNumber(c.sentCount)}</span> sent
+            </span>
+            <span>
+              <span className="font-semibold text-foreground">{formatRate(c.openedCount, c.sentCount)}</span> opened
+            </span>
+            <span>
+              <span className="font-semibold text-foreground">{formatRate(c.clickedCount, c.sentCount)}</span> clicked
+            </span>
+          </div>
+        ) : (
+          <div className="mt-3" />
+        )}
+      </div>
+
+      <div className="flex items-center gap-2 border-t border-border px-5 py-3 text-xs text-muted-foreground">
+        <Users className="h-3.5 w-3.5" />
+        <span className="truncate">{c.audienceType ?? 'ALL'}</span>
+        <span className="text-border">·</span>
+        <span className="truncate">
+          {sent ? `Sent ${formatDate(c.sentAt ?? c.updatedAt ?? c.createdAt)}` : `Updated ${formatDate(c.updatedAt ?? c.createdAt)}`}
+        </span>
+        <span className="flex-1" />
+        <div className="relative" ref={menuRef}>
+          <button
+            onClick={() => setMenuOpen((v) => !v)}
+            aria-label="Campaign actions"
+            className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+          >
+            <MoreHorizontal className="h-4 w-4" />
+          </button>
+          {menuOpen && (
+            <>
+              <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
+              <div className="absolute right-0 top-8 z-20 w-44 rounded-xl border border-border bg-card p-1.5 shadow-lg animate-fade-rise">
+                <Link
+                  to={`/campaigns/${c.id}/edit`}
+                  onClick={() => setMenuOpen(false)}
+                  className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-secondary/70"
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                  Edit
+                </Link>
+                <button
+                  onClick={() => { setMenuOpen(false); onDuplicate(c); }}
+                  className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-secondary/70"
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                  Duplicate
+                </button>
+                {['DRAFT', 'FAILED'].includes(c.status) && (
+                  <button
+                    onClick={() => { setMenuOpen(false); onDelete(c); }}
+                    className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-destructive hover:bg-destructive/10"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Delete
+                  </button>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </Card>
+  );
+}
 
 export default function Campaigns() {
   const { data: campaigns = [], isLoading } = useCampaigns();
@@ -13,9 +103,15 @@ export default function Campaigns() {
   const duplicateCampaign = useDuplicateCampaign();
   const navigate = useNavigate();
   const [filter, setFilter] = useState('ALL');
+  const [search, setSearch] = useState('');
 
-  const STATUSES = ['ALL', 'DRAFT', 'SCHEDULED', 'SENDING', 'SENT', 'CANCELLED'];
-  const visible = filter === 'ALL' ? campaigns : campaigns.filter((c) => c.status === filter);
+  const statusMatch = (c) => filter === 'ALL' || c.status === filter;
+  const searchMatch = (c) => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return (c.name || '').toLowerCase().includes(q) || (c.subject || '').toLowerCase().includes(q);
+  };
+  const visible = campaigns.filter((c) => statusMatch(c) && searchMatch(c));
 
   const onDuplicate = async (campaign) => {
     try {
@@ -40,11 +136,13 @@ export default function Campaigns() {
   };
 
   return (
-    <div className="mx-auto max-w-[1400px] p-6 sm:p-8">
-      <div className="mb-8 flex items-center justify-between">
+    <div className="mx-auto max-w-5xl px-8 py-8">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Campaigns</h1>
-          <p className="mt-1 text-sm text-muted-foreground">One-off broadcasts to your Plunk audience.</p>
+          <h1 className="text-xl font-bold tracking-tight text-foreground">Campaigns</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            One-off broadcasts to your Plunk audience. {campaigns.length} total
+          </p>
         </div>
         <Link to="/campaigns/new">
           <Button>
@@ -54,109 +152,67 @@ export default function Campaigns() {
         </Link>
       </div>
 
-      <div className="mb-4 flex flex-wrap gap-2">
-        {STATUSES.map((s) => (
-          <button
-            key={s}
-            onClick={() => setFilter(s)}
-            className={
-              'rounded-full border px-3 py-1 text-xs font-medium transition-colors ' +
-              (filter === s
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-card text-muted-foreground hover:bg-accent')
-            }
-          >
-            {s === 'ALL' ? 'All' : s}
-            <span className="ml-1.5 opacity-70">
-              {s === 'ALL' ? campaigns.length : campaigns.filter((c) => c.status === s).length}
-            </span>
-          </button>
-        ))}
+      {/* Toolbar */}
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <SearchInput
+          icon={<Search className="h-4 w-4" />}
+          placeholder="Search campaigns..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="max-w-md flex-1"
+        />
+        <div className="flex flex-wrap gap-1.5">
+          {STATUSES.map((s) => (
+            <button
+              key={s}
+              onClick={() => setFilter(s)}
+              className={cn(
+                'btn-secondary h-9 rounded-lg px-3 text-xs font-medium',
+                filter === s && 'bg-secondary text-foreground',
+              )}
+            >
+              {s === 'ALL' ? 'All' : s.charAt(0) + s.slice(1).toLowerCase()}
+              <span className="ml-0.5 opacity-60">
+                {s === 'ALL' ? campaigns.length : campaigns.filter((c) => c.status === s).length}
+              </span>
+            </button>
+          ))}
+        </div>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{filter === 'ALL' ? 'All campaigns' : filter}</CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          {isLoading ? (
-            <p className="p-6 text-sm text-muted-foreground">Loading campaigns…</p>
-          ) : visible.length === 0 ? (
-            <EmptyState
-              icon={<Mail className="h-8 w-8" />}
-              title="No campaigns here"
-              description="Create a campaign to send a broadcast to your contacts."
-              action={
-                <Link to="/campaigns/new">
-                  <Button>
-                    <Plus className="h-4 w-4" />
-                    New campaign
-                  </Button>
-                </Link>
-              }
-            />
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="table">
-                <thead className="border-b">
-                  <tr>
-                    <th>Campaign</th>
-                    <th>Status</th>
-                    <th>Audience</th>
-                    <th className="text-right">Sent</th>
-                    <th className="text-right">Open rate</th>
-                    <th className="text-right">Click rate</th>
-                    <th>Updated</th>
-                    <th className="w-10" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {visible.map((c) => (
-                    <tr key={c.id} className="border-b last:border-0 hover:bg-accent/40">
-                      <td>
-                        <Link to={`/campaigns/${c.id}/analytics`} className="font-medium hover:underline">
-                          {c.name}
-                        </Link>
-                        <p className="max-w-xs truncate text-xs text-muted-foreground">{c.subject}</p>
-                      </td>
-                      <td>
-                        <Badge status={c.status}>{c.status}</Badge>
-                      </td>
-                      <td className="text-muted-foreground">{c.audienceType ?? 'ALL'}</td>
-                      <td className="text-right tabular-nums">{formatNumber(c.sentCount)}</td>
-                      <td className="text-right tabular-nums">{formatRate(c.openedCount, c.sentCount)}</td>
-                      <td className="text-right tabular-nums">{formatRate(c.clickedCount, c.sentCount)}</td>
-                      <td className="text-muted-foreground">{formatDate(c.updatedAt ?? c.createdAt)}</td>
-                      <td>
-                        <div className="flex justify-end gap-1">
-                          <button
-                            onClick={() => onDuplicate(c)}
-                            className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
-                            aria-label="Duplicate campaign"
-                            title="Duplicate as new draft"
-                          >
-                            <Copy className="h-4 w-4" />
-                          </button>
-                          {['DRAFT', 'FAILED'].includes(c.status) && (
-                            <button
-                              onClick={() => onDelete(c)}
-                              className="rounded p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                              aria-label="Delete campaign"
-                              title="Delete"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      {isLoading ? (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          {[...Array(4)].map((_, i) => (
+            <Card key={i} className="p-5">
+              <div className="skeleton mb-2 h-4 w-2/3" />
+              <div className="skeleton mb-4 h-3 w-full" />
+              <div className="skeleton h-3 w-1/2" />
+            </Card>
+          ))}
+        </div>
+      ) : visible.length === 0 ? (
+        <Card>
+          <EmptyState
+            icon={<Mail className="h-8 w-8" />}
+            title="No campaigns here"
+            description="Create a campaign to send a broadcast to your contacts."
+            action={
+              <Link to="/campaigns/new">
+                <Button>
+                  <Plus className="h-4 w-4" />
+                  New campaign
+                </Button>
+              </Link>
+            }
+          />
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          {visible.map((c) => (
+            <CampaignCard key={c.id} campaign={c} onDuplicate={onDuplicate} onDelete={onDelete} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

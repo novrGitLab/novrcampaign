@@ -220,9 +220,9 @@ export default function CampaignBuilder() {
   const locked = existing && !editable;
 
   return (
-    <div className="mx-auto max-w-4xl p-4 sm:p-8">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold tracking-tight">
+    <div className="mx-auto max-w-4xl px-8 py-8">
+      <div className="mb-6">
+        <h1 className="text-xl font-bold tracking-tight">
           {isEditing ? 'Edit campaign' : 'New campaign'}
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">

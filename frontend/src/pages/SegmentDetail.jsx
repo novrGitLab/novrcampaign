@@ -46,10 +46,10 @@ export default function SegmentDetail() {
   };
 
   return (
-    <div className="mx-auto max-w-[1400px] p-6 sm:p-8">
+    <div className="mx-auto max-w-5xl px-8 py-8">
       <div className="mb-8 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">{segment?.name ?? 'Segment'}</h1>
+          <h1 className="text-xl font-bold tracking-tight">{segment?.name ?? 'Segment'}</h1>
           <p className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
             {segment?.type && <Badge status={segment.type}>{segment.type}</Badge>}
             {segment?.memberCount !== undefined && segment?.memberCount !== null && <span>{segment.memberCount} members</span>}
@@ -101,7 +101,7 @@ export default function SegmentDetail() {
           ) : (
             <div className="overflow-x-auto">
               <table className="table">
-                <thead className="border-b">
+                <thead className="border-b border-border">
                   <tr>
                     <th>Email</th>
                     <th>Subscribed</th>
@@ -110,7 +110,7 @@ export default function SegmentDetail() {
                 </thead>
                 <tbody>
                   {rows.map((m) => (
-                    <tr key={m.id ?? m.email} className="border-b last:border-0 hover:bg-accent/40">
+                    <tr key={m.id ?? m.email} className="border-b border-border last:border-0 hover:bg-secondary/60">
                       <td className="font-medium">{m.email}</td>
                       <td>
                         <Badge status={m.subscribed ? 'SUBSCRIBED' : 'UNSUBSCRIBED'}>

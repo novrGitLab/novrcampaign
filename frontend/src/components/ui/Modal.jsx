@@ -40,13 +40,13 @@ export function Modal({ open, onClose, title, description, children, className }
         aria-label={title}
         onClick={(e) => e.stopPropagation()}
         className={cn(
-          'relative mx-auto my-8 w-full max-w-lg rounded-lg border bg-card shadow-lg',
+          'relative mx-auto my-8 w-full max-w-lg rounded-xl border border-border bg-card shadow-lg',
           className,
         )}
       >
         <div className="flex items-start justify-between p-6 pb-0">
           <div>
-            {title && <h2 className="text-lg font-semibold">{title}</h2>}
+            {title && <h2 className="text-[15px] font-semibold tracking-tight">{title}</h2>}
             {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
           </div>
           <button

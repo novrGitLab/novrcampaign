@@ -3,7 +3,9 @@ import { Layout } from './components/Layout';
 import { RequireAuth } from './components/RequireAuth';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
+import Analytics from './pages/Analytics';
 import Contacts from './pages/Contacts';
+import Suppressions from './pages/Suppressions';
 import Campaigns from './pages/Campaigns';
 import CampaignBuilder from './pages/CampaignBuilder';
 import CampaignAnalytics from './pages/CampaignAnalytics';
@@ -19,7 +21,9 @@ export default function App() {
       <Route element={<RequireAuth />}>
         <Route element={<Layout />}>
           <Route index element={<Dashboard />} />
+          <Route path="analytics" element={<Analytics />} />
           <Route path="contacts" element={<Contacts />} />
+          <Route path="suppressions" element={<Suppressions />} />
           <Route path="campaigns" element={<Campaigns />} />
           <Route path="campaigns/new" element={<CampaignBuilder />} />
           <Route path="campaigns/:id/edit" element={<CampaignBuilder />} />

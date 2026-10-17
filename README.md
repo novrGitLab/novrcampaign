@@ -118,7 +118,7 @@ which must be on the verified domain.
 | `GET` | `/api/health` | Health check |
 | `POST` | `/api/auth/login` | Login → JWT |
 | `GET` | `/api/auth/me` | Current user + Plunk status |
-| `GET` | `/api/contacts` | List contacts (`limit`, `cursor`, `search`) |
+| `GET` | `/api/contacts` | List contacts (`limit`, `cursor`, `search`, `subscribed`, `sort`, `dir`) |
 | `POST` | `/api/contacts` | Create/upsert a contact |
 | `POST` | `/api/contacts/bulk-subscribe` | Bulk subscribe (≤1,000 IDs) |
 | `POST` | `/api/contacts/bulk-unsubscribe` | Bulk unsubscribe |

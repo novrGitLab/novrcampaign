@@ -72,6 +72,8 @@ export default function CommandPalette({ open, onClose }) {
           { id: 'a-new', label: 'New campaign', hint: '', to: '/campaigns/new' },
           { id: 'a-tpl', label: 'New template', hint: '', to: '/templates' },
           { id: 'a-seg', label: 'New segment', hint: '', to: '/segments' },
+          { id: 'a-ana', label: 'Open analytics', hint: '', to: '/analytics' },
+          { id: 'a-sup', label: 'View unsubscribes', hint: '', to: '/suppressions' },
         ].filter((a) => match(a.label)),
       },
     ];
@@ -88,7 +90,7 @@ export default function CommandPalette({ open, onClose }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-[12vh]" onMouseDown={onClose}>
-      <div className="absolute inset-0 bg-brand-ink/55 backdrop-blur-[2px]" />
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" />
       <div
         className="relative w-full max-w-lg overflow-hidden rounded-lg border bg-card text-card-foreground shadow-xl animate-fade-rise"
         onMouseDown={(e) => e.stopPropagation()}

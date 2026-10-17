@@ -40,11 +40,36 @@ export function useCampaignStats(id, { refetch = false } = {}) {
 
 // ── Contacts ─────────────────────────────────────────────────────────────────
 
-export function useContacts({ limit = 25, cursor, search } = {}) {
+export function useContacts({ limit = 25, cursor, search, subscribed, sort, dir } = {}) {
   return useQuery({
-    queryKey: ['contacts', { limit, cursor, search }],
-    queryFn: () => api('/contacts', { query: { limit, cursor, search } }),
+    queryKey: ['contacts', { limit, cursor, search, subscribed, sort, dir }],
+    queryFn: () => api('/contacts', { query: { limit, cursor, search, subscribed, sort, dir } }),
     placeholderData: keepPreviousData,
+    staleTime: 30_000,
+  });
+}
+
+/**
+ * Total number of contacts matching an optional subscription filter.
+ * Plunk only reports `total` on the first page, so we ask for a single row.
+ * @param {boolean} [subscribed] omit for every contact, true/false to filter
+ */
+export function useContactCount(subscribed) {
+  return useQuery({
+    queryKey: ['contacts', 'count', { subscribed }],
+    queryFn: () => api('/contacts', { query: { limit: 1, subscribed } }).then((r) => r.total ?? 0),
+    staleTime: 30_000,
+  });
+}
+
+/**
+ * Addresses Plunk will not mail, with the reason (hard bounce / spam complaint
+ * / unsubscribe) and the campaign that triggered it.
+ */
+export function useSuppressions() {
+  return useQuery({
+    queryKey: ['suppressions'],
+    queryFn: () => api('/contacts/suppressions'),
     staleTime: 30_000,
   });
 }

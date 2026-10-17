@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useDropzone } from 'react-dropzone';
 import { Upload, Search, Users, ChevronRight, ChevronLeft, CheckCircle2, XCircle, UserPlus, ClipboardList } from 'lucide-react';
 import { useContacts, useSegments } from '../hooks/queries';
@@ -6,11 +7,24 @@ import { useBulkContactAction, useCreateContact, useImportContacts } from '../ho
 import api from '../lib/api';
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, EmptyState, Input, Label } from '../components/ui';
 import { Modal } from '../components/ui/Modal';
-import { formatNumber } from '../lib/utils';
+import { formatNumber, cn } from '../lib/utils';
 
 const PAGE_SIZE = 25;
 
+const FILTERS = [
+  { value: 'all', label: 'All' },
+  { value: 'subscribed', label: 'Subscribed' },
+  { value: 'unsubscribed', label: 'Unsubscribed' },
+];
+
+const FILTER_HINT = {
+  all: 'contacts in your Plunk project',
+  subscribed: 'subscribed contacts',
+  unsubscribed: 'unsubscribed contacts',
+};
+
 export default function Contacts() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState('');
   const [activeSearch, setActiveSearch] = useState('');
   const [cursor, setCursor] = useState(undefined);
@@ -19,11 +33,18 @@ export default function Contacts() {
   const [uploadOpen, setUploadOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [pasteOpen, setPasteOpen] = useState(false);
+  const [filter, setFilter] = useState(() => {
+    const q = searchParams.get('filter');
+    return FILTERS.some((f) => f.value === q) ? q : 'all';
+  });
 
   const { data, isLoading, isFetching } = useContacts({
     limit: PAGE_SIZE,
     cursor,
     search: activeSearch || undefined,
+    subscribed: filter === 'all' ? undefined : filter === 'subscribed',
+    sort: filter === 'unsubscribed' ? 'updatedAt' : undefined,
+    dir: filter === 'unsubscribed' ? 'desc' : undefined,
   });
 
   const importContacts = useImportContacts();
@@ -32,6 +53,15 @@ export default function Contacts() {
   const contacts = data?.data ?? [];
   const total = data?.total ?? 0;
   const hasMore = Boolean(data?.hasMore);
+
+  const changeFilter = (next) => {
+    setFilter(next);
+    setCursor(undefined);
+    setCursors([]);
+    setSelected(new Set());
+    if (next === 'all') setSearchParams({});
+    else setSearchParams({ filter: next });
+  };
 
   const onSearch = (e) => {
     e.preventDefault();
@@ -85,43 +115,61 @@ export default function Contacts() {
   const allChecked = contacts.length > 0 && contacts.every((c) => selected.has(c.id));
 
   return (
-    <div className="mx-auto max-w-[1400px] p-6 sm:p-8">
-      <div className="mb-8 flex items-center justify-between">
+    <div className="mx-auto max-w-5xl px-8 py-8">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Contacts</h1>
+          <h1 className="text-xl font-bold tracking-tight">Contacts</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            {formatNumber(total)} contacts in your Plunk project
+            {formatNumber(total)} {FILTER_HINT[filter]}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" onClick={() => setAddOpen(true)}>
-            <UserPlus className="h-4 w-4" />
-            Add contact
+          <Button variant="secondary" onClick={() => setUploadOpen(true)}>
+            <Upload className="h-4 w-4" />
+            Import CSV
           </Button>
           <Button variant="secondary" onClick={() => setPasteOpen(true)}>
             <ClipboardList className="h-4 w-4" />
             Paste a list
           </Button>
-          <Button onClick={() => setUploadOpen(true)}>
-            <Upload className="h-4 w-4" />
-            Import CSV
+          <Button onClick={() => setAddOpen(true)}>
+            <UserPlus className="h-4 w-4" />
+            Add contact
           </Button>
         </div>
       </div>
 
-      <form onSubmit={onSearch} className="mb-4 flex gap-2">
-        <div className="relative flex-1">
+      <form onSubmit={onSearch} className="mb-4 flex flex-wrap items-center gap-2">
+        <div className="relative min-w-[240px] flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by email…"
-            className="pl-9"
+            className="rounded-lg pl-9"
           />
         </div>
         <Button type="submit" variant="secondary">
           Search
         </Button>
+        <div className="ml-auto inline-flex w-fit gap-1 rounded-lg border border-border bg-secondary/60 p-1">
+          {FILTERS.map((f) => (
+            <button
+              key={f.value}
+              type="button"
+              onClick={() => changeFilter(f.value)}
+              aria-pressed={filter === f.value}
+              className={cn(
+                'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+                filter === f.value
+                  ? 'bg-background text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
       </form>
 
       <Card>
@@ -164,20 +212,20 @@ export default function Contacts() {
           ) : (
             <div className="overflow-x-auto">
               <table className="table">
-                <thead className="border-b">
+                <thead className="border-b border-border">
                   <tr>
                     <th className="w-10">
                       <input type="checkbox" checked={allChecked} onChange={toggleAll} aria-label="Select all" />
                     </th>
                     <th>Email</th>
                     <th>Name</th>
-                    <th>Subscribed</th>
+                    <th>Status</th>
                     <th>Added</th>
                   </tr>
                 </thead>
                 <tbody>
                   {contacts.map((c) => (
-                    <tr key={c.id} className="border-b last:border-0 hover:bg-accent/40">
+                    <tr key={c.id} className="border-b border-border last:border-0 hover:bg-secondary/60">
                       <td>
                         <input
                           type="checkbox"

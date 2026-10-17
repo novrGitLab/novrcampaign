@@ -196,11 +196,20 @@ export async function getBulkJob(jobId) {
 
 /**
  * List contacts with cursor pagination.
- * @param {{ limit?: number, cursor?: string, search?: string }} [opts]
+ * `subscribed: true|false` filters to one subscription state (Plunk returns
+ * `total` for that filter on the first page); `sort`/`dir` order the rows.
+ * @param {{ limit?: number, cursor?: string, search?: string, subscribed?: boolean, sort?: string, dir?: string }} [opts]
  */
-export async function getContacts({ limit = 50, cursor, search } = {}) {
+export async function getContacts({ limit = 50, cursor, search, subscribed, sort, dir } = {}) {
   return plunkRequest('/contacts', {
-    query: { limit, ...(cursor ? { cursor } : {}), ...(search ? { search } : {}) },
+    query: {
+      limit,
+      ...(cursor ? { cursor } : {}),
+      ...(search ? { search } : {}),
+      ...(typeof subscribed === 'boolean' ? { subscribed } : {}),
+      ...(sort ? { sort } : {}),
+      ...(dir ? { dir } : {}),
+    },
   });
 }
 
@@ -561,6 +570,95 @@ export async function getEvents({ eventName, limit = 500 } = {}) {
       limit,
     },
   });
+}
+
+// ── Suppressions ──────────────────────────────────────────────────────────────
+// Plunk's /contacts only exposes a `subscribed` boolean, so there is no way to
+// ask it "which addresses are undeliverable and why". The reason only exists on
+// the event stream: hard bounces and complaints auto-flip `subscribed` to
+// false, soft (transient) bounces do not. This rebuilds that picture.
+
+const SUPPRESSION_EVENTS = [
+  { eventName: 'email.bounce', reason: 'BOUNCE' },
+  { eventName: 'email.complaint', reason: 'COMPLAINT' },
+  { eventName: 'contact.unsubscribed', reason: 'UNSUBSCRIBED' },
+];
+
+const PERMANENT_BOUNCE = new Set(['permanent', 'hard', 'blocked']);
+
+function toRow(event, reason, campaignName) {
+  const campaignId = event.data?.campaignId ?? null;
+  return {
+    email: event.contact?.email ?? event.data?.email,
+    reason,
+    at: event.createdAt ?? null,
+    campaignId,
+    campaignName: campaignId ? (campaignName.get(campaignId) ?? null) : null,
+    bounceType: event.data?.bounceType ?? null,
+  };
+}
+
+export async function getSuppressions() {
+  // Plunk wraps list responses as { data: [...] } / { campaigns: [...] } —
+  // unwrap before building the id→name map, otherwise every campaign shows
+  // as a raw id in the UI.
+  const raw = await getCampaigns();
+  const campaignList = Array.isArray(raw)
+    ? raw
+    : (raw?.data ?? raw?.campaigns ?? raw?.items ?? []);
+  const campaignName = new Map(
+    campaignList.filter((c) => c?.id).map((c) => [c.id, c.name]),
+  );
+
+  const streams = await Promise.all(
+    SUPPRESSION_EVENTS.map(({ eventName }) =>
+      plunkRequest('/events', { query: { eventName, limit: 2000 } }).catch(() => ({ events: [] })),
+    ),
+  );
+
+  const byEmail = new Map();
+  const softBounces = [];
+
+  streams.forEach((stream, index) => {
+    const { reason } = SUPPRESSION_EVENTS[index];
+    const events = Array.isArray(stream?.events) ? stream.events : [];
+
+    for (const event of events) {
+      const row = toRow(event, reason, campaignName);
+      if (!row.email) continue;
+
+      if (reason === 'BOUNCE' && !PERMANENT_BOUNCE.has(String(row.bounceType).toLowerCase())) {
+        softBounces.push(row);
+        continue;
+      }
+
+      const key = row.email.toLowerCase();
+      const entry = byEmail.get(key);
+      if (!entry) {
+        byEmail.set(key, { ...row, reasons: [reason] });
+        continue;
+      }
+
+      if (!entry.reasons.includes(reason)) entry.reasons.push(reason);
+      if (row.at && (!entry.at || row.at < entry.at)) {
+        entry.at = row.at;
+        entry.campaignId = row.campaignId;
+        entry.campaignName = row.campaignName;
+      }
+    }
+  });
+
+  const suppressions = [...byEmail.values()].sort((a, b) =>
+    new Date(b.at ?? 0) - new Date(a.at ?? 0),
+  );
+  softBounces.sort((a, b) => new Date(b.at ?? 0) - new Date(a.at ?? 0));
+
+  const counts = { BOUNCE: 0, COMPLAINT: 0, UNSUBSCRIBED: 0, total: suppressions.length };
+  for (const s of suppressions) {
+    for (const reason of s.reasons) counts[reason] += 1;
+  }
+
+  return { suppressions, softBounces, counts };
 }
 
 // ── Contacts (single-record detail for Contact 360) ───────────────────────────

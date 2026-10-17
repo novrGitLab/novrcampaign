@@ -9,6 +9,7 @@ import {
   ArrowLeft,
   Send,
   Clock,
+  Download,
 } from 'lucide-react';
 import {
   Bar,
@@ -25,8 +26,10 @@ import {
 import { useState } from 'react';
 import { useCampaign, useCampaignStats } from '../hooks/queries';
 import { useResendUnsent } from '../hooks/mutations';
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, StatCard } from '../components/ui';
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle, InfoTip, StatCard } from '../components/ui';
 import { formatNumber, formatRate, formatDate } from '../lib/utils';
+import { downloadCsv } from '../lib/exportCsv';
+import { TIP } from '../lib/metrics';
 
 const FUNNEL = [
   { key: 'sentCount', label: 'Sent', color: '#3b82f6' },
@@ -36,9 +39,9 @@ const FUNNEL = [
 ];
 
 const LOSSES = [
-  { key: 'bouncedCount', label: 'Bounced', icon: AlertTriangle, color: 'text-amber-600' },
-  { key: 'unsubscribedCount', label: 'Unsubscribed', icon: UserX, color: 'text-gray-600' },
-  { key: 'complainedCount', label: 'Spam complaints', icon: ShieldAlert, color: 'text-red-600' },
+  { key: 'bouncedCount', label: 'Bounced', icon: AlertTriangle, color: 'text-amber-600', tip: 'bounced' },
+  { key: 'unsubscribedCount', label: 'Unsubscribed', icon: UserX, color: 'text-gray-600', tip: 'unsubscribed' },
+  { key: 'complainedCount', label: 'Spam complaints', icon: ShieldAlert, color: 'text-red-600', tip: 'complained' },
 ];
 
 export default function CampaignAnalytics() {
@@ -60,6 +63,30 @@ export default function CampaignAnalytics() {
     }
   };
 
+  const onExportReport = () => {
+    const n = (v) => Number(v ?? 0);
+    const base = Math.max(n(stats?.sentCount ?? campaign?.sentCount), 1);
+    const r = (v) => ((n(v) / base) * 100).toFixed(2);
+    downloadCsv(`novr-${(campaign?.name || 'campaign').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'campaign'}-report`, [{
+      Campaign: campaign?.name ?? '',
+      Subject: campaign?.subject ?? '',
+      Status: campaign?.status ?? '',
+      'Sent at': campaign?.sentAt ? formatDate(campaign.sentAt) : '',
+      Recipients: n(stats?.totalRecipients ?? campaign?.totalRecipients),
+      Sent: n(stats?.sentCount ?? campaign?.sentCount),
+      Delivered: n(stats?.deliveredCount),
+      'Delivery rate %': r(stats?.deliveredCount),
+      Opens: n(stats?.openedCount),
+      'Open rate %': r(stats?.openedCount),
+      Clicks: n(stats?.clickedCount),
+      'Click rate %': r(stats?.clickedCount),
+      Unsubscribed: n(stats?.unsubscribedCount),
+      'Unsub rate %': r(stats?.unsubscribedCount),
+      Bounced: n(stats?.bouncedCount),
+      'Spam complaints': n(stats?.complainedCount),
+    }]);
+  };
+
   const loading = campaignLoading || statsLoading;
   const sent = Number(stats?.sentCount ?? campaign?.sentCount ?? 0);
 
@@ -76,7 +103,7 @@ export default function CampaignAnalytics() {
   ].map((r) => ({ ...r, pct: parseFloat(r.value) }));
 
   return (
-    <div className="mx-auto max-w-6xl p-8">
+    <div className="mx-auto max-w-5xl px-8 py-8">
       <div className="mb-6">
         <Link to="/campaigns" className="mb-3 inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
           <ArrowLeft className="h-4 w-4" />
@@ -84,13 +111,17 @@ export default function CampaignAnalytics() {
         </Link>
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">{campaign?.name ?? 'Campaign'}</h1>
+            <h1 className="text-xl font-bold tracking-tight">{campaign?.name ?? 'Campaign'}</h1>
             <p className="mt-1 text-sm text-muted-foreground">{campaign?.subject}</p>
           </div>
           <div className="flex items-center gap-3">
             {campaign && <Badge status={campaign.status}>{campaign.status}</Badge>}
             <Button variant="secondary" size="sm" onClick={() => refetch()} disabled={isFetching}>
               {isFetching ? 'Refreshing…' : 'Refresh'}
+            </Button>
+            <Button variant="secondary" size="sm" onClick={onExportReport} disabled={loading}>
+              <Download className="h-4 w-4" />
+              Export CSV
             </Button>
             {campaign?.status === 'SENT' && (
               <Button size="sm" onClick={onResendUnsent} disabled={resendUnsent.isPending}>
@@ -107,7 +138,7 @@ export default function CampaignAnalytics() {
       )}
 
       {resendResult && (
-        <Card className="mb-6 border-purple-200 bg-purple-50/50 dark:border-purple-900 dark:bg-purple-950/20">
+        <Card className="mb-6 border-blue-200 bg-blue-50/50 dark:border-blue-900 dark:bg-blue-950/20">
           <CardContent className="p-6">
             {resendResult.unsentCount === 0 ? (
               <p className="text-sm">
@@ -137,10 +168,10 @@ export default function CampaignAnalytics() {
       ) : (
         <>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <StatCard label="Recipients" value={formatNumber(stats?.totalRecipients ?? campaign?.totalRecipients ?? 0)} icon={<Mail className="h-4 w-4" />} />
-            <StatCard label="Delivered" value={formatNumber(stats?.deliveredCount ?? 0)} hint={formatRate(stats?.deliveredCount ?? 0, sent)} icon={<BarChart3 className="h-4 w-4" />} />
-            <StatCard label="Opens" value={formatNumber(stats?.openedCount ?? 0)} hint={formatRate(stats?.openedCount ?? 0, sent)} icon={<Mail className="h-4 w-4" />} />
-            <StatCard label="Clicks" value={formatNumber(stats?.clickedCount ?? 0)} hint={formatRate(stats?.clickedCount ?? 0, sent)} icon={<MousePointerClick className="h-4 w-4" />} />
+            <StatCard label="Recipients" value={formatNumber(stats?.totalRecipients ?? campaign?.totalRecipients ?? 0)} icon={<Mail className="h-4 w-4" />} accent="blue" tip={TIP.recipients} />
+            <StatCard label="Delivered" value={formatNumber(stats?.deliveredCount ?? 0)} hint={formatRate(stats?.deliveredCount ?? 0, sent)} icon={<BarChart3 className="h-4 w-4" />} accent="purple" tip={TIP.delivered} />
+            <StatCard label="Opens" value={formatNumber(stats?.openedCount ?? 0)} hint={formatRate(stats?.openedCount ?? 0, sent)} icon={<Mail className="h-4 w-4" />} accent="red" tip={TIP.opens} />
+            <StatCard label="Clicks" value={formatNumber(stats?.clickedCount ?? 0)} hint={formatRate(stats?.clickedCount ?? 0, sent)} icon={<MousePointerClick className="h-4 w-4" />} accent="blue" tip={TIP.clicks} />
           </div>
 
           <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -203,16 +234,20 @@ export default function CampaignAnalytics() {
           <Card className="mt-6">
             <CardHeader>
               <CardTitle>List health</CardTitle>
+              <p className="mt-1 text-xs text-muted-foreground">Why recipients left this campaign</p>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                {LOSSES.map(({ key, label, icon: Icon, color }) => {
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                {LOSSES.map(({ key, label, icon: Icon, color, tip }) => {
                   const count = Number(stats?.[key] ?? 0);
                   return (
                     <div key={key} className="rounded-md border p-4">
                       <div className="flex items-center gap-2">
                         <Icon className={`h-4 w-4 ${color}`} />
-                        <p className="text-sm font-medium text-muted-foreground">{label}</p>
+                        <p className="flex items-center gap-1 text-sm font-medium text-muted-foreground">
+                          {label}
+                          <InfoTip content={TIP[tip]} />
+                        </p>
                       </div>
                       <p className="mt-2 text-2xl font-bold tabular-nums">{formatNumber(count)}</p>
                       <p className="mt-1 text-xs text-muted-foreground">
@@ -221,6 +256,24 @@ export default function CampaignAnalytics() {
                     </div>
                   );
                 })}
+                {(() => {
+                  const errors = Number(stats?.bouncedCount ?? 0) + Number(stats?.complainedCount ?? 0);
+                  return (
+                    <div className="rounded-md border p-4">
+                      <div className="flex items-center gap-2">
+                        <AlertTriangle className="h-4 w-4 text-rose-600" />
+                        <p className="flex items-center gap-1 text-sm font-medium text-muted-foreground">
+                          Error rate
+                          <InfoTip content={TIP.errorRate} />
+                        </p>
+                      </div>
+                      <p className="mt-2 text-2xl font-bold tabular-nums">{formatRate(errors, sent)}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {formatNumber(errors)} bounces + complaints of {formatNumber(sent)} sent
+                      </p>
+                    </div>
+                  );
+                })()}
               </div>
               {Number(stats?.complainedCount ?? 0) > 0 && (
                 <p className="mt-4 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">

@@ -17,14 +17,42 @@ const bulkSchema = Joi.object({
   ids: Joi.array().items(Joi.string()).max(1000).required(),
 });
 
+const LIST_SORTS = new Set(['email', 'createdAt', 'updatedAt']);
+
 /**
  * GET /api/contacts — cursor-paginated contact list straight from Plunk.
+ * Query: `limit`, `cursor`, `search`, `subscribed` (true|false),
+ * `sort` (email|createdAt|updatedAt), `dir` (asc|desc).
  */
 export async function getContacts(req, res) {
   const limit = Math.min(100, Math.max(1, Number(req.query.limit ?? 50)));
-  const { cursor, search } = req.query;
+  const { cursor, search, sort, dir } = req.query;
 
-  const result = await plunk.getContacts({ limit, cursor, search });
+  let subscribed;
+  if (req.query.subscribed !== undefined) {
+    if (!['true', 'false'].includes(req.query.subscribed)) {
+      throw BadRequest('subscribed must be true or false');
+    }
+    subscribed = req.query.subscribed === 'true';
+  }
+
+  const result = await plunk.getContacts({
+    limit,
+    cursor,
+    search,
+    subscribed,
+    ...(sort && LIST_SORTS.has(sort) ? { sort } : {}),
+    ...(dir === 'asc' || dir === 'desc' ? { dir } : {}),
+  });
+  return res.json(result);
+}
+
+/**
+ * GET /api/contacts/suppressions — addresses Plunk will not mail, with why.
+ * Hard bounces and spam complaints auto-unsubscribe; soft bounces do not.
+ */
+export async function getSuppressions(_req, res) {
+  const result = await plunk.getSuppressions();
   return res.json(result);
 }
 
