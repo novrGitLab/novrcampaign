@@ -38,7 +38,7 @@ export default function Login() {
         <Card>
           <CardContent className="p-6">
             <div className="mb-5 text-center">
-              <h1 className="text-lg font-bold tracking-tight">NovrCampaign</h1>
+              <h1 className="text-lg font-bold tracking-tight">NovrPulse</h1>
               <p className="mt-1 text-sm text-muted-foreground">
                 Internal email campaigns, powered by Plunk
               </p>

@@ -3,7 +3,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Users, Mail, LogOut, UsersRound, LayoutTemplate,
   Search, Sun, Moon, ShieldAlert, Menu, X, ChevronDown, Bell, AlertTriangle,
-  BarChart3,
+  BarChart3, Rss,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useAuth } from '../hooks/useAuth';
@@ -14,6 +14,7 @@ import CommandPalette from './CommandPalette';
 
 const NAV = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
+  { to: '/feed', label: 'Feed', icon: Rss },
   { to: '/contacts', label: 'Contacts', icon: Users },
   { to: '/segments', label: 'Segments', icon: UsersRound },
   { to: '/analytics', label: 'Analytics', icon: BarChart3 },
@@ -151,7 +152,7 @@ export function Layout() {
             <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-secondary text-[11px] font-bold text-foreground">
               N
             </span>
-            <span className="truncate text-sm font-medium text-foreground">NovrCampaign</span>
+            <span className="truncate text-sm font-medium text-foreground">NovrPulse</span>
           </div>
           <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
         </div>

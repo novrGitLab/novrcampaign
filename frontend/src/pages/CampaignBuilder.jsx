@@ -29,7 +29,7 @@ const AUDIENCES = [
 const TEMPLATE = `<p>Hi there,</p>
 <p>Here's what's new this week…</p>
 <p><a href="https://cybernovr.com">Visit our site</a></p>
-<p>Thanks,<br />The NovrCampaign team</p>`;
+<p>Thanks,<br />The NovrPulse team</p>`;
 
 export default function CampaignBuilder() {
   const { id } = useParams();
