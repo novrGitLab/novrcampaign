@@ -175,3 +175,29 @@ export function useBulkContactAction() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['contacts'] }),
   });
 }
+
+// ── Feed ─────────────────────────────────────────────────────────────────────
+
+export function useCreateFeedEntry() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body) => api('/feed', { method: 'POST', body }).then((r) => r.entry),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['feed'] }),
+  });
+}
+
+export function useUpdateFeedEntry() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }) => api(`/feed/${id}`, { method: 'PUT', body }).then((r) => r.entry),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['feed'] }),
+  });
+}
+
+export function useDeleteFeedEntry() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id) => api(`/feed/${id}`, { method: 'DELETE' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['feed'] }),
+  });
+}

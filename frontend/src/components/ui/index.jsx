@@ -1,4 +1,4 @@
-import { Info } from 'lucide-react';
+import { Info, ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
 /**
@@ -67,6 +67,9 @@ const STATUS_STYLES = {
   SENT: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-400/20',
   CANCELLED: 'bg-neutral-100 text-neutral-600 ring-neutral-200 dark:bg-white/10 dark:text-white/70 dark:ring-white/10',
   FAILED: 'bg-rose-50 text-rose-700 ring-rose-600/20 dark:bg-rose-950/40 dark:text-rose-300 dark:ring-rose-400/20',
+  // Feed entry statuses
+  READY: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-400/20',
+  ARCHIVED: 'bg-neutral-100 text-neutral-500 ring-neutral-200 dark:bg-white/10 dark:text-white/50 dark:ring-white/10',
   // Contact states
   ACTIVE: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-400/20',
   SUBSCRIBED: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-400/20',
@@ -209,4 +212,39 @@ export function PageHeader({ title, description, actions }) {
 
 export function Skeleton({ className }) {
   return <div className={cn('skeleton', className)} />;
+}
+
+/* Week navigator: prev / This week / next with the range label between the
+   arrows. Used by the Feed page and the campaign picker so both stay in step. */
+export function WeekNavigator({ label, onPrev, onNext, onToday, className }) {
+  return (
+    <div className={cn('flex items-center gap-1', className)}>
+      <Button variant="secondary" size="sm" onClick={onPrev} aria-label="Previous week">
+        <ChevronLeft className="h-4 w-4" />
+      </Button>
+      <span className="min-w-[150px] text-center text-sm font-medium tabular-nums text-foreground">{label}</span>
+      <Button variant="secondary" size="sm" onClick={onNext} aria-label="Next week">
+        <ChevronRight className="h-4 w-4" />
+      </Button>
+      <Button variant="ghost" size="sm" onClick={onToday}>
+        This week
+      </Button>
+    </div>
+  );
+}
+
+/* Source-type pill for feed entries (x / news / regulator / other). Reuses the
+   badge classes; distinct colors per type, no new tokens. */
+const SOURCE_STYLES = {
+  x: 'bg-neutral-900 text-white ring-neutral-900/20 dark:bg-white/15 dark:text-white dark:ring-white/10',
+  news: 'bg-blue-50 text-blue-700 ring-blue-600/20 dark:bg-blue-950/40 dark:text-blue-300 dark:ring-blue-400/20',
+  regulator: 'bg-amber-50 text-amber-700 ring-amber-600/20 dark:bg-amber-950/40 dark:text-amber-300 dark:ring-amber-400/20',
+  other: 'bg-neutral-100 text-neutral-600 ring-neutral-200 dark:bg-white/10 dark:text-white/70 dark:ring-white/10',
+};
+
+const SOURCE_LABELS = { x: 'X', news: 'News', regulator: 'Regulator', other: 'Other' };
+
+export function SourcePill({ sourceType, className }) {
+  const style = SOURCE_STYLES[sourceType] || SOURCE_STYLES.other;
+  return <span className={cn('badge', style, className)}>{SOURCE_LABELS[sourceType] || 'Other'}</span>;
 }

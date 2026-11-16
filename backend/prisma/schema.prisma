@@ -32,3 +32,310 @@ enum Role {
   SENDER
   VIEWER
 }
+
+// ── Encrypted file drive ──────────────────────────────────────────────────────
+// Deliberately separate from the dashboard `User`/login flow. Password-only,
+// one seeded owner, no self-registration. The bucket and these tables hold only
+// ciphertext plus wrapped keys; filenames and MIME types are encrypted too.
+
+model DriveUser {
+  id             String   @id @default(uuid())
+  email          String   @unique
+  passwordHash   String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // Lockout state for the password-only gate.
+  failedAttempts Int       @default(0)
+  lockedUntil    DateTime?
+
+  sessions DriveSession[]
+  files    DriveFile[]
+
+  @@index([email])
+}
+
+model DriveSession {
+  id         String   @id @default(uuid())
+  userId     String
+  user       DriveUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // SHA-256 of the opaque session token; the raw token lives only in the cookie.
+  tokenHash  String   @unique
+  createdAt  DateTime @default(now())
+  expiresAt  DateTime
+  revokedAt  DateTime?
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model DriveFile {
+  id           String   @id @default(uuid())
+
+  // Ciphertext of the original filename and MIME type, encrypted with the file
+  // data key. The plaintext name never touches the database or logs.
+  nameCipher   String
+  mimeCipher   String
+
+  sizeBytes    BigInt
+  chunkCount   Int
+  chunkBytes   Int
+
+  ownerId      String
+  owner        DriveUser @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  // Opaque key under which the assembled encrypted object lives in the bucket.
+  storageKey   String   @unique
+
+  // The file data key, wrapped (AES-256-GCM) by the KEK and by the recovery key.
+  wrappedKey         String
+  wrappedKeyIv       String
+  wrappedKeyTag      String
+  recoveryWrappedKey String
+  recoveryKeyIv      String
+  recoveryKeyTag     String
+
+  // Per-file random tenant of the AES-GCM construction (informational).
+  createdAt    DateTime @default(now())
+
+  chunks DriveFileChunk[]
+
+  @@index([ownerId])
+  @@index([createdAt])
+}
+
+// One row per uploaded chunk. `status` tracks an in-flight upload so the
+// cleanup job can delete interrupted uploads and their bucket parts.
+model DriveFileChunk {
+  id         String   @id @default(uuid())
+  fileId     String
+  file       DriveFile @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  index      Int
+  sizeBytes  Int
+
+  // 'PENDING' while the client is still sending the file, 'COMPLETE' once the
+  // final chunk has arrived and the object has been assembled.
+  status     String   @default("PENDING")
+  createdAt  DateTime @default(now())
+
+  @@unique([fileId, index])
+  @@index([fileId])
+}
+
+// Append-only audit trail. Client IPs are stored HMAC-hashed with a daily-
+// rotated server salt; file bytes, tokens, and secrets are never logged.
+model DriveAuditLog {
+  id        String   @id @default(uuid())
+  event     String
+  userId    String?
+  ipHash    String?
+  detail    Json?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([event])
+  @@index([userId])
+}
+
+// ── NovrPulse event store (Phase 1) ───────────────────────────────────────────
+// One store, eight views. Collector output lands here; the understanding layer
+// (entities, tagging, summaries, embeddings) and the eight projections read it.
+// Mirrors docs/novrpulse/02-event-schema.md, restricted to the Phase 1 subset:
+// the entity tables and the pgvector column are deferred until they are used.
+//
+// Table names are snake_case to match the frozen schema document; models are
+// prefixed `Np` to stay unambiguous alongside the NovrCampaign tables.
+
+// Registry mirror of docs/novrpulse/00-source-register.md. The markdown register
+// stays the authoritative allowlist; this is the queryable copy.
+model NpSource {
+  id             String   @id
+  name           String
+  url            String
+  region         String
+  functions      Int[]
+  type           String
+  licence        String   @default("unknown")
+  licenceStatus  String   @default("unknown")
+  paywall        Boolean  @default(false)
+  hasRss         Boolean  @default(false)
+  feedUrl        String?
+  rateLimit      String?
+  reliability    Float?
+  approvedBy     String?
+  enabled        Boolean  @default(false)
+  lastSuccessAt  DateTime?
+  canaryOk       Boolean?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  documents NpRawDocument[]
+
+  @@map("np_source")
+}
+
+// Immutable fetched artefact, content-addressed by hash. A re-fetch that matches
+// an existing hash creates nothing. Regulator PDFs are retained long-term.
+model NpRawDocument {
+  id           String   @id @default(uuid())
+  sourceId     String
+  source       NpSource @relation(fields: [sourceId], references: [id])
+  contentHash  String   @unique
+  url          String
+  fetchedAt    DateTime @default(now())
+  contentType  String?
+  storageKey   String?
+  httpStatus   Int?
+  fetchError   String?
+  body         String?
+
+  eventSources NpEventSource[]
+
+  @@index([sourceId, fetchedAt])
+  @@map("np_raw_document")
+}
+
+// The core object. `functions` is what makes the eight views cheap: one event,
+// filtered and rendered eight ways. `summary` is NovrPulse's own words and is
+// left empty by collection — the understanding layer writes it.
+model NpEvent {
+  id            String   @id @default(uuid())
+  title         String
+  summary       String   @default("")
+  whatItMeans   String   @default("")
+  body          String?
+  publishedAt   DateTime?
+  canonicalUrl  String?
+  language      String   @default("en")
+  region        String?
+  eventType     String?
+  functions     Int[]
+  severity      Int?
+  severitySource String?
+  confidence    String   @default("reported")
+  clusterId     String?
+  createdAt     DateTime @default(now())
+
+  sources NpEventSource[]
+  entities NpEventEntity[]
+
+  @@unique([canonicalUrl])
+  @@index([publishedAt(sort: Desc)])
+  @@index([severity(sort: Desc), publishedAt(sort: Desc)])
+  @@index([clusterId])
+  @@map("np_event")
+}
+
+// Provenance. Every claim in an event must trace to a raw document. The
+// (extractorModel, promptVersion) pair lets extraction be cached and skipped,
+// not just audited.
+model NpEventSource {
+  eventId        String
+  event          NpEvent       @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  rawDocumentId  String
+  rawDocument    NpRawDocument @relation(fields: [rawDocumentId], references: [id])
+  extractorModel String?
+  promptVersion  String?
+  pageRef        String?
+  confidence     String   @default("reported")
+  extractedAt    DateTime @default(now())
+
+  @@id([eventId, rawDocumentId])
+  @@index([rawDocumentId])
+  @@map("np_event_source")
+}
+
+// Entity store (plan §3.2, "the moat"). Curated, not model-only: the model
+// proposes, a human approves aliases. `merged_into` is the merge path so
+// historical events survive a merge without corruption.
+model NpEntity {
+  id            String   @id @default(uuid())
+  type          String
+  canonicalName String
+  country       String?
+  identifiers   Json?
+  description   String?
+  mergedInto    String?
+  createdAt     DateTime @default(now())
+
+  aliases      NpEntityAlias[]
+  eventLinks   NpEventEntity[]
+
+  @@index([type])
+  @@index([canonicalName])
+  @@map("np_entity")
+}
+
+// Alias resolution with approval. "GTBank" / "Guaranty Trust" / "GTCO" resolve
+// to one entity; the model proposes, this table records the approved mapping.
+model NpEntityAlias {
+  alias      String   @id
+  entityId   String
+  entity     NpEntity @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  approvedBy String?
+  createdAt  DateTime @default(now())
+
+  @@index([entityId])
+  @@map("np_entity_alias")
+}
+
+// Which entities an event mentions, and in what role.
+model NpEventEntity {
+  eventId  String
+  event    NpEvent  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  entityId String
+  entity   NpEntity @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  role     String   @default("mentioned")
+
+  @@id([eventId, entityId, role])
+  @@index([entityId])
+  @@map("np_event_entity")
+}
+
+// ── Feed (manual cybersecurity updates) ───────────────────────────────────────
+// Staff-recorded updates (X posts, news, regulator notices) for the current
+// week. Deliberately separate from the NpEvent intel store: that store is under
+// review and manual entries must never mix with collector data.
+//
+// `publishedAt` is what drives which week an entry shows in (a computed filter,
+// never stored). `status` is draft|ready|archived. There is no raw body, quote,
+// image, tag, or severity field at this phase.
+
+model FeedEntry {
+  id          String   @id @default(uuid())
+  sourceType  String // 'x' | 'news' | 'regulator' | 'other'
+  sourceName  String
+  url         String   @unique // normalised (no tracking params, no fragment)
+  author      String?
+  publishedAt DateTime // staff-editable; drives the week bucket
+  title       String
+  summary     String // staff-written, required
+  status      String   @default("draft") // 'draft' | 'ready' | 'archived'
+  createdBy   String // User.id (loose reference; kept additive)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  campaignLinks CampaignFeedEntry[]
+
+  @@index([publishedAt(sort: Desc)])
+  @@index([status])
+  @@map("feed_entry")
+}
+
+// Which feed entries have been inserted into which campaigns. "Used" is derived
+// from these rows — never a stored status. `@@id([campaignId, entryId])` makes
+// re-inserting an upsert. campaignId is the Plunk campaign id (not a local FK).
+model CampaignFeedEntry {
+  campaignId String
+  entryId    String
+  entry      FeedEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  insertedAt DateTime  @default(now())
+  insertedBy String
+
+  @@id([campaignId, entryId])
+  @@index([entryId])
+  @@map("campaign_feed_entry")
+}
+

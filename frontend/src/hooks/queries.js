@@ -140,3 +140,26 @@ export function useHealth() {
     retry: 1,
   });
 }
+
+// ── Feed ─────────────────────────────────────────────────────────────────────
+
+export function useFeedEntries({ weekStart, status, sourceType, q } = {}) {
+  return useQuery({
+    queryKey: ['feed', { weekStart, status, sourceType, q }],
+    queryFn: () =>
+      api('/feed', { query: { weekStart, status, sourceType, q } }).then((r) => ({
+        entries: r.entries ?? [],
+        week: r.week,
+      })),
+    placeholderData: keepPreviousData,
+    staleTime: 15_000,
+  });
+}
+
+export function useFeedWeek(weekStart) {
+  return useQuery({
+    queryKey: ['feed-week', { weekStart }],
+    queryFn: () => api('/feed/week', { query: { weekStart } }).then((r) => r.week),
+    staleTime: 60_000,
+  });
+}
