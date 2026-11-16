@@ -59,13 +59,17 @@ export async function getFeedEntries(req, res) {
   const where = { publishedAt: { gte: start, lte: end } };
 
   if (req.query.status) {
-    const statuses = String(req.query.status).split(',').filter((s) => STATUSES.includes(s));
-    if (statuses.length === 0) throw BadRequest('status must be one of draft, ready, archived');
+    const statuses = String(req.query.status).split(',');
+    if (!statuses.every((s) => STATUSES.includes(s))) {
+      throw BadRequest('status must be one of draft, ready, archived');
+    }
     where.status = { in: statuses };
   }
   if (req.query.sourceType) {
-    const types = String(req.query.sourceType).split(',').filter((t) => SOURCE_TYPES.includes(t));
-    if (types.length === 0) throw BadRequest('sourceType must be one of x, news, regulator, other');
+    const types = String(req.query.sourceType).split(',');
+    if (!types.every((t) => SOURCE_TYPES.includes(t))) {
+      throw BadRequest('sourceType must be one of x, news, regulator, other');
+    }
     where.sourceType = { in: types };
   }
   if (req.query.q) {
@@ -88,16 +92,6 @@ export async function getFeedEntries(req, res) {
     entries: entries.map(serializeEntry),
     week: { start: start.toISOString(), end: end.toISOString(), label: weekLabel(anchor) },
   });
-}
-
-/**
- * GET /api/feed/week — the label + window for a week (shared-helper source of
- * truth so the UI label cannot drift from the API filter).
- */
-export async function getFeedWeek(req, res) {
-  const anchor = parseWeekStart(req.query.weekStart) ?? new Date();
-  const { start, end } = weekRange(anchor);
-  return res.json({ week: { start: start.toISOString(), end: end.toISOString(), label: weekLabel(anchor) } });
 }
 
 /**

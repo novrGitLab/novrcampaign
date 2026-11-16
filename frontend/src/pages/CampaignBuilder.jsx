@@ -83,7 +83,7 @@ export default function CampaignBuilder() {
     const block = renderFeedBlock(entry);
     // Insert at the cursor when the editor is mounted; otherwise append.
     const placed = insertRef.current?.(block);
-    if (!placed) setForm((f) => ({ ...f, body: `${f.body}${block}` }));
+    if (!placed) setForm((f) => ({ ...f, body: `${f.body}\n${block}` }));
     try {
       await insertFeedEntry.mutateAsync(entry.id);
     } catch (err) {

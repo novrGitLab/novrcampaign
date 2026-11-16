@@ -8,7 +8,6 @@ import { addDays } from 'date-fns';
 // we bucket by shifting the instant by a fixed +1h and reading UTC date parts.
 
 const LAGOS_OFFSET_MS = 60 * 60 * 1000; // UTC+1, no DST
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 function lagosDateOnly(date) {
   const d = new Date(date.getTime() + LAGOS_OFFSET_MS);
@@ -21,15 +20,6 @@ export function mondayOf(date) {
   const dow = day.getUTCDay(); // 0 = Sunday
   const back = (dow + 6) % 7; // Sunday -> 6, Monday -> 0
   return addDays(day, -back);
-}
-
-// { start, end } as real UTC instants for the Lagos-local week containing `date`.
-export function weekRange(date) {
-  const monday = mondayOf(date);
-  const start = new Date(monday.getTime() - LAGOS_OFFSET_MS);
-  const endExclusive = new Date(monday.getTime() + 7 * MS_PER_DAY - LAGOS_OFFSET_MS);
-  const end = new Date(endExclusive.getTime() - 1);
-  return { start, end };
 }
 
 // Date-range label, e.g. "10 – 16 Nov 2026".

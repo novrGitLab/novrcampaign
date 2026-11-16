@@ -156,14 +156,6 @@ export function useFeedEntries({ weekStart, status, sourceType, q } = {}) {
   });
 }
 
-export function useFeedWeek(weekStart) {
-  return useQuery({
-    queryKey: ['feed-week', { weekStart }],
-    queryFn: () => api('/feed/week', { query: { weekStart } }).then((r) => r.week),
-    staleTime: 60_000,
-  });
-}
-
 export function useCampaignFeedEntries(campaignId) {
   return useQuery({
     queryKey: ['campaign-feed-entries', campaignId],

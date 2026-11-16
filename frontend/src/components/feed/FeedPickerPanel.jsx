@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Search, Plus } from 'lucide-react';
 import { Badge, Button, EmptyState, SourcePill, WeekNavigator } from '../ui';
 import { useFeedEntries } from '../../hooks/queries';
-import { addWeeks, weekLabel } from '../../lib/feedWeek';
+import { addWeeks, weekLabel, weekStartIso } from '../../lib/feedWeek';
 
 // Escape text for safe embedding in HTML (email body).
 export function escapeHtml(s) {
@@ -47,7 +47,7 @@ export default function FeedPickerPanel({ onInsert, insertingId, insertedIds = [
   const [query, setQuery] = useState('');
 
   const { data, isLoading } = useFeedEntries({
-    weekStart: weekAnchor.toISOString(),
+    weekStart: weekStartIso(weekAnchor),
     q: query.trim() || undefined,
   });
   const entries = data?.entries ?? [];

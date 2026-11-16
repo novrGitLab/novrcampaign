@@ -166,21 +166,6 @@ export default function RichEmailEditor({ value, onChange, disabled, insertRef }
 
   const emitHtml = (html) => onChange?.(normalizeEmpty(html));
 
-  // Expose an imperative insert for external callers (e.g. the feed picker).
-  // When the rich editor is mounted we insert at the current selection;
-  // callers fall back to appending when this returns false.
-  useEffect(() => {
-    if (!insertRef) return undefined;
-    insertRef.current = (html) => {
-      if (!editor) return false;
-      editor.chain().focus().insertContent(html).run();
-      return true;
-    };
-    return () => {
-      insertRef.current = null;
-    };
-  }, [editor, insertRef]);
-
   const goView = (next) => {
     if (next === 'code' && (value ?? '') !== '') {
       const formatted = formatHtml(value);
@@ -239,6 +224,21 @@ export default function RichEmailEditor({ value, onChange, disabled, insertRef }
   useEffect(() => {
     if (editor) editor.setEditable(!disabled);
   }, [editor, disabled]);
+
+  // Expose an imperative insert for external callers (e.g. the feed picker).
+  // When the rich editor is mounted we insert at the current selection;
+  // callers fall back to appending when this returns false.
+  useEffect(() => {
+    if (!insertRef) return undefined;
+    insertRef.current = (html) => {
+      if (!editor) return false;
+      editor.chain().focus().insertContent(html).run();
+      return true;
+    };
+    return () => {
+      insertRef.current = null;
+    };
+  }, [editor, insertRef]);
 
   const setLink = () => {
     if (!editor) return;

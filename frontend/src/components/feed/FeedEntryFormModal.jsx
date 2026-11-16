@@ -16,13 +16,27 @@ const STATUSES = [
   { value: 'archived', label: 'Archived' },
 ];
 
-// datetime-local value (YYYY-MM-DDTHH:mm) from an ISO string, in local time.
-function toLocalInput(iso) {
+// datetime-local value (YYYY-MM-DDTHH:mm) from an ISO string, rendered in
+// Africa/Lagos (UTC+1, no DST) so capture matches the Lagos week model.
+const LAGOS_OFFSET_MS = 60 * 60 * 1000;
+
+function toLagosInput(iso) {
   if (!iso) return '';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
+  const local = new Date(d.getTime() + LAGOS_OFFSET_MS);
   const pad = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${local.getUTCFullYear()}-${pad(local.getUTCMonth() + 1)}-${pad(local.getUTCDate())}T${pad(local.getUTCHours())}:${pad(local.getUTCMinutes())}`;
+}
+
+// Interpret a Lagos-local datetime-local value as a UTC instant.
+function lagosInputToIso(value) {
+  if (!value) return '';
+  const [datePart, timePart] = value.split('T');
+  const [y, m, d] = datePart.split('-').map(Number);
+  const [hh, mm] = (timePart || '00:00').split(':').map(Number);
+  const utcMs = Date.UTC(y, m - 1, d, hh, mm) - LAGOS_OFFSET_MS;
+  return new Date(utcMs).toISOString();
 }
 
 const emptyForm = () => ({
@@ -30,7 +44,7 @@ const emptyForm = () => ({
   sourceType: 'news',
   sourceName: '',
   author: '',
-  publishedAt: toLocalInput(new Date().toISOString()),
+  publishedAt: toLagosInput(new Date().toISOString()),
   title: '',
   summary: '',
   status: 'draft',
@@ -52,7 +66,7 @@ export default function FeedEntryFormModal({ open, onClose, entry, onSubmit, sav
         sourceType: entry.sourceType ?? 'news',
         sourceName: entry.sourceName ?? '',
         author: entry.author ?? '',
-        publishedAt: toLocalInput(entry.publishedAt),
+        publishedAt: toLagosInput(entry.publishedAt),
         title: entry.title ?? '',
         summary: entry.summary ?? '',
         status: entry.status ?? 'draft',
@@ -90,7 +104,7 @@ export default function FeedEntryFormModal({ open, onClose, entry, onSubmit, sav
       sourceType: form.sourceType,
       sourceName: form.sourceName.trim(),
       author: form.author.trim() || null,
-      publishedAt: form.publishedAt ? new Date(form.publishedAt).toISOString() : '',
+      publishedAt: form.publishedAt ? lagosInputToIso(form.publishedAt) : '',
       title: form.title.trim(),
       summary: form.summary.trim(),
       status: form.status,
@@ -146,7 +160,7 @@ export default function FeedEntryFormModal({ open, onClose, entry, onSubmit, sav
           <div className="space-y-2">
             <Label htmlFor="feed-publishedAt">Published at</Label>
             <Input id="feed-publishedAt" type="datetime-local" value={form.publishedAt} onChange={set('publishedAt')} required />
-            <p className="text-xs text-muted-foreground">Drives which week this update shows in.</p>
+            <p className="text-xs text-muted-foreground">Africa/Lagos time — drives which week this update shows in.</p>
           </div>
         </div>
 

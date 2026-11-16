@@ -10,10 +10,16 @@ import { useCreateFeedEntry, useDeleteFeedEntry, useUpdateFeedEntry } from '../h
 import { addWeeks, weekLabel, weekStartIso } from '../lib/feedWeek';
 
 // Group entries by their Lagos-local calendar day, newest first.
+const LAGOS_OFFSET_MS = 60 * 60 * 1000; // UTC+1, no DST
+function lagosDayKey(iso) {
+  const d = new Date(new Date(iso).getTime() + LAGOS_OFFSET_MS);
+  return d.toISOString().slice(0, 10);
+}
+
 function groupByDay(entries) {
   const byDay = new Map();
   for (const e of entries) {
-    const key = new Date(e.publishedAt).toISOString().slice(0, 10);
+    const key = lagosDayKey(e.publishedAt);
     if (!byDay.has(key)) byDay.set(key, []);
     byDay.get(key).push(e);
   }
