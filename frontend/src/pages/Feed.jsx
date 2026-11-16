@@ -127,6 +127,7 @@ export default function Feed() {
             { value: 'all', label: 'All' },
             { value: 'draft', label: 'Draft' },
             { value: 'ready', label: 'Ready' },
+            { value: 'archived', label: 'Archived' },
           ].map((s) => (
             <PillButton key={s.value} active={status === s.value} onClick={() => setStatus(s.value)}>
               {s.label}
