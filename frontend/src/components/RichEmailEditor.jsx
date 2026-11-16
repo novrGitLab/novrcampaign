@@ -160,11 +160,26 @@ function ToolButton({ active, disabled, onClick, title, children }) {
  * Rich email body editor: richtext (Tiptap) + raw HTML code + live preview.
  * `value` is the HTML string stored in Plunk; `onChange` receives updated HTML.
  */
-export default function RichEmailEditor({ value, onChange, disabled }) {
+export default function RichEmailEditor({ value, onChange, disabled, insertRef }) {
   // Table layouts open in Preview — Write mode is for simple rich text
   const [view, setView] = useState(() => (hasTableLayout(value) ? 'preview' : 'rich'));
 
   const emitHtml = (html) => onChange?.(normalizeEmpty(html));
+
+  // Expose an imperative insert for external callers (e.g. the feed picker).
+  // When the rich editor is mounted we insert at the current selection;
+  // callers fall back to appending when this returns false.
+  useEffect(() => {
+    if (!insertRef) return undefined;
+    insertRef.current = (html) => {
+      if (!editor) return false;
+      editor.chain().focus().insertContent(html).run();
+      return true;
+    };
+    return () => {
+      insertRef.current = null;
+    };
+  }, [editor, insertRef]);
 
   const goView = (next) => {
     if (next === 'code' && (value ?? '') !== '') {

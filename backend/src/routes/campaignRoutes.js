@@ -17,5 +17,7 @@ router.post('/:id/schedule', asyncHandler(campaignController.scheduleCampaign));
 router.post('/:id/cancel', asyncHandler(campaignController.cancelCampaign));
 router.post('/:id/test', asyncHandler(campaignController.testCampaign));
 router.get('/:id/analytics', asyncHandler(campaignController.getCampaignAnalytics));
+router.get('/:id/feed-entries', asyncHandler(campaignController.getCampaignFeedEntries));
+router.post('/:id/feed-entries', asyncHandler(campaignController.addCampaignFeedEntry));
 
 export default router;

@@ -163,3 +163,12 @@ export function useFeedWeek(weekStart) {
     staleTime: 60_000,
   });
 }
+
+export function useCampaignFeedEntries(campaignId) {
+  return useQuery({
+    queryKey: ['campaign-feed-entries', campaignId],
+    queryFn: () => api(`/campaigns/${campaignId}/feed-entries`).then((r) => r.entries ?? []),
+    enabled: Boolean(campaignId),
+    staleTime: 15_000,
+  });
+}

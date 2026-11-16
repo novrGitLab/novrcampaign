@@ -201,3 +201,15 @@ export function useDeleteFeedEntry() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['feed'] }),
   });
 }
+
+export function useInsertFeedEntry(campaignId) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (entryId) =>
+      api(`/campaigns/${campaignId}/feed-entries`, { method: 'POST', body: { entryId } }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['campaign-feed-entries', campaignId] });
+      qc.invalidateQueries({ queryKey: ['feed'] });
+    },
+  });
+}

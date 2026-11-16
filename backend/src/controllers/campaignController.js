@@ -1,5 +1,6 @@
 import Joi from 'joi';
 import { BadRequest, NotFound } from '../utils/AppError.js';
+import { prisma } from '../utils/prisma.js';
 import * as plunk from '../services/plunkService.js';
 import { validateCampaignInput } from '../services/emailService.js';
 
@@ -214,6 +215,50 @@ export async function getCampaignAnalytics(req, res) {
   const stats = await plunk.getCampaignStats(req.params.id);
   if (!stats) throw NotFound('Campaign stats not found');
   return res.json({ stats });
+}
+
+/**
+ * GET /api/campaigns/:id/feed-entries — feed entries inserted into this
+ * campaign ("used"), derived from the join rows.
+ */
+export async function getCampaignFeedEntries(req, res) {
+  const links = await prisma.campaignFeedEntry.findMany({
+    where: { campaignId: req.params.id },
+    include: { entry: { include: { _count: { select: { campaignLinks: true } } } } },
+    orderBy: { insertedAt: 'desc' },
+  });
+  const entries = links.map((l) => ({
+    id: l.entry.id,
+    title: l.entry.title,
+    sourceType: l.entry.sourceType,
+    sourceName: l.entry.sourceName,
+    url: l.entry.url,
+    insertedAt: l.insertedAt.toISOString(),
+  }));
+  return res.json({ entries });
+}
+
+/**
+ * POST /api/campaigns/:id/feed-entries — record that a feed entry was inserted
+ * into the campaign. Upserts the join row, so re-inserting is allowed.
+ * Body: { entryId }
+ */
+export async function addCampaignFeedEntry(req, res) {
+  const { entryId } = await Joi.object({
+    entryId: Joi.string().uuid().required(),
+  }).validateAsync(req.body ?? {}, { stripUnknown: true });
+
+  const entry = await prisma.feedEntry.findUnique({ where: { id: entryId } });
+  if (!entry) throw NotFound('Feed entry not found');
+
+  await prisma.campaignFeedEntry.upsert({
+    where: { campaignId_entryId: { campaignId: req.params.id, entryId } },
+    update: { insertedBy: req.user.id },
+    create: { campaignId: req.params.id, entryId, insertedBy: req.user.id },
+  });
+
+  const used = await prisma.campaignFeedEntry.count({ where: { entryId } });
+  return res.status(201).json({ ok: true, entryId, usedInCampaigns: used });
 }
 
 export { createSchema, scheduleSchema };

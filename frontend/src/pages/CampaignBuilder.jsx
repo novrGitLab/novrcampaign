@@ -1,11 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { Save, Send, Clock, FlaskConical } from 'lucide-react';
+import { Save, Send, Clock, FlaskConical, Rss, PanelRightClose, PanelRightOpen } from 'lucide-react';
 import RichEmailEditor from '../components/RichEmailEditor';
-import { useCampaign, useSegments, useTemplate, useTemplates } from '../hooks/queries';
+import FeedPickerPanel, { renderFeedBlock } from '../components/feed/FeedPickerPanel';
+import { useCampaign, useCampaignFeedEntries, useSegments, useTemplate, useTemplates } from '../hooks/queries';
 import {
   useCancelCampaign,
   useCreateCampaign,
+  useInsertFeedEntry,
   useScheduleCampaign,
   useSendCampaign,
   useTestCampaign,
@@ -13,6 +15,7 @@ import {
 } from '../hooks/mutations';
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Badge } from '../components/ui';
 import { Modal } from '../components/ui/Modal';
+import { cn } from '../lib/utils';
 import { useAuth } from '../hooks/useAuth';
 
 const TYPES = [
@@ -68,6 +71,25 @@ export default function CampaignBuilder() {
   const testRecipient = user?.email ?? '';
   // savedId is the truth after creating a draft (URL id is empty for new campaigns)
   const effectiveId = savedId ?? id ?? null;
+
+  // Feed picker: collapsible right-side panel + insert of the week's entries.
+  const insertFeedEntry = useInsertFeedEntry(effectiveId);
+  const insertRef = useRef(null);
+  const [feedPanelOpen, setFeedPanelOpen] = useState(false);
+  const { data: usedEntries = [] } = useCampaignFeedEntries(effectiveId);
+  const insertedIds = usedEntries.map((e) => e.id);
+
+  const onInsertFeed = async (entry) => {
+    const block = renderFeedBlock(entry);
+    // Insert at the cursor when the editor is mounted; otherwise append.
+    const placed = insertRef.current?.(block);
+    if (!placed) setForm((f) => ({ ...f, body: `${f.body}${block}` }));
+    try {
+      await insertFeedEntry.mutateAsync(entry.id);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
 
   // Dirty tracking: sending acts on the SAVED campaign in Plunk, so block
   // send/schedule/test while the form differs from the last save.
@@ -331,21 +353,48 @@ export default function CampaignBuilder() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Email content</CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle>Email content</CardTitle>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setFeedPanelOpen((v) => !v)}
+                disabled={locked}
+              >
+                {feedPanelOpen ? <PanelRightClose className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}
+                <Rss className="h-4 w-4" />
+                Feed
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
-            <RichEmailEditor
-              value={form.body}
-              onChange={(html) => setForm((f) => ({ ...f, body: html }))}
-              disabled={locked}
-            />
-            {form.type !== 'TRANSACTIONAL' && !form.body.toLowerCase().includes('{{unsubscribe') && (
-              <p className="mt-3 text-xs text-amber-600">
-                {form.type === 'HEADLESS'
-                  ? 'Headless sends must include {{unsubscribeUrl}} — add an unsubscribe link.'
-                  : 'Plunk injects the unsubscribe footer automatically for marketing campaigns.'}
-              </p>
-            )}
+            <div className={cn('gap-4', feedPanelOpen && 'lg:flex lg:items-start')}>
+              <div className="min-w-0 flex-1">
+                <RichEmailEditor
+                  value={form.body}
+                  onChange={(html) => setForm((f) => ({ ...f, body: html }))}
+                  disabled={locked}
+                  insertRef={insertRef}
+                />
+                {form.type !== 'TRANSACTIONAL' && !form.body.toLowerCase().includes('{{unsubscribe') && (
+                  <p className="mt-3 text-xs text-amber-600">
+                    {form.type === 'HEADLESS'
+                      ? 'Headless sends must include {{unsubscribeUrl}} — add an unsubscribe link.'
+                      : 'Plunk injects the unsubscribe footer automatically for marketing campaigns.'}
+                  </p>
+                )}
+              </div>
+              {feedPanelOpen && (
+                <div className="mt-4 w-full shrink-0 rounded-lg border border-border bg-secondary/30 p-3 lg:mt-0 lg:h-[520px] lg:w-80">
+                  <FeedPickerPanel
+                    onInsert={onInsertFeed}
+                    insertingId={insertFeedEntry.isPending ? insertFeedEntry.variables : null}
+                    insertedIds={insertedIds}
+                  />
+                </div>
+              )}
+            </div>
           </CardContent>
         </Card>
 
