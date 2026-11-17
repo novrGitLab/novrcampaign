@@ -1,0 +1,29 @@
+{
+  "name": "@novr/ingest",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Reusable ingestion engine: fetch, parse, understand and persist feed/API sources. Consumer-agnostic; NovrPulse is consumer #1.",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./fetch": "./src/fetch/index.js",
+    "./parse": "./src/parse/index.js",
+    "./understand": "./src/understand/index.js",
+    "./store": "./src/store/index.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "openai": "^4.104.0"
+  },
+  "devDependencies": {
+    "eslint": "^9.18.0",
+    "globals": "^15.14.0"
+  },
+  "scripts": {
+    "test": "node --test",
+    "lint": "eslint . --ext .js --max-warnings 0"
+  }
+}

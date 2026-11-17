@@ -48,3 +48,6 @@ postgres_data/
 # Test coverage
 coverage/
 .nyc_output/
+
+# Drive frontend build output
+drive-dist/

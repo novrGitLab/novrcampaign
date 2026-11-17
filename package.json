@@ -6,7 +6,8 @@
   "description": "In-house email campaign platform built on Plunk",
   "workspaces": [
     "backend",
-    "frontend"
+    "frontend",
+    "packages/*"
   ],
   "scripts": {
     "dev": "concurrently -n backend,frontend -c blue,magenta \"npm:dev:backend\" \"npm:dev:frontend\"",
@@ -14,7 +15,8 @@
     "dev:frontend": "npm -w frontend run dev",
     "build": "npm -w backend run build && npm -w frontend run build",
     "start": "npm -w backend start",
-    "lint": "npm -w backend run lint && npm -w frontend run lint",
+    "lint": "npm -w backend run lint && npm -w frontend run lint && npm -w @novr/ingest run lint",
+    "test": "npm -w @novr/ingest test && npm -w backend test",
     "db:generate": "npm -w backend run db:generate",
     "db:migrate:dev": "npm -w backend run db:migrate:dev",
     "db:migrate": "npm -w backend run db:migrate",
