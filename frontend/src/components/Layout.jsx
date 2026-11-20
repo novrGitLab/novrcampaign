@@ -3,7 +3,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Users, Mail, LogOut, UsersRound, LayoutTemplate,
   Search, Sun, Moon, ShieldAlert, Menu, X, ChevronDown, Bell, AlertTriangle,
-  BarChart3, Rss,
+  BarChart3, Rss, Radar, Newspaper,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useAuth } from '../hooks/useAuth';
@@ -24,6 +24,16 @@ const NAV = [
 const AUTOMATIONS = [
   { to: '/templates', label: 'Templates', icon: LayoutTemplate },
 ];
+
+// Pulse is a grouped section so future surfaces (Briefing Desk, Calendar,
+// Alerts) slot in as additional children without touching the flat NAV list.
+const PULSE = {
+  label: 'Pulse',
+  items: [
+    { to: '/pulse', label: 'Intelligence Inbox', icon: Radar },
+    { to: '/pulse/desk', label: 'Briefing Desk', icon: Newspaper },
+  ],
+};
 
 const BOTTOM = [
   { to: '/campaigns', label: 'Campaigns', icon: Mail, badge: 'failed' },
@@ -164,6 +174,17 @@ export function Layout() {
           {NAV.map((item) => (
             <NavItem key={item.to} {...item} onClick={isMobile ? () => setMobileOpen(false) : undefined} />
           ))}
+        </div>
+
+        <div>
+          <p className="mb-1 px-3 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/80">
+            {PULSE.label}
+          </p>
+          <div className="space-y-0.5">
+            {PULSE.items.map((item) => (
+              <NavItem key={item.to} {...item} onClick={isMobile ? () => setMobileOpen(false) : undefined} />
+            ))}
+          </div>
         </div>
 
         <div>

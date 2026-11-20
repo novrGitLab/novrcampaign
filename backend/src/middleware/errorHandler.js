@@ -29,7 +29,11 @@ export function errorHandler(err, req, res, _next) {
 
 /** 404 handler for unmatched routes. */
 export function notFound(req, _res, next) {
-  const err = new Error(`Not found: ${req.method} ${req.originalUrl}`);
+  // The drive must be indistinguishable from a nonexistent path: never echo a
+  // drive URL back, or its existence leaks. Other routes keep the detailed
+  // message for dashboard debugging.
+  const isDrive = req.originalUrl.startsWith('/api/drive');
+  const err = new Error(isDrive ? 'Not found' : `Not found: ${req.method} ${req.originalUrl}`);
   err.statusCode = 404;
   err.isOperational = true;
   next(err);

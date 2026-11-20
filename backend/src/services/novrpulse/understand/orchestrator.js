@@ -20,8 +20,15 @@ function getLlm() {
     _llm = createLlm({
       apiKey: c.apiKey,
       baseUrl: c.baseUrl,
+      provider: c.provider,
       bulkModel: c.bulkModel,
       frontierModel: c.frontierModel,
+      fallbackModel: c.fallbackModel,
+      fallbackBaseUrl: c.fallbackBaseUrl,
+      fallbackApiKey: c.fallbackApiKey,
+      jsonMode: c.jsonMode,
+      reasoningContentAsText: c.reasoningContentAsText,
+      allowLocalBaseUrl: c.allowLocalBaseUrl,
       maxAttempts: c.maxAttempts,
       timeoutMs: c.timeoutMs,
       maxTokens: c.maxTokens,
@@ -82,9 +89,6 @@ export async function understandEvent(eventId, deps = {}) {
       whatItMeans: summary.whatItMeans ?? '',
       functions: tag.functions ?? [],
       eventType: tag.eventType ?? null,
-      severity: tag.severity ?? null,
-      severitySource: tag.severitySource ?? null,
-      confidence: 'reported',
     },
   });
 
@@ -106,7 +110,6 @@ export async function understandEvent(eventId, deps = {}) {
     eventId: event.id,
     functions: tag.functions ?? [],
     eventType: tag.eventType,
-    severity: tag.severity,
     summaryLength: (summary.summary ?? '').length,
     whatItMeansLength: (summary.whatItMeans ?? '').length,
     entitiesLinked: linked,
@@ -118,7 +121,7 @@ export async function understandEvent(eventId, deps = {}) {
 /** Run understanding over stored events not yet understood. */
 export async function runUnderstanding({ limit = 20, commit = false, deps = {} } = {}) {
   if (commit && !isConfigured() && !deps.llm) {
-    throw new Error('NVIDIA_API_KEY is not configured; cannot run the understanding layer');
+    throw new Error('no AI provider is configured; cannot run the understanding layer');
   }
   const candidates = await prisma.npEvent.findMany({
     where: { OR: [{ summary: '' }, { whatItMeans: '' }] },

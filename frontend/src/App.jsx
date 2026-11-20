@@ -7,6 +7,8 @@ import Analytics from './pages/Analytics';
 import Contacts from './pages/Contacts';
 import Suppressions from './pages/Suppressions';
 import Feed from './pages/Feed';
+import PulseReview from './pages/PulseReview';
+import BriefingDesk from './pages/BriefingDesk';
 import Campaigns from './pages/Campaigns';
 import CampaignBuilder from './pages/CampaignBuilder';
 import CampaignAnalytics from './pages/CampaignAnalytics';
@@ -26,6 +28,8 @@ export default function App() {
           <Route path="contacts" element={<Contacts />} />
           <Route path="suppressions" element={<Suppressions />} />
           <Route path="feed" element={<Feed />} />
+          <Route path="pulse" element={<PulseReview />} />
+          <Route path="pulse/desk" element={<BriefingDesk />} />
           <Route path="campaigns" element={<Campaigns />} />
           <Route path="campaigns/new" element={<CampaignBuilder />} />
           <Route path="campaigns/:id/edit" element={<CampaignBuilder />} />

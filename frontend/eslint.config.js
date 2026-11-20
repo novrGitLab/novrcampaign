@@ -4,6 +4,9 @@ import reactHooks from 'eslint-plugin-react-hooks';
 
 export default [
   {
+    ignores: ['node_modules/', 'dist/', 'drive-dist/', 'eslint.config.js', 'vite.drive.config.js'],
+  },
+  {
     files: ['**/*.{js,jsx}'],
     languageOptions: {
       ecmaVersion: 2023,
@@ -39,6 +42,5 @@ export default [
       'no-var': 'error',
       eqeqeq: ['error', 'always'],
     },
-    ignores: ['node_modules/', 'dist/', 'eslint.config.js'],
   },
 ];

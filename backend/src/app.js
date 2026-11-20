@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import helmet from 'helmet';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
 import pinoHttp from 'pino-http';
 import { config } from './config/env.js';
 import logger from './utils/logger.js';
@@ -27,7 +28,12 @@ app.use(
   }),
 );
 
-// Webhook routes must receive the raw body for signature verification
+// Webhook routes must receive the raw body for signature verification. Capture
+// the raw bytes for /api/webhooks REGARDLESS of content type, before the JSON
+// parser runs, so an HMAC covers the exact bytes Plunk signed. The JSON parser
+// still runs for every other route below.
+app.use('/api/webhooks', express.raw({ type: '*/*', limit: '2mb' }));
+
 app.use(
   express.json({
     verify: (req, _res, buf) => {
@@ -46,6 +52,14 @@ app.use(
 
 app.use(pinoHttp({ logger }));
 app.use(express.urlencoded({ extended: true, limit: '2mb' }));
+app.use(cookieParser());
+
+// Never let the drive be indexed, and keep it out of search results even when a
+// link leaks. This is one of several defence-in-depth layers, not a control.
+app.use((req, res, next) => {
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+  next();
+});
 
 // Trust the proxy header so req.ip is real behind Railway/Render/ALB
 app.set('trust proxy', 1);

@@ -212,18 +212,19 @@ model NpEvent {
   region        String?
   eventType     String?
   functions     Int[]
-  severity      Int?
-  severitySource String?
-  confidence    String   @default("reported")
   clusterId     String?
+  // Reviewer triage state: "new" | "accepted" | "dismissed". Non-destructive —
+  // dismiss only records the decision; raw evidence is never touched.
+  reviewStatus  String   @default("new")
   createdAt     DateTime @default(now())
 
   sources NpEventSource[]
   entities NpEventEntity[]
+  publishItems PublishItem[]
+  publishItemEvents PublishItemEvent[]
 
   @@unique([canonicalUrl])
   @@index([publishedAt(sort: Desc)])
-  @@index([severity(sort: Desc), publishedAt(sort: Desc)])
   @@index([clusterId])
   @@map("np_event")
 }
@@ -294,6 +295,90 @@ model NpEventEntity {
   @@map("np_event_entity")
 }
 
+// The published artefact, kept separate from the event on purpose so a post can
+// be corrected without mutating the record it came from (02-event-schema.md §2).
+// `tier`/`contentType`/`function_id` are enum-like and stay plain `String`/`Int`
+// to match the existing Np* style. Table names follow the frozen document
+// literally (`publish_item`/`correction`, no `np_` prefix) — the schema doc is
+// the contract.
+//
+// Owner decision 2026-11-19 (Option C): `publish_item` is the SINGLE editorial
+// table. `contentType` is a minimal closed set ('briefing'|'urgent_alert');
+// `eventId`/`functionId` are nullable so a non-event-bound briefing can exist;
+// the retired `analyst`/`client` tiers are gone (tier is 'public'|'paid').
+model PublishItem {
+  id              String   @id @default(uuid())
+  eventId         String?
+  event           NpEvent? @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  functionId      Int?
+  tier            String
+  contentType     String
+  body            String
+  templateVersion String
+  // Nullable: a projected row is a DRAFT. `editorId`/`approvedAt` are written
+  // only by the human approve/withdraw endpoints, never by automation (§2.7).
+  editorId        String?
+  approvedAt      DateTime?
+  rejectedAt      DateTime?
+  publishedAt     DateTime?
+  withdrawnAt     DateTime?
+
+  corrections  Correction[]
+  events       PublishItemEvent[]
+  briefing     PublishedBriefing?
+  sectionItems BriefingSectionItem[]
+  forumTopics  ForumTopic[]
+
+  @@index([functionId, tier, publishedAt(sort: Desc)])
+  @@map("publish_item")
+}
+
+// The ordered linkage of a publish item to the events it covers. A publish item
+// has at most one event via the legacy `eventId` FK; this join is the general
+// many-to-many form (e.g. a briefing composed from several events). `position`
+// preserves the editorial order.
+model PublishItemEvent {
+  publishItemId String
+  publishItem   PublishItem @relation(fields: [publishItemId], references: [id], onDelete: Cascade)
+  eventId       String
+  event         NpEvent     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  position      Int         @default(0)
+
+  @@id([publishItemId, eventId])
+  @@index([eventId])
+  @@map("publish_item_event")
+}
+
+// The immutable snapshot of a published briefing's rendered body. One per
+// publish item (owner decision 2026-11-19); `tier`/`contentType` mirror the
+// closed sets on `publish_item`.
+model PublishedBriefing {
+  id              String      @id @default(uuid())
+  publishItemId   String      @unique
+  publishItem     PublishItem @relation(fields: [publishItemId], references: [id], onDelete: Cascade)
+  body            String
+  templateVersion String
+  tier            String
+  contentType     String
+  publishedAt     DateTime    @default(now())
+
+  @@map("published_briefing")
+}
+
+// First-class corrections: never a silent edit (02-event-schema.md §2).
+model Correction {
+  id            String      @id @default(uuid())
+  publishItemId String
+  publishItem   PublishItem @relation(fields: [publishItemId], references: [id], onDelete: Cascade)
+  reason        String
+  correctedBy   String
+  redeliveredAt DateTime?
+  at            DateTime
+
+  @@index([publishItemId])
+  @@map("correction")
+}
+
 // ── Feed (manual cybersecurity updates) ───────────────────────────────────────
 // Staff-recorded updates (X posts, news, regulator notices) for the current
 // week. Deliberately separate from the NpEvent intel store: that store is under
@@ -337,5 +422,106 @@ model CampaignFeedEntry {
   @@id([campaignId, entryId])
   @@index([entryId])
   @@map("campaign_feed_entry")
+}
+
+// ── Daily briefing desk ───────────────────────────────────────────────────────
+// The staff-facing briefing desk: a `briefing` is one day's briefing; it is
+// composed from ordered `briefing_section`s (one per function), each of which
+// references ordered `briefing_section_item`s (the publish items that make up
+// that section). `supporting_event`s and `opportunity`s are standalone desk
+// entries; `forum_topic` is a weekly discussion prompt, optionally linked to a
+// publish item. `status`/`state`/`kind` are enum-like and stay plain `String` to
+// match the existing house style.
+
+model Briefing {
+  id           String   @id @default(uuid())
+  briefingDate DateTime @unique
+  status       String   @default("not_started")
+  title        String?
+  publishedAt  DateTime?
+  scheduledFor DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  sections BriefingSection[]
+
+  @@index([briefingDate])
+  @@map("briefing")
+}
+
+model BriefingSection {
+  id         String   @id @default(uuid())
+  briefingId String
+  briefing   Briefing @relation(fields: [briefingId], references: [id], onDelete: Cascade)
+  functionId Int
+  position   Int
+  state      String   @default("empty")
+  note       String?
+
+  items BriefingSectionItem[]
+
+  @@unique([briefingId, functionId])
+  @@index([briefingId, position])
+  @@map("briefing_section")
+}
+
+model BriefingSectionItem {
+  id            String          @id @default(uuid())
+  sectionId     String
+  section       BriefingSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  publishItemId String
+  publishItem   PublishItem     @relation(fields: [publishItemId], references: [id], onDelete: Cascade)
+  position      Int
+
+  @@unique([sectionId, publishItemId])
+  @@index([sectionId, position])
+  @@map("briefing_section_item")
+}
+
+model SupportingEvent {
+  id              String    @id @default(uuid())
+  title           String
+  description     String
+  organiser       String
+  startsAt        DateTime
+  venue           String?
+  onlineUrl       String?
+  registrationUrl String?
+  verifiedAt      DateTime?
+  publishedAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([startsAt])
+  @@map("supporting_event")
+}
+
+model Opportunity {
+  id          String    @id @default(uuid())
+  title       String
+  description String
+  kind        String
+  provider    String?
+  deadline    DateTime?
+  url         String?
+  verifiedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@map("opportunity")
+}
+
+model ForumTopic {
+  id            String       @id @default(uuid())
+  title         String
+  prompt        String
+  scheduledFor  DateTime?
+  publishItemId String?
+  publishItem   PublishItem? @relation(fields: [publishItemId], references: [id], onDelete: SetNull)
+  forumUrl      String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@map("forum_topic")
 }
 

@@ -54,7 +54,6 @@ async function createEvent(sourceId, item, raw) {
         publishedAt: item.publishedAt ? new Date(item.publishedAt) : null,
         canonicalUrl: item.link,
         functions: [],
-        confidence: 'reported',
         sources: { create: { rawDocumentId: raw.id } },
       },
     });
@@ -132,7 +131,6 @@ async function storeBatch(items) {
             publishedAt: item.publishedAt ? new Date(item.publishedAt) : null,
             canonicalUrl: item.link,
             functions: [],
-            confidence: 'reported',
             sources: { create: { rawDocumentId: raw.id } },
           },
         });

@@ -7,10 +7,22 @@ has a row here, and every row has a named `approved_by` and a recorded licence
 status. Version-control this file; changes go through the source policy
 (`01-policies.md`).
 
+> **Executable registry (2026-11-18):** `backend/src/services/novrpulse/sources.js`
+> is the **executable registry** the collectors actually read. It holds **42
+> entries** (19 enabled), and `Registry stats` below is generated from it. This
+> markdown table is the **allowlist** and is *not* a 1:1 mirror of that code:
+> it enumerates 45 rows (numbered 1–40 plus 5 unnumbered `—` rows), and the two
+> sets differ at the edges — the table lists candidates not yet in code
+> (e.g. DefenseCERT, CISA KEV, NIST NVD) while some code entries are reconciled
+> here under different naming. This mismatch is **known and recorded, not
+> fabricated away**. Where the two disagree, `sources.js` is the truth and this
+> register is stale; the two must be changed together (source policy §1).
+
 **v2.0** adopts the operator's `NovrPulse_Sources.xlsx` (30 sources) as the
 spine, adds the 12 sources already integrated, and records the endpoint
 verification from `08-source-register-review.md`. The old 40-row flat list is
-superseded.
+superseded (historical: that earlier list had 40 rows; this v2.0 register, and
+its executable mirror in `sources.js`, hold **42**).
 
 ## How to read this register
 
@@ -117,8 +129,16 @@ unknown-licence source is forbidden (policy §1).
 
 ## Registry stats (2026-11-17)
 
+Counts below are generated from the executable registry
+`backend/src/services/novrpulse/sources.js` (42 entries):
+
 - **42 sources**: 27 `verified`, 6 `blocked`, 3 `dead`, 3 `unverified`, 3 `no-feed`.
 - **19 enabled** and collecting: 3 regulators (NCC/NITDA/NDPC), 8 Nigerian/African
   tech, 6 global security, 2 pan-African.
-- **Live collection: 301 fresh items across 19 sources** (was 1 before Tier B,
-  61 before Tier 4). The global filler tier is what makes "daily" honest.
+- **Live collection volume is NOT reproduced here.** An earlier version of this
+  register asserted *"301 fresh items across 19 sources"*. That figure is an
+  **unverified historical claim** — no run artifact for it exists in the repo, and
+  it is not regenerable from `sources.js` (which records the enabled *set*, not a
+  run's item count). Treat it as uncorroborated; a `collect` run artifact is the
+  only thing that can substantiate a fresh-item count. *Reported, no run artifact
+  in repo.*

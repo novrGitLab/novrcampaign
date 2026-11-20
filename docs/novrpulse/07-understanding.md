@@ -1,6 +1,13 @@
 # NovrPulse — Phase 2: the understanding layer
 
-Phase 2 · 2026-11-09
+Phase 2 · 2026-11-09 · **doc reconciled 2026-11-18**
+
+> **Doc status (2026-11-18):** the understanding layer's generic pieces (the LLM
+> client and the `analyseItem` orchestration) now live in the `@novr/ingest`
+> package (`packages/ingest`); NovrPulse-specific prompts and persistence live in
+> the backend consumer. File paths below were corrected to match the code as it
+> stands today. The 2026-11-09 live-run findings are retained as historical
+> evidence.
 
 Collectors decide *what NovrPulse knows*; the understanding layer decides *how
 well we understand it* (plan §4). It reads documents the store already holds and
@@ -11,7 +18,8 @@ ingested.**
 ## 1. Provider: NVIDIA NIM
 
 The understanding layer is model-driven, so every call goes through a thin
-provider-agnostic interface (`llm/client.js`) rather than a provider SDK directly.
+provider-agnostic interface (`packages/ingest/src/llm/index.js`, was
+`llm/client.js`) rather than a provider SDK directly.
 The first provider is **NVIDIA NIM**, which exposes an OpenAI-compatible API
 (`https://integrate.api.nvidia.com/v1`, `POST /v1/chat/completions`), so the
 client uses the OpenAI SDK pointed at that base URL.
@@ -59,14 +67,14 @@ rejected and re-rolled — free text never slips through (plan §3.2).
 
 | File | Role |
 |------|------|
-| `llm/client.js` | provider-agnostic `complete({ tier, system, prompt, schema })`, JSON validation, bounded retry |
-| `understand/tagger.js` | function tagging (1–8), event type, **rules-floor + model** severity |
-| `understand/summarizer.js` | original summary in our own words (copyright-safe) |
-| `understand/entities.js` | entity extraction + alias resolution, merge-safe |
-| `understand/seedAliases.js` | curated Nigerian entity/alias seed |
-| `understand/index.js` | orchestrator: tag + summarise + link over stored events |
-| `scripts/understand.mjs` | CLI (`npm -w backend run understand`) |
-| `test/novrpulseUnderstanding.test.mjs` | unit tests against a stubbed model (no network) |
+| `packages/ingest/src/llm/index.js` | provider-agnostic `complete({ tier, system, prompt, schema })`, JSON validation, bounded retry |
+| `packages/ingest/src/understand/index.js` | engine orchestration: runs the injected analysers over stored items |
+| `backend/src/services/novrpulse/analysers.js` | NovrPulse domain prompts: function tagging, severity floor, entity extraction |
+| `backend/src/services/novrpulse/understand/orchestrator.js` | NovrPulse persistence: writes `np_event` / `np_entity` / `np_event_entity`, stores `whatItMeans` |
+| `backend/src/services/novrpulse/understand/seedAliases.js` | curated Nigerian entity/alias seed |
+| `backend/src/services/novrpulse/understand/index.js` | re-exports the orchestrator + analysers |
+| `backend/scripts/understand.mjs` | CLI (`npm -w backend run understand`) |
+| `backend/test/novrpulseCollector.test.mjs` | unit tests against a stubbed model (no network) — the dedicated `novrpulseUnderstanding.test.mjs` no longer exists |
 
 Schema additions: `np_entity`, `np_entity_alias`, `np_event_entity` (migration
 `20261109200000_np_entities`).
@@ -86,7 +94,8 @@ selected.
 
 ## 4. The four understanding steps
 
-**Function tagging** (`tagger.js`). Classifies each event into one or more of the
+**Function tagging** (`analysers.js`, run by the engine's `analyseItem`).
+Classifies each event into one or more of the
 eight functions. The boundaries are editorial and fuzzy (F1 regulatory vs F7
 breaking; F3 education vs F4 campaign) — the plan says tune against a golden set,
 which **does not exist yet**, so the prompts encode the rules and the golden set
@@ -97,7 +106,7 @@ views).
 keyword floor can raise severity; the model can propose; `severitySource` records
 which won (`rule-floor` | `model`) so an analyst can override later.
 
-**Summarisation** (`summarizer.js`) — the copyright-critical step. The publisher's
+**Summarisation** (`analysers.js`) — the copyright-critical step. The publisher's
 full text lives in `np_raw_document.body`; this produces an **original** summary
 **and a `whatItMeans` layer**, and forbids quoting more than a short phrase or
 reproducing sentences (policy §3). Both are persisted onto the event: `summary`
@@ -113,7 +122,7 @@ architectural: neither is the body, and the event always links to the original.
 > Re-running understanding re-processes events whose `whatItMeans` is still
 > empty.
 
-**Entity resolution** (`entities.js`) — the moat (plan §3.2). The model proposes
+**Entity resolution** (`analysers.js` + the orchestrator's alias store) — the moat (plan §3.2). The model proposes
 entities; the **curated** `np_entity_alias` table decides. An unknown surface form
 creates a **new unapproved entity** (`approvedBy: null`), never an automatic
 merge. `GTBank` / `Guaranty Trust` / `GTCO` resolve to one node only via an

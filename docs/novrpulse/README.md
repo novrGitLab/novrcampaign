@@ -7,7 +7,7 @@ and are additive. These documents are the interfaces the build implements.
 
 | # | Artefact | Answers plan task |
 |---|----------|-------------------|
-| [00](00-source-register.md) | Source register (40 rows) + `has_rss` / `licence_status` / `paywall` | tasks 2, 3, 4 |
+| [00](00-source-register.md) | Source register (42 rows) + `has_rss` / `licence_status` / `paywall` | tasks 2, 3, 4 |
 | [01](01-policies.md) | Source, defamation & contempt, copyright, correction policies (+ data protection, confidence floors) | task 5 |
 | [02](02-event-schema.md) | Frozen `Event` schema and related tables | task 7 |
 | [03](03-function-templates.md) | The eight function projection templates + cadence + confidence floors | task 7 |
@@ -37,12 +37,12 @@ prompts), `ingest.js` + `understand/orchestrator.js` (wiring).
 | 1. Decide which tier funds Phase 1–2 | **open** — recommendation recorded in `04` §6 |
 | 2. Confirm DefenseCERT status, or drop from F3 | **open** — flagged in `00` §1 row 8; unverified |
 | 3. Add `has_rss`, `licence_status`, `paywall` | **done** — columns added |
-| 4. Probe all 40 sites for RSS | **done 2026-11-09** — 21 feeds confirmed; 9 WAF-blocked rows need a prod-IP re-probe (`00` §7) |
+| 4. Probe all 42 sites for RSS | **done 2026-11-09** — 21 feeds confirmed; 9 WAF-blocked rows need a prod-IP re-probe (`00` §7) |
 | 5. Write the four policies before first post | **done** — `01` |
 | 6. Run eight functions manually for two weeks | **open** — routine + golden set defined in `04` |
 | 7. Freeze the Event schema and eight templates | **done** — `02`, `03` |
 | 8. Stand up Postgres + pgvector + raw store | **partial** — store tables live on Supabase and persisting idempotently (`06`); pgvector not installed, added with the understanding layer |
-| 9. Build collectors for the 8 regulator/CERT sources | **partial** — 3 RSS collectors live (NCC, NITDA, NDPC), 7-day freshness gate; only NDPC currently fresh (NCC/NITDA feeds 2–3 months stale — `05` §4/§9); CBN/ngCERT/EFCC/NPF-NCCC need PDF/HTML/re-probe |
+| 9. Build collectors for the 8 regulator/CERT sources | **partial** — 3 regulator RSS collectors live (NCC, NITDA, NDPC) with a 7-day freshness gate; CBN/ngCERT/EFCC/NPF-NCCC still need PDF/HTML/re-probe. *(Updated 2026-11-17: beyond the original 3 regulators, the enabled set has since grown to 19 feed-backed sources across regulators, NG/AF tech and global security — see `00` §"Registry stats" and `sources.js`.)* |
 | 10. Pick house style + one-line pitch | **partial** — pitch recorded in `04` §4; style written during the run |
 
 ## Four changes to the v2 plan, folded in here

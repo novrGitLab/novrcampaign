@@ -25,6 +25,14 @@ export {
   MIN_ITEMS,
   DEFAULT_MAX_AGE_DAYS,
 } from './pipeline.js';
+export {
+  SOURCES,
+  allSources,
+  getSource,
+  sourcesByTier,
+  enabledCollectorSources,
+  registryStats,
+} from './sources.js';
 export { createLlm, validateSchema, extractJson, LlmError } from './llm/index.js';
 export { analyseItem } from './understand/index.js';
 export { storeItem, storeRun } from './store/index.js';

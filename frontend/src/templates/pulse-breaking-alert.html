@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<!--
+  Pulse Breaking Alert — NovrPulse (Cybernovr)
+  A single urgent item. Short, high-impact. F7 (breaking) content.
+
+  Placeholder token convention ({{namespace.field}}):
+    {{date}}                     Human-readable send date, e.g. "19 November 2026"
+    {{alertLabel}}               Strap above the headline, e.g. "BREAKING ALERT"
+    {{severity}}                 Optional severity tag, e.g. "Critical"
+    {{headline}}                 The urgent headline (big)
+    {{summary}}                  One-line summary
+    {{source}}                   Source attribution line, e.g. "Reuters · 19 Nov 2026"
+    {{sourceUrl}}                Link target for the source line
+    {{whatItMeans}}              "What it means" takeaway line
+    {{ctaUrl}}                   Link target for the CTA button
+    {{ctaText}}                  CTA label, e.g. "Read the full report"
+    {{unsubscribeUrl}}           Provided by Plunk — do not edit
+-->
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="x-apple-disable-message-reformatting"><style>
+@media only screen and (max-width:480px){
+  .m-stack{display:block!important;width:100%!important;}
+  .m-px{padding-left:16px!important;padding-right:16px!important;}
+  .m-h1{font-size:22px!important;}
+  .m-btn{display:block!important;width:100%!important;box-sizing:border-box;text-align:center;}
+}
+</style></head>
+<body style="margin:0;padding:0;background-color:#060913;font-family:Arial,Helvetica,sans-serif;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#060913;">
+<tr><td align="center" style="padding:24px 12px;">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background-color:#0C1222;border:1px solid #1E2A45;border-radius:16px;overflow:hidden;">
+<!-- Header -->
+<tr><td align="center" style="padding:32px 24px 8px;">
+<img src="https://www.cybernovr.com/logo-white.png" alt="CYBERNOVR" width="200" style="display:block;width:200px;max-width:60%;height:auto;border:0;">
+</td></tr>
+<tr><td align="center" style="padding:12px 24px 4px;">
+<span style="display:inline-block;background-color:#662F8E;color:#ffffff;font-size:12px;font-weight:bold;letter-spacing:2px;padding:8px 20px;border-radius:999px;">NOVRPULSE</span>
+</td></tr>
+<tr><td align="center" class="m-px" style="padding:16px 24px 4px;background-color:#C9CFEF;margin:0;">
+<p class="m-h1" style="margin:0;font-size:26px;font-weight:bold;color:#1A2140;">{{alertLabel}}</p>
+</td></tr>
+<tr><td align="center" style="padding:12px 24px 24px;border-bottom:1px solid #1E2A45;">
+<p style="margin:0;font-size:14px;color:#9AA3C7;">{{date}}</p>
+<p style="margin:6px 0 0;font-size:12px;color:#6B76A3;">{{severity}}</p>
+</td></tr>
+<!-- Alert -->
+<tr><td class="m-px" style="padding:24px;">
+<p style="margin:0 0 10px;font-size:22px;font-weight:bold;line-height:1.3;color:#ffffff;border-left:4px solid #662F8E;padding-left:12px;">{{headline}}</p>
+<p style="margin:0 0 6px;font-size:15px;line-height:1.6;color:#C4CBE4;">{{summary}}</p>
+<p style="margin:0;font-size:12px;color:#6B76A3;"><a href="{{sourceUrl}}" style="color:#8E9AD3;text-decoration:none;">{{source}}</a></p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:16px;background-color:#131B31;border-radius:12px;">
+<tr><td style="padding:16px 18px;">
+<p style="margin:0;font-size:13px;line-height:1.6;color:#C4CBE4;"><strong style="color:#ffffff;">What it means:</strong> {{whatItMeans}}</p>
+</td></tr>
+</table>
+</td></tr>
+<!-- CTA -->
+<tr><td class="m-px" style="padding:0 24px 24px;" align="center">
+<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" style="border-radius:10px;background-color:#662F8E;">
+<a class="m-btn" href="{{ctaUrl}}" style="display:inline-block;padding:14px 32px;font-size:15px;font-weight:bold;color:#ffffff;text-decoration:none;border-radius:10px;">{{ctaText}}</a>
+</td></tr></table>
+</td></tr>
+<!-- Footer -->
+<tr><td align="center" style="padding:20px 24px 28px;border-top:1px solid #1E2A45;">
+<p style="margin:0;font-size:13px;color:#9AA3C7;">© 2026 <span style="color:#8E9AD3;">NovrPulse</span> — powered by Cybernovr. All rights reserved.</p>
+<p style="margin:6px 0 0;font-size:12px;color:#6B76A3;">Stay vigilant. Stay resilient. Forward threats, not fears.</p>
+</td></tr>
+</table>
+<p style="margin:16px 0 0;font-size:11px;color:#4A5578;">If you wish to unsubscribe from our newsletter, click <a href="{{unsubscribeUrl}}" style="color:#8E9AD3;">here</a></p>
+</td></tr>
+</table>
+</body>
+</html>

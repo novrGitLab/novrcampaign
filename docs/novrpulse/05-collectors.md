@@ -1,6 +1,12 @@
 # NovrPulse — Phase 1 collectors (regulator/CERT)
 
-Phase 1 · task 9 · 2026-11-09
+Phase 1 · task 9 · 2026-11-09 · **doc reconciled 2026-11-18**
+
+> **Doc status (2026-11-18):** the collectors were later refactored into the
+> reusable `@novr/ingest` package (`packages/ingest`). File paths and test
+> references below were corrected to match the code as it stands today; the
+> original 2026-11-09 run figures are kept as historical evidence and labelled
+> where they are no longer current.
 
 The first collectors: the **confirmed-RSS regulator/CERT sources** from the
 2026-11-09 probe (register §7) — NCC, NITDA, NDPC. CBN (PDF), ngCERT, EFCC and
@@ -15,14 +21,15 @@ database, no projection.
 | File | Role |
 |------|------|
 | `backend/src/services/novrpulse/sources.js` | source registry (code mirror of the register rows the collectors use) |
-| `backend/src/services/novrpulse/httpFetch.js` | polite GET: UA, timeout, retry via `withRetry`, **5 MB response cap** |
-| `backend/src/services/novrpulse/feedParser.js` | pure RSS 2.0 / Atom parser → normalized items |
-| `backend/src/services/novrpulse/collectors/rssCollector.js` | fetch + parse + canary verdict for one source |
-| `backend/src/services/novrpulse/collectors/index.js` | run enabled collectors, bounded concurrency, health report |
+| `packages/ingest/src/fetch/index.js` | polite GET: UA, timeout, retry, **5 MB response cap** (was `novrpulse/httpFetch.js`) |
+| `packages/ingest/src/parse/rss.js` | pure RSS 2.0 / Atom parser → normalized items (was `novrpulse/feedParser.js`) |
+| `packages/ingest/src/pipeline.js` | run enabled collectors, bounded concurrency, canary verdict, health report |
+| `backend/src/services/novrpulse/ingest.js` | NovrPulse wiring: `runCollectors` / `collectAndStore` over the engine |
 | `backend/scripts/collect.mjs` | CLI (`npm -w backend run collect`) |
-| `backend/test/novrpulseFeedParser.test.mjs` | parser unit tests (no network) |
-| `backend/test/novrpulseCollector.test.mjs` | collector + canary + registry scope tests (no network) |
-| `backend/test/novrpulseHttpFetch.test.mjs` | response-size-cap tests (stubbed `fetch`, no network) |
+| `backend/scripts/collect-store.mjs` | CLI: collect → store (dry run by default, `--commit` to persist) |
+| `packages/ingest/test/parse.test.mjs` | parser unit tests (no network) |
+| `packages/ingest/test/fetch.test.mjs` | response-size-cap tests (stubbed `fetch`, no network) |
+| `backend/test/novrpulseCollector.test.mjs` | NovrPulse consumer wiring: enabled-set scope + canary/registry tests (no network) |
 
 ## 2. Running it
 
@@ -39,7 +46,8 @@ every enabled source is healthy *and fresh*.
 
 Exit code is `0` when every enabled source is healthy **and fresh**, `1`
 otherwise — so it can be used as a CI/cron health gate. A live run on 2026-11-09
-with the default 7-day window returned:
+with the default 7-day window returned (historical — this was the original
+3-regulator run, before the enabled set grew):
 
 ```
 OK    ndpc       ok               1 fresh /  10 seen  (newest 2026-11-06)
@@ -105,9 +113,12 @@ So the full contents are captured; the *summary* is deliberately left blank.
 | NPF-NCCC | probe **blocked** (429) | re-probe; HTML collector |
 
 Enabling any of these means editing the markdown register first (source policy
-§1) and flipping `enabled: true` in `sources.js`. The registry test in
-`novrpulseCollector.test.mjs` asserts the enabled set stays exactly
-`{ncc, ndpc, nitda}` so an accidental enable is caught.
+§1) and flipping `enabled: true` in `sources.js`. **Corrected 2026-11-18:** the
+enabled set is no longer just the three regulators. It is now **19 feed-backed
+sources** (regulators, NG/AF tech and global security), asserted explicitly in
+`backend/test/novrpulseCollector.test.mjs` (which pins the 19 ids) so an
+accidental enable is still caught. The original `{ncc, ndpc, nitda}` assertion
+described only the initial 2026-11-09 regulator subset.
 
 ## 7. What this does NOT do (and where it lands)
 

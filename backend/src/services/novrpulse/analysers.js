@@ -12,31 +12,12 @@ const EVENT_TYPES = ['advisory', 'incident', 'breach', 'arrest', 'fraud', 'polic
 const ENTITY_TYPES = ['org', 'sector', 'actor', 'malware', 'agency', 'person_role', 'location'];
 const ROLES = ['mentioned', 'affected', 'actor', 'responsible'];
 
-/**
- * Deterministic severity floor (phrase-based). Never lowers a model value; only
- * guarantees a minimum. Phrases, not bare words: an earlier version keyed on
- * `national` and inflated a PR story to severity 4.
- */
-const SEVERITY_PHRASES = [
-  { level: 4, phrases: ['critical national infrastructure', 'critical infrastructure', 'national outage', 'network-wide disruption', 'millions of users', 'ransomware attack', 'data breach', 'systems shut down'] },
-  { level: 3, phrases: ['vulnerability', 'exploited', 'malware', 'ransomware', 'arrested', 'charged', 'fraud', 'breach', 'hacked', 'attackers'] },
-  { level: 2, phrases: ['advisory', 'warning', 'alert', 'circular', 'guideline', 'consumer notice', 'regulatory notice'] },
-];
-
-export function severityFloor(text) {
-  if (!text) return 0;
-  const t = String(text).toLowerCase();
-  for (const { level, phrases } of SEVERITY_PHRASES) if (phrases.some((p) => t.includes(p))) return level;
-  return 1;
-}
-
 const TAG_SCHEMA = {
   type: 'object',
-  required: ['functions', 'event_type', 'severity', 'reasoning'],
+  required: ['functions', 'event_type', 'reasoning'],
   properties: {
     functions: { type: 'array', items: { type: 'number', enum: FUNCTION_IDS } },
     event_type: { type: 'string', enum: EVENT_TYPES },
-    severity: { type: 'number' },
     reasoning: { type: 'string' },
   },
 };
@@ -56,9 +37,9 @@ Assign one or more FUNCTION ids (integers 1-8):
 
 Rules: F1 requires an actual regulator notice (ordinary coverage of a regulator is F7).
 F3 is education; F4 is a campaign call to action; do not assign both. Do not assign F2.
-event_type is exactly one of: ${EVENT_TYPES.join(', ')}. severity is an integer 0-5.
+event_type is exactly one of: ${EVENT_TYPES.join(', ')}.
 reasoning: one short sentence.
-Return JSON: {"functions":[..],"event_type":"..","severity":N,"reasoning":".."}`;
+Return JSON: {"functions":[..],"event_type":"..","reasoning":".."}`;
 
 const SUMMARY_SCHEMA = {
   type: 'object',
@@ -131,10 +112,7 @@ export const novrPulseAnalysers = {
       schema: TAG_SCHEMA,
     });
     const functions = [...new Set(out.functions)].filter((f) => FUNCTION_IDS.includes(f) && f !== 2);
-    const floor = severityFloor(`${item.title} ${text}`);
-    const modelSeverity = Number(out.severity) || 0;
-    const severity = Math.max(floor, modelSeverity);
-    return { functions, eventType: out.event_type, severity, severitySource: severity > modelSeverity ? 'rule-floor' : 'model' };
+    return { functions, eventType: out.event_type };
   },
 
   async summarise(item, { llm }) {
@@ -164,4 +142,4 @@ export const novrPulseAnalysers = {
   },
 };
 
-export default { novrPulseAnalysers, severityFloor, normaliseAlias };
+export default { novrPulseAnalysers, normaliseAlias };

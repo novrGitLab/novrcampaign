@@ -213,3 +213,72 @@ export function useInsertFeedEntry(campaignId) {
     },
   });
 }
+
+// ── NovrPulse publish actions ────────────────────────────────────────────────
+
+function invalidatePulse(qc) {
+  qc.invalidateQueries({ queryKey: ['pulse-events'] });
+  qc.invalidateQueries({ queryKey: ['pulse-event'] });
+  qc.invalidateQueries({ queryKey: ['publish'] });
+}
+
+/** POST /api/publish/f7 — project eligible F7 events into draft items.
+ *  Dry-run unless `commit: true` (matches `projectSchema` in the controller). */
+export function useProjectF7() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body = {}) => api('/publish/f7', { method: 'POST', body }),
+    onSuccess: () => invalidatePulse(qc),
+  });
+}
+
+export function useApprovePublish() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id) => api(`/publish/${id}/approve`, { method: 'POST' }).then((r) => r.item),
+    onSuccess: () => invalidatePulse(qc),
+  });
+}
+
+export function useRejectPublish() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id) => api(`/publish/${id}/reject`, { method: 'POST' }).then((r) => r.item),
+    onSuccess: () => invalidatePulse(qc),
+  });
+}
+
+export function useEditPublish() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }) => api(`/publish/${id}`, { method: 'PATCH', body: { body } }).then((r) => r.item),
+    onSuccess: () => invalidatePulse(qc),
+  });
+}
+
+/** PATCH /api/pulse/events/:id/review — persist Accept/Dismiss ("new" | "accepted" | "dismissed").
+ *  Optimistically patches the cached list, then invalidates on settle so the
+ *  server's persisted value wins. Non-destructive: only the status is written. */
+export function useReviewPulseEvent() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, status }) =>
+      api(`/pulse/events/${id}/review`, { method: 'PATCH', body: { status } }).then((r) => r.event),
+    onMutate: async ({ id, status }) => {
+      await qc.cancelQueries({ queryKey: ['pulse-events'] });
+      const snapshots = qc.getQueriesData({ queryKey: ['pulse-events'] });
+      qc.setQueriesData({ queryKey: ['pulse-events'] }, (prev) => {
+        if (!prev?.items) return prev;
+        return {
+          ...prev,
+          items: prev.items.map((it) => (it.id === id ? { ...it, reviewStatus: status } : it)),
+        };
+      });
+      return { snapshots };
+    },
+    onError: (_err, _vars, ctx) => {
+      for (const [key, data] of ctx?.snapshots ?? []) qc.setQueryData(key, data);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ['pulse-events'] }),
+  });
+}

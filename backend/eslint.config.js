@@ -28,4 +28,11 @@ export default [
       'object-shorthand': 'error',
     },
   },
+  // Operator scripts print progress and one-time secrets to the terminal.
+  {
+    files: ['scripts/**/*.mjs'],
+    rules: {
+      'no-console': 'off',
+    },
+  },
 ];

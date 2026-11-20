@@ -30,5 +30,37 @@
     "type": "MARKETING",
     "file": "newsletter-october-week1.html",
     "description": "Complete October Week 1 issue (scholarship, NCC advisory, threat, tool, product, case study, events, career, glossary, quiz)."
+  },
+  {
+    "id": "newsletter-october-week2",
+    "name": "October 2026 Week 2 — full issue",
+    "subject": "Cybersecurity Weekly: banks vs threats, CEAP scholarships & CISA KEV",
+    "type": "MARKETING",
+    "file": "newsletter-october-week2.html",
+    "description": "Complete October Week 2 issue (financial-sector report, scholarship, CISA KEV, Dangerzone, SecuBreach, AiTM case study, events, career, glossary, quiz)."
+  },
+  {
+    "id": "pulse-daily-brief",
+    "name": "Pulse Daily Brief",
+    "subject": "NovrPulse Daily Brief: {{date}}",
+    "type": "MARKETING",
+    "file": "pulse-daily-brief.html",
+    "description": "Main daily send — ordered list of 3–5 story blocks (headline, source, summary, what it means). Reuses the dark intel-card design."
+  },
+  {
+    "id": "pulse-breaking-alert",
+    "name": "Pulse Breaking Alert",
+    "subject": "NovrPulse Breaking: {{headline}}",
+    "type": "MARKETING",
+    "file": "pulse-breaking-alert.html",
+    "description": "Single urgent item — big headline, one-line summary, source, what it means, and a Read the full report CTA."
+  },
+  {
+    "id": "pulse-analyst-deep-dive",
+    "name": "Pulse Analyst Deep-dive",
+    "subject": "NovrPulse Analyst Deep-dive: {{title}}",
+    "type": "MARKETING",
+    "file": "pulse-analyst-deep-dive.html",
+    "description": "Longer-form analyst take — lead analysis, supporting facts with citations, and Why this matters. INTERNAL-ONLY; do not send to public segments."
   }
 ]

@@ -9,6 +9,9 @@ import segmentRoutes from './segmentRoutes.js';
 import webhookRoutes from './webhookRoutes.js';
 import driveRoutes from './driveRoutes.js';
 import feedRoutes from './feedRoutes.js';
+import publishRoutes from './publishRoutes.js';
+import pulseRoutes from './pulseRoutes.js';
+import briefingRoutes from './briefingRoutes.js';
 
 const router = Router();
 
@@ -26,5 +29,8 @@ router.use('/campaigns', requireAuth, campaignRoutes);
 router.use('/templates', requireAuth, templateRoutes);
 router.use('/segments', requireAuth, segmentRoutes);
 router.use('/feed', requireAuth, feedRoutes);
+router.use('/publish', requireAuth, publishRoutes);
+router.use('/pulse', requireAuth, pulseRoutes);
+router.use('/briefings', requireAuth, briefingRoutes);
 
 export default router;

@@ -21,6 +21,7 @@
     "drive:cleanup": "node scripts/drive-cleanup.mjs",
     "collect": "node scripts/collect.mjs",
     "collect:store": "node scripts/collect-store.mjs",
+    "collect:pull": "node scripts/collect-pull.mjs",
     "sources": "node scripts/sources.mjs",
     "understand": "node scripts/understand.mjs",
     "test": "node --test",

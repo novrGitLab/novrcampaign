@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "dev:drive": "vite --config vite.drive.config.js",
+    "build": "vite build && vite build --config vite.drive.config.js",
     "preview": "vite preview",
     "lint": "eslint . --ext .js,.jsx --max-warnings 0"
   },

@@ -90,3 +90,99 @@ describe('fetch: size cap and content-length', () => {
     assert.equal(res.body, payload);
   });
 });
+
+// Build a stub response matching the shape fetchText consumes:
+// `{ ok, status, headers: { get }, body | text }`.
+function redirectResponse(status, location) {
+  return {
+    ok: false,
+    status,
+    headers: { get: (k) => (k.toLowerCase() === 'location' ? location : null) },
+    text: async () => '',
+  };
+}
+
+function okResponse(payload) {
+  return {
+    ok: true,
+    status: 200,
+    headers: { get: () => null },
+    text: async () => payload,
+  };
+}
+
+describe('fetch: redirect SSRF guard', () => {
+  test('rejects a redirect to cloud metadata and never fetches the target', async () => {
+    const calls = [];
+    globalThis.fetch = async (u, init) => {
+      calls.push({ url: String(u), redirect: init.redirect });
+      if (String(u) === 'https://8.8.8.8/feed') {
+        return redirectResponse(302, 'http://169.254.169.254/latest/meta-data/');
+      }
+      throw new Error(`unexpected fetch of ${u}`);
+    };
+
+    await assert.rejects(
+      () => fetchText('https://8.8.8.8/feed', { maxAttempts: 1 }),
+      (e) => e instanceof FetchError && e.code === 'EBADIP',
+    );
+    // The metadata URL must never have been requested.
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].url, 'https://8.8.8.8/feed');
+    assert.equal(calls[0].redirect, 'manual');
+  });
+
+  test('follows a legitimate redirect chain to a public host', async () => {
+    const payload = 'feed-body';
+    globalThis.fetch = async (u) => {
+      const url = String(u);
+      if (url === 'https://8.8.8.8/feed') {
+        return redirectResponse(302, 'https://1.1.1.1/real-feed');
+      }
+      if (url === 'https://1.1.1.1/real-feed') return okResponse(payload);
+      throw new Error(`unexpected fetch of ${url}`);
+    };
+
+    const res = await fetchText('https://8.8.8.8/feed', { maxAttempts: 1 });
+    assert.equal(res.status, 200);
+    assert.equal(res.body, payload);
+  });
+
+  test('rejects a redirect chain that exceeds the hop cap', async () => {
+    let n = 0;
+    globalThis.fetch = async () => {
+      n += 1;
+      // Always redirect to another public literal IP, ad infinitum.
+      return redirectResponse(302, `https://8.8.8.${n + 1}/hop`);
+    };
+
+    await assert.rejects(
+      () => fetchText('https://8.8.8.8/feed', { maxAttempts: 1, maxRedirects: 3 }),
+      (e) => e instanceof FetchError && e.code === 'ETOOMANYREDIRECTS',
+    );
+    // 1 initial + 3 followed hops = 4 requests before the cap is enforced.
+    assert.equal(n, 4);
+  });
+
+  test('rejects a redirect to a blocked (non-http) scheme', async () => {
+    globalThis.fetch = async () => redirectResponse(302, 'file:///etc/passwd');
+    await assert.rejects(
+      () => fetchText('https://8.8.8.8/feed', { maxAttempts: 1 }),
+      (e) => e instanceof FetchError && e.code === 'EBADSCHEME',
+    );
+  });
+
+  test('does not re-validate redirect targets when allowPrivate is set', async () => {
+    const payload = 'internal';
+    globalThis.fetch = async (u) => {
+      if (String(u) === 'https://8.8.8.8/feed') {
+        return redirectResponse(302, 'http://10.0.0.5/internal-feed');
+      }
+      if (String(u) === 'http://10.0.0.5/internal-feed') return okResponse(payload);
+      throw new Error(`unexpected fetch of ${u}`);
+    };
+
+    const res = await fetchText('https://8.8.8.8/feed', { maxAttempts: 1, allowPrivate: true });
+    assert.equal(res.body, payload);
+  });
+});

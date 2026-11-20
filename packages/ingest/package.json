@@ -9,6 +9,8 @@
     ".": "./src/index.js",
     "./fetch": "./src/fetch/index.js",
     "./parse": "./src/parse/index.js",
+    "./pipeline": "./src/pipeline.js",
+    "./sources": "./src/sources.js",
     "./understand": "./src/understand/index.js",
     "./store": "./src/store/index.js"
   },
@@ -23,7 +25,7 @@
     "globals": "^15.14.0"
   },
   "scripts": {
-    "test": "node --test",
+    "test": "node --experimental-test-module-mocks --test",
     "lint": "eslint . --ext .js --max-warnings 0"
   }
 }

@@ -98,8 +98,9 @@ export async function collectSource(source, opts = {}) {
 
   if (!source.enabled || !source.feedUrl) return { ...base, ok: false, status: 'disabled' };
 
-  const parser = registry[source.type];
-  if (!parser) return { ...base, ok: false, status: 'no_parser', error: `no parser for type ${source.type}` };
+  const parserKey = source.parser ?? source.type;
+  const parser = registry[parserKey];
+  if (!parser) return { ...base, ok: false, status: 'no_parser', error: `no parser for type ${parserKey}` };
 
   let body;
   try {

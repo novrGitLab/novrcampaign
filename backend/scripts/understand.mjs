@@ -43,7 +43,7 @@ for (const r of result.results) {
   if (r.error) console.log(`FAIL  ${r.eventId}  ${r.error}`);
   else {
     console.log(
-      `OK    ${r.eventId}  F[${r.functions.join(',')}] ${r.eventType} sev=${r.severity} ` +
+      `OK    ${r.eventId}  F[${r.functions.join(',')}] ${r.eventType} ` +
         `summary=${r.summaryLength}c means=${r.whatItMeansLength}c entities=${r.entitiesLinked}(+${r.entitiesProposed} proposed)`,
     );
   }
