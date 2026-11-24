@@ -1,7 +1,11 @@
 import Joi from 'joi';
+import jwt from 'jsonwebtoken';
 import { prisma } from '../utils/prisma.js';
-import { BadRequest, NotFound } from '../utils/AppError.js';
+import { BadRequest, NotFound, Unauthorized } from '../utils/AppError.js';
 import { deriveStatus } from './publishController.js';
+import { runCollection } from '../services/novrpulse/ingest.js';
+import { timingSafeEqualString } from '../utils/timingSafe.js';
+import { config } from '../config/env.js';
 
 /**
  * NovrPulse internal feed read API.
@@ -65,6 +69,13 @@ const listSchema = Joi.object({
 // Body schema for the review endpoint. Values mirror the `reviewStatus` column.
 const reviewSchema = Joi.object({
   status: Joi.string().valid(...REVIEW_STATUSES).required(),
+});
+
+// Body schema for the collection-run endpoint. All fields optional: an empty
+// body triggers a run over the default window (3 days). `maxAgeDays` bounds how
+// far back the collector looks; it is validated to a sane positive range.
+const collectSchema = Joi.object({
+  maxAgeDays: Joi.number().integer().min(1).max(30).default(3),
 });
 
 /**
@@ -402,4 +413,79 @@ export async function reviewPulseEvent(req, res) {
   });
 }
 
-export { listSchema, reviewSchema, serializeCard, excerptOf, EXCERPT_LENGTH };
+export function isPulseCollectAuthorized(req) {
+  // Rule 1 — the cron secret. Vercel sends `Authorization: Bearer <secret>`.
+  // Fail closed when the secret is unset (an empty secret can never match a
+  // non-empty bearer token because the length check rejects it). The compare is
+  // constant-time and the secret is NEVER logged or echoed.
+  const secret = config.novrpulse.collection.cronSecret;
+  const auth = req.get?.('authorization') ?? req.headers?.authorization ?? '';
+  const provided = typeof auth === 'string' && auth.startsWith('Bearer ') ? auth.slice(7) : '';
+  if (secret && provided && timingSafeEqualString(provided, secret)) return true;
+
+  // Rule 2 — an authenticated ADMIN session, so a human can trigger it from a
+  // browser/curl without the secret. Only an already-valid session counts; the
+  // role is read server-side and never trusted from the request.
+  return req.user?.role === 'ADMIN';
+}
+
+/**
+ * Resolve the caller's session (if any) WITHOUT rejecting. This runs on the
+ * collection route, which sits outside `requireAuth` (a cron has no session),
+ * so we opportunistically attach `req.user` for the ADMIN-session path. A bad
+ * or absent token is simply ignored here — the guard decides authorization.
+ */
+export async function attachOptionalUser(req) {
+  const header = req.headers?.authorization;
+  if (!header?.startsWith('Bearer ')) return;
+  const token = header.slice('Bearer '.length).trim();
+  try {
+    const payload = jwt.verify(token, config.jwt.secret, { algorithms: ['HS256'] });
+    const user = await prisma.user.findUnique({
+      where: { id: payload.sub },
+      select: { id: true, email: true, name: true, role: true },
+    });
+    if (user) req.user = user;
+  } catch {
+    // A malformed/expired token is not an error here: the Bearer token may be
+    // the cron secret instead, and the guard below is the single decision point.
+  }
+}
+
+/**
+ * POST /api/pulse/collect/run — trigger one NovrPulse collection run.
+ *
+ * Auth (fail-closed, exactly two accepted callers):
+ *   - `Authorization: Bearer <NP_COLLECT_CRON_SECRET>` (constant-time compare);
+ *   - an authenticated ADMIN session (Joi-guarded role check server-side).
+ * No session and no/incorrect secret → 401. Query params are never trusted.
+ *
+ * Delegates to `runCollection`, the cutover selector: with
+ * `NP_COLLECTION_ENABLED` off it runs the in-app collectors, on it pulls from
+ * the standalone collector over HMAC v1 — exactly one path per run. The endpoint
+ * starts a run and returns its summary; there is no silent fallback.
+ */
+export async function runPulseCollection(req, res) {
+  await attachOptionalUser(req);
+
+  if (!isPulseCollectAuthorized(req)) {
+    throw Unauthorized('Unauthorized');
+  }
+
+  let body;
+  try {
+    body = await collectSchema.validateAsync(req.body ?? {}, { convert: true, stripUnknown: true });
+  } catch (err) {
+    if (err.isJoi) throw BadRequest(err.message);
+    throw err;
+  }
+
+  // `req._runCollection` is an injectable seam for tests ONLY; production never
+  // sets it, so the real cutover selector runs. (Mirrors the `_paths` seam on
+  // `runCollection`.)
+  const runner = req._runCollection ?? runCollection;
+  const summary = await runner({ maxAgeDays: body.maxAgeDays });
+  return res.json(summary);
+}
+
+export { listSchema, reviewSchema, collectSchema, serializeCard, excerptOf, EXCERPT_LENGTH };

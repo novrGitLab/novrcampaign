@@ -316,6 +316,15 @@ model PublishItem {
   contentType     String
   body            String
   templateVersion String
+  // Per-item pillar-specific fields (owner spec 2026-11-24). Both are nullable
+  // and additive; only the APPROVE-time gate below requires them, so an existing
+  // item without them is still draftable — it just cannot be approved.
+  //   * `regulatoryImpact` — pillar 01: which laws/regulations the item affects
+  //     and what that means for the reader's business. Required to approve 01.
+  //   * `eventDate` — pillar 05: the event's date/time. Required to approve 05,
+  //     and must be at least 7 days ahead (the notice gate).
+  regulatoryImpact String?
+  eventDate        DateTime?
   // Nullable: a projected row is a DRAFT. `editorId`/`approvedAt` are written
   // only by the human approve/withdraw endpoints, never by automation (§2.7).
   editorId        String?

@@ -1,6 +1,6 @@
 import Joi from 'joi';
 import { prisma } from '../utils/prisma.js';
-import { BadRequest, Conflict, Forbidden, NotFound } from '../utils/AppError.js';
+import { AppError, BadRequest, Conflict, Forbidden, NotFound } from '../utils/AppError.js';
 import { projectF7, DEFAULT_TIER } from '../services/novrpulse/project/projectF7.js';
 import { assertPublicArrestNameless, assertLicence, GateError } from '../services/novrpulse/project/gates.js';
 
@@ -71,7 +71,12 @@ const projectSchema = Joi.object({
 });
 
 const editSchema = Joi.object({
-  body: Joi.string().min(1).required(),
+  body: Joi.string().min(1),
+  // Pillar 01: the regulatory-impact field MUST be saved before approval, so it
+  // is editable here (separate column, never composed into `body`).
+  regulatoryImpact: Joi.string().trim().max(4000).allow('', null),
+  // Pillar 05: the event date/time, saved before approval. ISO date or datetime.
+  eventDate: Joi.date().iso().allow(null),
 });
 
 // The Editorial Canvas template tag for an item seeded FROM an inbox event.
@@ -160,6 +165,8 @@ function serializeItem(item) {
     contentType: item.contentType,
     tier: item.tier,
     body: item.body,
+    regulatoryImpact: item.regulatoryImpact ?? null,
+    eventDate: item.eventDate instanceof Date ? item.eventDate.toISOString() : item.eventDate ?? null,
     templateVersion: item.templateVersion,
     editorId: item.editorId,
     approvedAt: item.approvedAt instanceof Date ? item.approvedAt.toISOString() : item.approvedAt,
@@ -377,6 +384,68 @@ export async function createItemFromEvent(req, res) {
 }
 
 /**
+ * The 7-day notice window for pillar 05 events (owner spec 2026-11-24).
+ * "Events are published 7 or more days ahead" — an event whose date is earlier
+ * than now + 7 days may not be approved.
+ */
+const EVENT_NOTICE_DAYS = 7;
+
+/**
+ * 422 with a machine-readable `code`. `AppError.Unprocessable` carries a status
+ * but no code, and the shared errorHandler only emits `error.code` when the
+ * thrown error has one, so build the AppError directly.
+ *
+ * @param {string} code
+ * @param {string} message
+ * @param {object} [details]
+ * @returns {AppError}
+ */
+function unprocessable(code, message, details) {
+  return new AppError(422, message, details, code);
+}
+
+/**
+ * Per-pillar approval requirements (owner spec 2026-11-24). Called at the TOP of
+ * `approvePublishItem`, BEFORE `approvedAt` is written, so a failing item is
+ * never signed off. Deterministic and clock-only (no I/O). Function-specific:
+ *
+ *   * 01 Regulatory Impact — `regulatoryImpact` must be non-empty (trimmed).
+ *   * 05 Events — `eventDate` must exist and be at least 7 days ahead.
+ *   * any other pillar — no new requirement (pass-through).
+ *
+ * Existing items authored before these fields existed are still DRAFTABLE; this
+ * gate only blocks APPROVAL, so old 01/05 drafts are not broken, they just need
+ * the missing field completed before sign-off.
+ *
+ * @param {object} item  A stored PublishItem row.
+ * @throws {AppError} 422 REGULATORY_IMPACT_REQUIRED / EVENT_DATE_REQUIRED /
+ *                    EVENT_NOTICE_TOO_SHORT.
+ */
+export function assertSectionRequirements(item) {
+  if (item.functionId === 1) {
+    const value = String(item.regulatoryImpact ?? '').trim();
+    if (!value) {
+      throw unprocessable(
+        'REGULATORY_IMPACT_REQUIRED',
+        'Complete the regulatory-impact field before approving — it must state which laws or regulations this affects and what that means for the reader\'s business.',
+      );
+    }
+    return;
+  }
+
+  if (item.functionId === 5) {
+    if (!item.eventDate) {
+      throw unprocessable('EVENT_DATE_REQUIRED', 'Complete the event date before approving.');
+    }
+    const eventDate = item.eventDate instanceof Date ? item.eventDate : new Date(item.eventDate);
+    const earliest = new Date(Date.now() + EVENT_NOTICE_DAYS * 24 * 60 * 60 * 1000);
+    if (eventDate.getTime() < earliest.getTime()) {
+      throw unprocessable('EVENT_NOTICE_TOO_SHORT', 'Events must be at least 7 days ahead.');
+    }
+  }
+}
+
+/**
  * POST /api/publish/:id/approve — human sign-off.
  * Sets `approvedAt` and `editorId` from the SESSION ONLY (`req.user.id`).
  * The projection job never publishes; this endpoint (or a later publish step)
@@ -388,6 +457,10 @@ export async function approvePublishItem(req, res) {
   const item = await prisma.publishItem.findUnique({ where: { id: req.params.id } });
   if (!item) throw NotFound('Publish item not found');
   if (item.withdrawnAt) throw BadRequest('Cannot approve a withdrawn item');
+
+  // Per-pillar requirements BEFORE any write (owner spec 2026-11-24): a 01 item
+  // needs its regulatory-impact field, a 05 event needs a date ≥ 7 days ahead.
+  assertSectionRequirements(item);
 
   const updated = await prisma.publishItem.update({
     where: { id: item.id },
@@ -439,16 +512,20 @@ export async function rejectPublishItem(req, res) {
 }
 
 /**
- * PATCH /api/publish/:id — edit the body of an unpublished item.
- * Updates `body` ONLY: `approvedAt` and `editorId` are never touched (a body
- * edit is not a sign-off). A PUBLISHED item may not be edited in place —
- * publications are immutable and corrected through the corrections path — so
- * this refuses with 409. Draft/approved/rejected items are editable.
+ * PATCH /api/publish/:id — edit the body and/or the per-pillar fields of an
+ * unpublished item.
+ *
+ * Updates `body` and, when supplied, `regulatoryImpact` (01) and `eventDate`
+ * (05). Only PROVIDED fields are written (an omitted field is left untouched).
+ * `approvedAt` and `editorId` are never touched (an edit is not a sign-off). A
+ * PUBLISHED item may not be edited in place — publications are immutable and
+ * corrected through the corrections path — so this refuses with 409. Draft/
+ * approved/rejected items are editable.
  */
 export async function editPublishItem(req, res) {
   requireEditorRole(req);
 
-  const { body } = await editSchema.validateAsync(req.body ?? {}, { stripUnknown: true });
+  const { body, regulatoryImpact, eventDate } = await validate(editSchema, req.body ?? {});
 
   const item = await prisma.publishItem.findUnique({ where: { id: req.params.id } });
   if (!item) throw NotFound('Publish item not found');
@@ -456,9 +533,20 @@ export async function editPublishItem(req, res) {
     throw Conflict('Cannot edit a published item — use the corrections path');
   }
 
+  // Persist ONLY what was provided; an explicit null clears the field, an
+  // omitted field is left as-is.
+  const data = {};
+  if (body !== undefined) data.body = body;
+  if (regulatoryImpact !== undefined) data.regulatoryImpact = regulatoryImpact === '' ? null : regulatoryImpact;
+  if (eventDate !== undefined) data.eventDate = eventDate ?? null;
+
+  if (Object.keys(data).length === 0) {
+    throw BadRequest('Provide at least one field to update (body, regulatoryImpact, or eventDate)');
+  }
+
   const updated = await prisma.publishItem.update({
     where: { id: item.id },
-    data: { body },
+    data,
   });
 
   return res.json({ item: serializeItem(updated) });

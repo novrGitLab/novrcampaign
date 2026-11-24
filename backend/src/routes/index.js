@@ -11,6 +11,7 @@ import driveRoutes from './driveRoutes.js';
 import feedRoutes from './feedRoutes.js';
 import publishRoutes from './publishRoutes.js';
 import pulseRoutes from './pulseRoutes.js';
+import pulseCollectRoutes from './pulseCollectRoutes.js';
 import briefingRoutes from './briefingRoutes.js';
 import aiJudgementRoutes from './aiJudgementRoutes.js';
 import dedupRoutes from './dedupRoutes.js';
@@ -24,6 +25,11 @@ router.use('/auth', authRoutes);
 
 // Encrypted file drive — password-only, separate session, DRIVE_ENABLED-gated.
 router.use('/drive', driveRoutes);
+
+// Pulse collection trigger — cron/ADMIN-guarded INSIDE the controller, so it
+// must be mounted BEFORE the `requireAuth`-wrapped `/pulse` mount below (a
+// Vercel cron has no session). Its own guard is the single decision point.
+router.use('/pulse/collect', pulseCollectRoutes);
 
 // Authenticated dashboard endpoints (these carry the Plunk secret server-side)
 router.use('/contacts', requireAuth, contactRoutes);

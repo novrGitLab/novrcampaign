@@ -51,6 +51,7 @@ export async function api(path, { method = 'GET', body, query, formData, signal 
 
     const error = new Error(message);
     error.status = res.status;
+    error.code = data?.error?.code;
     error.details = data?.error?.details;
     error.isOperational = Boolean(data?.error);
 

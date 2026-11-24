@@ -20,6 +20,7 @@ import net from 'node:net';
 const DEFAULT_TIMEOUT_MS = 15_000;
 const DEFAULT_MAX_BYTES = 5 * 1024 * 1024;
 const DEFAULT_MAX_ATTEMPTS = 3;
+const DEFAULT_MAX_REDIRECTS = 3;
 const DEFAULT_UA =
   'NovrPulse-Ingest/0.1 (+https://novrpulse.example; contact: operator) Node';
 
@@ -124,6 +125,7 @@ async function readCapped(res, maxBytes, url) {
  * @param {number} [opts.timeoutMs]
  * @param {number} [opts.maxBytes]
  * @param {number} [opts.maxAttempts]
+ * @param {number} [opts.maxRedirects]
  * @param {string} [opts.userAgent]
  * @param {object}  [opts.logger]     injected logger (optional)
  * @param {boolean} [opts.allowPrivate] escape hatch for trusted internal use (default false)
@@ -134,6 +136,7 @@ export async function fetchText(url, opts = {}) {
     timeoutMs = DEFAULT_TIMEOUT_MS,
     maxBytes = DEFAULT_MAX_BYTES,
     maxAttempts = DEFAULT_MAX_ATTEMPTS,
+    maxRedirects = DEFAULT_MAX_REDIRECTS,
     userAgent = DEFAULT_UA,
     logger,
     allowPrivate = false,
@@ -147,24 +150,44 @@ export async function fetchText(url, opts = {}) {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), timeoutMs);
       try {
-        const res = await fetch(url, {
-          method: 'GET',
-          redirect: 'follow',
-          signal: controller.signal,
-          headers: {
-            'User-Agent': userAgent,
-            Accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml, application/json, */*',
-            'Accept-Language': 'en',
-          },
-        });
-        if (!res.ok) throw new FetchError(`GET ${url} → ${res.status}`, res.status);
+        // Follow redirects manually, re-validating EVERY hop. `redirect: 'follow'`
+        // would let a public host 302 us to an internal address (e.g. cloud
+        // metadata) that the one-time pre-flight check never saw.
+        let current = url;
+        for (let hop = 0; ; hop += 1) {
+          const res = await fetch(current, {
+            method: 'GET',
+            redirect: 'manual',
+            signal: controller.signal,
+            headers: {
+              'User-Agent': userAgent,
+              Accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml, application/json, */*',
+              'Accept-Language': 'en',
+            },
+          });
 
-        const declared = Number(res.headers.get('content-length') || 0);
-        if (declared > maxBytes) {
-          throw new FetchError(`Body too large (${declared}B) for ${url}`, 413, 'ETOOBIG');
+          const location = res.status >= 300 && res.status < 400 ? res.headers.get('location') : null;
+          if (location) {
+            if (hop >= maxRedirects) {
+              throw new FetchError(`GET ${url} exceeded ${maxRedirects} redirects`, 400, 'ETOOMANYREDIRECTS');
+            }
+            // Resolve against the current URL, then re-run the SSRF guard before
+            // following, so no hop can point at a private/metadata address.
+            const nextUrl = new URL(location, current);
+            if (!allowPrivate) await assertFetchable(nextUrl);
+            current = nextUrl.toString();
+            continue;
+          }
+
+          if (!res.ok) throw new FetchError(`GET ${url} → ${res.status}`, res.status);
+
+          const declared = Number(res.headers.get('content-length') || 0);
+          if (declared > maxBytes) {
+            throw new FetchError(`Body too large (${declared}B) for ${url}`, 413, 'ETOOBIG');
+          }
+          const body = await readCapped(res, maxBytes, current);
+          return { status: res.status, headers: res.headers, body };
         }
-        const body = await readCapped(res, maxBytes, url);
-        return { status: res.status, headers: res.headers, body };
       } catch (err) {
         if (err.name === 'AbortError') {
           throw new FetchError(`GET ${url} timed out after ${timeoutMs}ms`, 408, 'ETIMEDOUT');

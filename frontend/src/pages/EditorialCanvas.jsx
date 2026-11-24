@@ -10,6 +10,7 @@ import { PILLARS, pillarLabel } from '../lib/pillars';
 import {
   blankSlotValues, composeBody, parseSeedBody, scaffoldFor, scaffoldKindLabel,
   sectionNumberedLabel, sectionNumber, isPillarEnabled,
+  readBoundValues, slotValuesFromItem,
 } from '../lib/canvasScaffolds';
 import { usePulseEvent, usePublishItemsForEvent } from '../hooks/queries';
 import {
@@ -71,6 +72,24 @@ function relativeTime(iso) {
   }
 }
 
+/**
+ * Map an approval gate code to the scaffold slot/field index it concerns, so a
+ * failed approve can highlight the exact input. Returns null when the code is
+ * not a field-bound gate (the caller falls back to the generic error banner).
+ */
+const GATE_FIELD = {
+  REGULATORY_IMPACT_REQUIRED: 'regulatoryImpact',
+  EVENT_DATE_REQUIRED: 'eventDate',
+  EVENT_NOTICE_TOO_SHORT: 'eventDate',
+};
+function gateFieldIndex(functionId, code) {
+  const column = GATE_FIELD[code];
+  if (!column) return null;
+  const def = scaffoldFor(functionId);
+  const idx = Object.entries(def?.bindings ?? {}).find(([, c]) => c === column)?.[0];
+  return idx === undefined ? null : Number(idx);
+}
+
 function PublishStatusBadge({ status }) {
   if (!status) return null;
   return (
@@ -121,15 +140,22 @@ function PillarChips({ value, onSelect, disabled, eligibleFunctions }) {
 }
 
 // ── The scaffold (prose slot outline or field form) ───────────────────────────
-function SlotOutline({ functionId, values, onChange, readOnly = false }) {
+function SlotOutline({ functionId, values, onChange, readOnly = false, fieldErrorIndex = null }) {
   const def = scaffoldFor(functionId);
   if (def?.kind !== 'prose') return null;
   return (
     <div className="space-y-4">
-      {def.slots.map((label, i) => (
+      {def.slots.map((label, i) => {
+        const errored = fieldErrorIndex === i;
+        return (
         <div
           key={label}
-          className="rounded-[10px] border border-border border-l-[3px] border-l-[color:var(--pulse-accent-dim)] bg-secondary/50 px-4 py-3.5 transition-colors hover:border-[color:var(--pulse-border-hi)]"
+          className={
+            'rounded-[10px] border border-border border-l-[3px] px-4 py-3.5 transition-colors ' +
+            (errored
+              ? 'border-l-destructive bg-destructive/10'
+              : 'border-l-[color:var(--pulse-accent-dim)] bg-secondary/50 hover:border-[color:var(--pulse-border-hi)]')
+          }
         >
           <div className="mb-2 flex items-center gap-2 text-[10.5px] font-bold uppercase tracking-[0.13em] text-primary">
             <span className="font-mono text-[10px] text-muted-foreground">
@@ -144,23 +170,31 @@ function SlotOutline({ functionId, values, onChange, readOnly = false }) {
             rows={2}
             placeholder={readOnly ? '' : `Write the ${label.toLowerCase()} here…`}
             aria-label={label}
+            aria-invalid={errored || undefined}
             className="w-full resize-y bg-transparent font-display text-[16.5px] leading-[1.7] text-foreground placeholder:italic placeholder:text-muted-foreground focus-visible:outline-none"
           />
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
 
-function FieldForm({ functionId, values, onChange, readOnly = false }) {
+function FieldForm({ functionId, values, onChange, readOnly = false, fieldErrorIndex = null }) {
   const def = scaffoldFor(functionId);
   if (def?.kind !== 'fields') return null;
   return (
     <div className="overflow-hidden rounded-[10px] border border-border">
-      {def.fields.map((field, i) => (
+      {def.fields.map((field, i) => {
+        const isBoundDate = field.bound === 'eventDate';
+        const errored = fieldErrorIndex === i;
+        return (
         <div
           key={field.label}
-          className="grid grid-cols-1 gap-3 border-b border-border bg-secondary/40 px-4 py-3 last:border-b-0 sm:grid-cols-[190px_1fr] sm:items-start sm:py-3.5"
+          className={
+            'grid grid-cols-1 gap-3 border-b border-border px-4 py-3 last:border-b-0 sm:grid-cols-[190px_1fr] sm:items-start sm:py-3.5 ' +
+            (errored ? 'bg-destructive/10' : 'bg-secondary/40')
+          }
         >
           <label
             htmlFor={`field-${i}`}
@@ -168,7 +202,17 @@ function FieldForm({ functionId, values, onChange, readOnly = false }) {
           >
             {field.label}
           </label>
-          {field.multiline ? (
+          {isBoundDate ? (
+            <input
+              id={`field-${i}`}
+              type="datetime-local"
+              value={values[i] ?? ''}
+              readOnly={readOnly}
+              onChange={(e) => onChange(i, e.target.value)}
+              aria-invalid={errored || undefined}
+              className={'input' + (errored ? ' border-destructive' : '')}
+            />
+          ) : field.multiline ? (
             <textarea
               id={`field-${i}`}
               value={values[i] ?? ''}
@@ -189,18 +233,19 @@ function FieldForm({ functionId, values, onChange, readOnly = false }) {
             />
           )}
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
 
-function Scaffold({ functionId, values, onChange, readOnly = false }) {
+function Scaffold({ functionId, values, onChange, readOnly = false, fieldErrorIndex = null }) {
   const def = scaffoldFor(functionId);
   if (!def) return null;
   return def.kind === 'fields' ? (
-    <FieldForm functionId={functionId} values={values} onChange={onChange} readOnly={readOnly} />
+    <FieldForm functionId={functionId} values={values} onChange={onChange} readOnly={readOnly} fieldErrorIndex={fieldErrorIndex} />
   ) : (
-    <SlotOutline functionId={functionId} values={values} onChange={onChange} readOnly={readOnly} />
+    <SlotOutline functionId={functionId} values={values} onChange={onChange} readOnly={readOnly} fieldErrorIndex={fieldErrorIndex} />
   );
 }
 
@@ -300,6 +345,9 @@ export default function EditorialCanvas() {
   const [activeItem, setActiveItem] = useState(null);
   const [actionError, setActionError] = useState(null);
   const [notice, setNotice] = useState(null);
+  // The field a failed APPROVAL points at, so the bound slot/field is highlighted
+  // inline (e.g. REGULATORY_IMPACT_REQUIRED → the 01 regulatory-impact slot).
+  const [fieldGate, setFieldGate] = useState(null); // { index, message } | null
 
   // Editor state for the active draft: an empty headline and the scaffold values.
   const [headline, setHeadline] = useState('');
@@ -325,9 +373,14 @@ export default function EditorialCanvas() {
     setActiveItem(item);
     setActionError(null);
     setNotice(null);
+    setFieldGate(null);
     const parsed = parseSeedBody(item.body ?? '');
     seeded.current = parsed;
-    const blanks = blankSlotValues(item.functionId);
+    // Hydrate the scaffold values, seeding any dedicated-column slots (01
+    // regulatory impact, 05 event date) from the item's own fields.
+    const blanks = slotValuesFromItem(item);
+    // The seeded paragraph seeds the first non-bound slot (for 01, slot 0 is
+    // 'Regulator' — a normal prose slot — so this still lands on index 0).
     if (blanks.length > 0 && parsed.paragraph) blanks[0] = parsed.paragraph;
     setHeadline('');
     setValues(blanks);
@@ -385,17 +438,36 @@ export default function EditorialCanvas() {
     });
 
   const onSave = async () => {
-    const saved = await runAction(edit.mutateAsync, { id: activeItem.id, body: composedBody() });
+    // Compose the text body (bound fields excluded) and send the dedicated
+    // columns alongside, so the item round-trips its 01/05 fields.
+    const bound = readBoundValues(activeItem.functionId, values);
+    const saved = await runAction(edit.mutateAsync, { id: activeItem.id, body: composedBody(), ...bound });
     if (saved) {
+      setActiveItem((prev) => (prev ? { ...prev, ...saved } : prev));
       seeded.current = { headline: parseSeedBody(saved.body).headline, paragraph: seeded.current.paragraph };
       setNotice('Draft saved.');
     }
   };
-  const onApprove = () => runAction(approve.mutateAsync, activeItem.id);
+
+  // Map an approval gate code to the bound slot/field it concerns, so the writer
+  // sees the message next to the offending input (and it is highlighted).
+  const onApprove = async () => {
+    setFieldGate(null);
+    setActionError(null);
+    try {
+      const saved = await approve.mutateAsync(activeItem.id);
+      if (saved) setActiveItem((prev) => (prev ? { ...prev, ...saved } : prev));
+    } catch (err) {
+      const index = gateFieldIndex(activeItem.functionId, err.code);
+      if (index !== null) setFieldGate({ index, message: err.message });
+      else setActionError(err.message);
+    }
+  };
   const onReject = () => runAction(reject.mutateAsync, activeItem.id);
 
   const onSelectPillar = (functionId) => {
     setSelectedPillar(functionId);
+    setFieldGate(null);
     // In the write state, switching pillar re-shapes the (unsaved) document.
     if (activeItem) {
       const blanks = blankSlotValues(functionId);
@@ -514,9 +586,22 @@ export default function EditorialCanvas() {
             <Scaffold
               functionId={editorPillar ?? PILLARS[0].functionId}
               values={values}
-              onChange={(i, v) => setValues((prev) => prev.map((x, idx) => (idx === i ? v : x)))}
+              onChange={(i, v) => {
+                setValues((prev) => prev.map((x, idx) => (idx === i ? v : x)));
+                // Editing the offending field clears its gate highlight.
+                setFieldGate((prev) => (prev && prev.index === i ? null : prev));
+              }}
               readOnly={!writeState}
+              fieldErrorIndex={fieldGate?.index ?? null}
             />
+            {fieldGate && (
+              <p
+                role="alert"
+                className="mt-3 rounded-md bg-destructive/10 px-4 py-3 text-sm text-destructive"
+              >
+                {fieldGate.message}
+              </p>
+            )}
           </div>
         </article>
 

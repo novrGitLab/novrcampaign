@@ -12,7 +12,8 @@
     "./pipeline": "./src/pipeline.js",
     "./sources": "./src/sources.js",
     "./understand": "./src/understand/index.js",
-    "./store": "./src/store/index.js"
+    "./store": "./src/store/index.js",
+    "./text": "./src/text/language.js"
   },
   "engines": {
     "node": ">=18.0.0"

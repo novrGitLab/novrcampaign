@@ -122,6 +122,47 @@ Then open **http://localhost:5173**.
 
 ---
 
+## Daily collection schedule
+
+NovrPulse collection runs **daily at 05:00 UTC (06:00 WAT)** via a Vercel cron
+entry in `vercel.json` that hits `POST /api/pulse/collect/run`. Vercel cron
+schedules are always **UTC** (this repo has no WAT conversion), so 05:00 UTC is
+the 06:00 West Africa Time slot.
+
+The endpoint is guarded fail-closed by exactly one rule: it accepts
+
+- `Authorization: Bearer <NP_COLLECT_CRON_SECRET>` (Vercel sends the secret as
+  a bearer token; compared constant-time), **or**
+- an authenticated **ADMIN** session (so a human can trigger it too).
+
+No session and no/incorrect secret → `401`. The endpoint sits **outside**
+`requireAuth` (a cron has no session) and never trusts query params for the
+secret.
+
+Trigger a run manually locally (the secret must match `NP_COLLECT_CRON_SECRET`
+in `backend/.env`):
+
+```bat
+curl -X POST ^
+  -H "Authorization: Bearer %NP_COLLECT_CRON_SECRET%" ^
+  -H "Content-Type: application/json" ^
+  -d "{\"maxAgeDays\":3}" ^
+  http://localhost:4000/api/pulse/collect/run
+```
+
+The response is the `runCollection` summary (`{ path, stored, ... }`). `path` is
+`in-app` when `NP_COLLECTION_ENABLED` is `false` (the default: the in-app
+collectors fetch sources in-process) and `collector` when it is `true` (the run
+is pulled from the standalone `novr-collection` service over its HMAC v1 API).
+Exactly one path runs per invocation — the cutover selector never writes from
+both.
+
+> The run can take 1–3 minutes on a large source set. Serverless platforms cap
+> function duration; if a deployment times out, raise the function timeout in
+> the hosting config (see the risk note in the implementer's report).
+
+---
+
 ## 4. Stop it
 
 If you started it with `npm run dev`, press **Ctrl+C** in that terminal.

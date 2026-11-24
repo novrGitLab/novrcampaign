@@ -267,6 +267,11 @@ export const config = {
       apiKey: 'NP_COLLECTION_SECRET',
       timeoutMs: asInt('NP_COLLECTION_TIMEOUT_MS', 15_000),
 
+      // Bearer secret Vercel sends to the collection cron endpoint
+      // (/api/pulse/collect/run). When empty the secret path is closed and
+      // only an ADMIN session may trigger a run — fail closed either way.
+      cronSecret: process.env.NP_COLLECT_CRON_SECRET || '',
+
       // Paging/polling knobs for pullItemsAndCreateEvents.
       pageSize: asInt('NP_COLLECTION_PAGE_SIZE', 100),
       maxPolls: asInt('NP_COLLECTION_MAX_POLLS', 60),

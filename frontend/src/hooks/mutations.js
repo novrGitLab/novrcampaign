@@ -255,7 +255,9 @@ export function useRejectPublish() {
 export function useEditPublish() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, body }) => api(`/publish/${id}`, { method: 'PATCH', body: { body } }).then((r) => r.item),
+    // `payload` may carry `body`, `regulatoryImpact`, and/or `eventDate`; only
+    // the keys present are sent, so PATCH persists exactly what the writer saved.
+    mutationFn: ({ id, ...payload }) => api(`/publish/${id}`, { method: 'PATCH', body: payload }).then((r) => r.item),
     onSuccess: () => invalidatePulse(qc),
   });
 }

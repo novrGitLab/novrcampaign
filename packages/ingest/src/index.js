@@ -36,3 +36,4 @@ export {
 export { createLlm, validateSchema, extractJson, LlmError } from './llm/index.js';
 export { analyseItem } from './understand/index.js';
 export { storeItem, storeRun } from './store/index.js';
+export { detectLanguage, isEnglish } from './text/language.js';
