@@ -35,6 +35,9 @@ backend/src/generated/prisma/
 # Contact exports (PII — never commit)
 *.csv
 
+# AI judgement training exports (reviewer-adjacent data — never commit)
+judgements-export*.jsonl
+
 # Editor / OS
 .vscode/
 .idea/

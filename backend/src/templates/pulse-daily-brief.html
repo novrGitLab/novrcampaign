@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<!--
+  Pulse Daily Brief — NovrPulse (Cybernovr)
+  INTERNAL / SUBSCRIBER digest. One email, an ordered list of 3–5 story blocks.
+
+  BACKEND-OWNED COPY. This file is read by the briefing preview renderer
+  (backend/src/services/novrpulse/briefingPreview.js) at request time. It is a
+  copy of frontend/src/templates/pulse-daily-brief.html, which remains the design
+  source. KEEP THE TWO IN SYNC: when the frontend template changes, copy it here
+  as well, or the Briefing Desk preview will drift from the sent email.
+
+  Placeholder token convention ({{namespace.field}}):
+    {{date}}                     Human-readable send date, e.g. "19 November 2026"
+    {{issueLine}}                Optional issue strap, e.g. "Issue 42 | Daily Brief"
+    {{preheader}}                Short hidden preview line (optional; composer may strip)
+    {{intro}}                    One-line framing sentence under the pill
+    {{storyCount}}               Integer count of filled story blocks (for copy like "5 stories")
+    {{story1.headline}}          Story headline text (1..5)
+    {{story1.headlineUrl}}       Link target for the headline
+    {{story1.source}}            Source attribution line, e.g. "Reuters · 18 Nov 2026"
+    {{story1.sourceUrl}}         Link target for the source line
+    {{story1.summary}}           1–2 sentence summary
+    {{story1.whatItMeans}}       "What it means" takeaway line
+    (repeat story2..story5 with the same fields)
+    {{readMoreUrl}}              Optional "Read more" footer CTA link
+    {{unsubscribeUrl}}           Provided by Plunk — do not edit
+
+  Content mapping (F1–F8): primarily F1 (threat items) and F2 (sector/industry
+  news) as the headline stories, with F7 (breaking) folded in when relevant and
+  other feeds (F3–F6, F8) slotted where they earn a block.
+-->
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="x-apple-disable-message-reformatting"><style>
+@media only screen and (max-width:480px){
+  .m-stack{display:block!important;width:100%!important;}
+  .m-px{padding-left:16px!important;padding-right:16px!important;}
+  .m-h1{font-size:22px!important;}
+  .m-btn{display:block!important;width:100%!important;box-sizing:border-box;text-align:center;}
+}
+</style></head>
+<body style="margin:0;padding:0;background-color:#060913;font-family:Arial,Helvetica,sans-serif;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#060913;">
+<tr><td align="center" style="padding:24px 12px;">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background-color:#0C1222;border:1px solid #1E2A45;border-radius:16px;overflow:hidden;">
+<!-- Header -->
+<tr><td align="center" style="padding:32px 24px 8px;">
+<img src="https://www.cybernovr.com/logo-white.png" alt="CYBERNOVR" width="200" style="display:block;width:200px;max-width:60%;height:auto;border:0;">
+</td></tr>
+<tr><td align="center" style="padding:12px 24px 4px;">
+<span style="display:inline-block;background-color:#662F8E;color:#ffffff;font-size:12px;font-weight:bold;letter-spacing:2px;padding:8px 20px;border-radius:999px;">NOVRPULSE</span>
+</td></tr>
+<tr><td align="center" class="m-px" style="padding:16px 24px 4px;background-color:#C9CFEF;margin:0;">
+<p class="m-h1" style="margin:0;font-size:26px;font-weight:bold;color:#1A2140;">{{date}}</p>
+</td></tr>
+<tr><td align="center" style="padding:12px 24px 24px;border-bottom:1px solid #1E2A45;">
+<p style="margin:0;font-size:14px;color:#9AA3C7;">{{issueLine}}</p>
+<p style="margin:6px 0 0;font-size:12px;color:#6B76A3;">{{intro}}</p>
+</td></tr>
+<!-- Story 1 -->
+<tr><td class="m-px" style="padding:24px;">
+<p style="margin:0 0 4px;font-size:20px;font-weight:bold;color:#ffffff;border-left:4px solid #662F8E;padding-left:12px;">🔎 Top stories today</p>
+<p style="margin:16px 0 6px;font-size:16px;font-weight:bold;color:#ffffff;"><a href="{{story1.headlineUrl}}" style="color:#ffffff;text-decoration:none;">{{story1.headline}}</a></p>
+<p style="margin:0 0 6px;font-size:12px;color:#6B76A3;"><a href="{{story1.sourceUrl}}" style="color:#8E9AD3;text-decoration:none;">{{story1.source}}</a></p>
+<p style="margin:0;font-size:14px;line-height:1.6;color:#C4CBE4;"><strong style="color:#ffffff;">Summary:</strong> {{story1.summary}}</p>
+<p style="margin:10px 0 0;font-size:13px;line-height:1.6;color:#8E9AD3;"><strong>What it means:</strong> {{story1.whatItMeans}}</p>
+<!-- Story 2 -->
+<hr style="border:0;border-top:1px solid #1E2A45;margin:20px 0;">
+<p style="margin:0 0 6px;font-size:16px;font-weight:bold;color:#ffffff;"><a href="{{story2.headlineUrl}}" style="color:#ffffff;text-decoration:none;">{{story2.headline}}</a></p>
+<p style="margin:0 0 6px;font-size:12px;color:#6B76A3;"><a href="{{story2.sourceUrl}}" style="color:#8E9AD3;text-decoration:none;">{{story2.source}}</a></p>
+<p style="margin:0;font-size:14px;line-height:1.6;color:#C4CBE4;"><strong style="color:#ffffff;">Summary:</strong> {{story2.summary}}</p>
+<p style="margin:10px 0 0;font-size:13px;line-height:1.6;color:#8E9AD3;"><strong>What it means:</strong> {{story2.whatItMeans}}</p>
+<!-- Story 3 -->
+<hr style="border:0;border-top:1px solid #1E2A45;margin:20px 0;">
+<p style="margin:0 0 6px;font-size:16px;font-weight:bold;color:#ffffff;"><a href="{{story3.headlineUrl}}" style="color:#ffffff;text-decoration:none;">{{story3.headline}}</a></p>
+<p style="margin:0 0 6px;font-size:12px;color:#6B76A3;"><a href="{{story3.sourceUrl}}" style="color:#8E9AD3;text-decoration:none;">{{story3.source}}</a></p>
+<p style="margin:0;font-size:14px;line-height:1.6;color:#C4CBE4;"><strong style="color:#ffffff;">Summary:</strong> {{story3.summary}}</p>
+<p style="margin:10px 0 0;font-size:13px;line-height:1.6;color:#8E9AD3;"><strong>What it means:</strong> {{story3.whatItMeans}}</p>
+<!-- Story 4 (optional — remove this block if fewer stories) -->
+<hr style="border:0;border-top:1px solid #1E2A45;margin:20px 0;">
+<p style="margin:0 0 6px;font-size:16px;font-weight:bold;color:#ffffff;"><a href="{{story4.headlineUrl}}" style="color:#ffffff;text-decoration:none;">{{story4.headline}}</a></p>
+<p style="margin:0 0 6px;font-size:12px;color:#6B76A3;"><a href="{{story4.sourceUrl}}" style="color:#8E9AD3;text-decoration:none;">{{story4.source}}</a></p>
+<p style="margin:0;font-size:14px;line-height:1.6;color:#C4CBE4;"><strong style="color:#ffffff;">Summary:</strong> {{story4.summary}}</p>
+<p style="margin:10px 0 0;font-size:13px;line-height:1.6;color:#8E9AD3;"><strong>What it means:</strong> {{story4.whatItMeans}}</p>
+<!-- Story 5 (optional — remove this block if fewer stories) -->
+<hr style="border:0;border-top:1px solid #1E2A45;margin:20px 0;">
+<p style="margin:0 0 6px;font-size:16px;font-weight:bold;color:#ffffff;"><a href="{{story5.headlineUrl}}" style="color:#ffffff;text-decoration:none;">{{story5.headline}}</a></p>
+<p style="margin:0 0 6px;font-size:12px;color:#6B76A3;"><a href="{{story5.sourceUrl}}" style="color:#8E9AD3;text-decoration:none;">{{story5.source}}</a></p>
+<p style="margin:0;font-size:14px;line-height:1.6;color:#C4CBE4;"><strong style="color:#ffffff;">Summary:</strong> {{story5.summary}}</p>
+<p style="margin:10px 0 0;font-size:13px;line-height:1.6;color:#8E9AD3;"><strong>What it means:</strong> {{story5.whatItMeans}}</p>
+</td></tr>
+<!-- CTA -->
+<tr><td class="m-px" style="padding:0 24px 24px;" align="center">
+<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" style="border-radius:10px;background-color:#662F8E;">
+<a class="m-btn" href="{{readMoreUrl}}" style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:bold;color:#ffffff;text-decoration:none;border-radius:10px;">Read the full briefing</a>
+</td></tr></table>
+</td></tr>
+<!-- Footer -->
+<tr><td align="center" style="padding:20px 24px 28px;border-top:1px solid #1E2A45;">
+<p style="margin:0;font-size:13px;color:#9AA3C7;">© 2026 <span style="color:#8E9AD3;">NovrPulse</span> — powered by Cybernovr. All rights reserved.</p>
+<p style="margin:6px 0 0;font-size:12px;color:#6B76A3;">Stay vigilant. Stay resilient. Forward threats, not fears.</p>
+</td></tr>
+</table>
+<p style="margin:16px 0 0;font-size:11px;color:#4A5578;">If you wish to unsubscribe from our newsletter, click <a href="{{unsubscribeUrl}}" style="color:#8E9AD3;">here</a></p>
+</td></tr>
+</table>
+</body>
+</html>

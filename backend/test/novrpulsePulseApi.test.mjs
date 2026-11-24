@@ -71,6 +71,14 @@ function makeStore(seed) {
     if (!where) return true;
     if (where.functions?.has !== undefined && !row.functions.includes(where.functions.has)) return false;
     if (where.reviewStatus !== undefined && row.reviewStatus !== where.reviewStatus) return false;
+    if (where.language !== undefined) {
+      // Either an exact code ("en", "ja") or `{ not: 'en' }` for non-en.
+      if (where.language.not !== undefined) {
+        if (row.language === where.language.not) return false;
+      } else if (row.language !== where.language) {
+        return false;
+      }
+    }
     if (where.publishedAt?.gte && !(row.publishedAt && row.publishedAt >= where.publishedAt.gte)) return false;
     if (where.title?.contains) {
       const needle = String(where.title.contains).toLowerCase();
@@ -97,7 +105,10 @@ function makeStore(seed) {
       return out.map((r) => ({
         ...r,
         sources: (r.sources ?? []).map((s) => ({
-          rawDocument: { source: { name: s.rawDocument?.source?.name ?? null } },
+          rawDocument: {
+            source: { name: s.rawDocument?.source?.name ?? null },
+            body: s.rawDocument?.body ?? null,
+          },
         })),
         publishItems: shapePublishItems(r.publishItems),
       }));
@@ -115,6 +126,7 @@ function makeStore(seed) {
           pageRef: s.pageRef ?? null,
           rawDocument: {
             url: s.rawDocument?.url ?? null,
+            body: s.rawDocument?.body ?? null,
             source: {
               name: s.rawDocument?.source?.name ?? null,
               licence: s.rawDocument?.source?.licence ?? null,
@@ -136,7 +148,10 @@ function makeStore(seed) {
       return {
         ...row,
         sources: (row.sources ?? []).map((s) => ({
-          rawDocument: { source: { name: s.rawDocument?.source?.name ?? null } },
+          rawDocument: {
+            source: { name: s.rawDocument?.source?.name ?? null },
+            body: s.rawDocument?.body ?? null,
+          },
         })),
         publishItems: shapePublishItems(row.publishItems),
       };
@@ -191,6 +206,7 @@ function event(overrides = {}) {
     body: 'RAW BODY MUST NEVER BE RETURNED',
     publishedAt: new Date('2026-11-10T00:00:00Z'),
     canonicalUrl: 'https://reg.example/a',
+    language: 'en',
     functions: [1, 7],
     eventType: 'advisory',
     reviewStatus: 'new',
@@ -232,8 +248,11 @@ describe('pulse API: list events', () => {
     assert.deepEqual(Object.keys(first).sort(), [
       'canonicalUrl',
       'eventType',
+      'excerpt',
       'functions',
+      'hasSummary',
       'id',
+      'language',
       'publishItemId',
       'publishStatus',
       'publishedAt',
@@ -420,6 +439,73 @@ describe('pulse API: region filter', () => {
     assert.notEqual(listSchema.validate({ region: 'mars' }).error, undefined);
     assert.equal(listSchema.validate({ region: 'NG' }).error, undefined);
     assert.equal(listSchema.validate({ region: 'nigeria' }).error, undefined);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 4. Language filter — `en` | `non-en` | a specific code.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('pulse API: language filter', () => {
+  test('language=non-en keeps only events whose language is not "en"', async () => {
+    const store = makeStore([
+      event({ id: 'en', language: 'en' }),
+      event({ id: 'ja', language: 'ja' }),
+      event({ id: 'ru', language: 'ru' }),
+    ]);
+
+    const { payload } = await withPrisma(store, () =>
+      callController(listPulseEvents, { query: { language: 'non-en' } }),
+    );
+    assert.deepEqual(payload.items.map((i) => i.id).sort(), ['ja', 'ru']);
+    assert.deepEqual(store.calls.findMany.at(-1).where.language, { not: 'en' });
+    assert.equal(store.calls.count.at(-1).where.language.not, 'en');
+  });
+
+  test('language=en keeps only English events', async () => {
+    const store = makeStore([
+      event({ id: 'en', language: 'en' }),
+      event({ id: 'ja', language: 'ja' }),
+    ]);
+    const { payload } = await withPrisma(store, () =>
+      callController(listPulseEvents, { query: { language: 'en' } }),
+    );
+    assert.deepEqual(payload.items.map((i) => i.id), ['en']);
+    assert.equal(store.calls.findMany.at(-1).where.language, 'en');
+  });
+
+  test('a specific code narrows to that language', async () => {
+    const store = makeStore([
+      event({ id: 'ja', language: 'ja' }),
+      event({ id: 'ru', language: 'ru' }),
+    ]);
+    const { payload } = await withPrisma(store, () =>
+      callController(listPulseEvents, { query: { language: 'ja' } }),
+    );
+    assert.deepEqual(payload.items.map((i) => i.id), ['ja']);
+    assert.equal(store.calls.findMany.at(-1).where.language, 'ja');
+  });
+
+  test('the card carries `language` (default "en")', async () => {
+    const store = makeStore([event({ id: 'a' }), event({ id: 'ja', language: 'ja' })]);
+    const { payload } = await withPrisma(store, () => callController(listPulseEvents, { query: {} }));
+    const byId = Object.fromEntries(payload.items.map((i) => [i.id, i]));
+    assert.equal(byId.a.language, 'en');
+    assert.equal(byId.ja.language, 'ja');
+  });
+
+  test('an invalid language value is rejected with a 400 before any query runs', async () => {
+    const store = makeStore([event({ id: 'a' })]);
+    const { error } = await withPrisma(store, () =>
+      callController(listPulseEvents, { query: { language: '!!' } }),
+    );
+    assert.ok(error, 'a malformed language must be rejected');
+    assert.equal(error.statusCode, 400);
+    assert.ok(!store.calls.findMany.length, 'no query must run when validation fails');
+    assert.equal(listSchema.validate({ language: 'en' }).error, undefined);
+    assert.equal(listSchema.validate({ language: 'non-en' }).error, undefined);
+    assert.equal(listSchema.validate({ language: 'ja' }).error, undefined);
+    assert.notEqual(listSchema.validate({ language: 'nonsense!' }).error, undefined);
   });
 });
 
@@ -655,6 +741,73 @@ describe('pulse API: review status', () => {
       callController(listPulseEvents, { query: { function: 1, reviewStatus: 'accepted' } }),
     );
     assert.deepEqual(payload.items.map((i) => i.id), ['f1-acc']);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 8. Excerpt — description fallback from the raw article body.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('pulse API: excerpt fallback', () => {
+  const srcWithBody = (body) => [{ rawDocument: { source: { name: 'Src' }, body } }];
+
+  test('excerpt is populated from the raw body when summary is empty', async () => {
+    const store = makeStore([
+      event({ id: 'a', summary: '', sources: srcWithBody('The regulator issued a consumer advisory today.') }),
+    ]);
+    const { payload } = await withPrisma(store, () => callController(listPulseEvents, { query: {} }));
+    assert.equal(payload.items[0].excerpt, 'The regulator issued a consumer advisory today.');
+    assert.equal(payload.items[0].hasSummary, false);
+  });
+
+  test('excerpt prefers the summary when it is populated', async () => {
+    const store = makeStore([
+      event({ id: 'a', summary: 'NovrPulse own words', sources: srcWithBody('RAW ARTICLE BODY') }),
+    ]);
+    const { payload } = await withPrisma(store, () => callController(listPulseEvents, { query: {} }));
+    assert.equal(payload.items[0].excerpt, 'NovrPulse own words');
+    assert.equal(payload.items[0].hasSummary, true);
+  });
+
+  test('excerpt is null when there is no summary and no body', async () => {
+    const store = makeStore([event({ id: 'a', summary: '', sources: [] })]);
+    const { payload } = await withPrisma(store, () => callController(listPulseEvents, { query: {} }));
+    assert.equal(payload.items[0].excerpt, null);
+    assert.equal(payload.items[0].hasSummary, false);
+  });
+
+  test('a long body is whitespace-collapsed, trimmed to the limit, and ellipsised', async () => {
+    const store = makeStore([
+      event({ id: 'a', summary: '', sources: srcWithBody(`  Line one\n\n   Line   two ${'x'.repeat(500)}`) }),
+    ]);
+    const { payload } = await withPrisma(store, () => callController(listPulseEvents, { query: {} }));
+    const ex = payload.items[0].excerpt;
+    assert.ok(ex.startsWith('Line one Line two '), `collapsed+trimmed: ${JSON.stringify(ex.slice(0, 40))}`);
+    assert.equal(ex.length, 221, 'excerpt is 220 chars plus the ellipsis');
+    assert.ok(ex.endsWith('…'));
+  });
+
+  test('the full body is NOT in the list DTO (only the bounded excerpt)', async () => {
+    const long = 'y'.repeat(1000);
+    const store = makeStore([event({ id: 'a', summary: '', sources: srcWithBody(long) })]);
+    const { payload } = await withPrisma(store, () => callController(listPulseEvents, { query: {} }));
+    const first = payload.items[0];
+    assert.ok(!('body' in first), 'body key must never be on the card');
+    assert.ok(!JSON.stringify(first).includes(long), 'the full body must not be serialized');
+    assert.ok(first.excerpt.length < long.length);
+    // The query only ever selects the raw document body (never the whole row).
+    assert.deepEqual(store.calls.findMany[0].select.sources.select.rawDocument.select, {
+      body: true,
+      source: { select: { name: true } },
+    });
+  });
+
+  test('excerptOf is consistent across summary/body/neither (unit)', async () => {
+    const { excerptOf } = await import('../src/controllers/pulseController.js');
+    assert.equal(excerptOf({ summary: 'Sum', sources: [] }), 'Sum');
+    assert.equal(excerptOf({ summary: '', sources: srcWithBody('Body text') }), 'Body text');
+    assert.equal(excerptOf({ summary: '   ', sources: [] }), null);
+    assert.equal(excerptOf({ summary: '', sources: [] }), null);
   });
 });
 

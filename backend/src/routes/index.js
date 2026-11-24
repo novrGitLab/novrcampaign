@@ -12,6 +12,8 @@ import feedRoutes from './feedRoutes.js';
 import publishRoutes from './publishRoutes.js';
 import pulseRoutes from './pulseRoutes.js';
 import briefingRoutes from './briefingRoutes.js';
+import aiJudgementRoutes from './aiJudgementRoutes.js';
+import dedupRoutes from './dedupRoutes.js';
 
 const router = Router();
 
@@ -32,5 +34,7 @@ router.use('/feed', requireAuth, feedRoutes);
 router.use('/publish', requireAuth, publishRoutes);
 router.use('/pulse', requireAuth, pulseRoutes);
 router.use('/briefings', requireAuth, briefingRoutes);
+router.use('/ai-judgements', requireAuth, aiJudgementRoutes);
+router.use('/dedup', requireAuth, dedupRoutes);
 
 export default router;

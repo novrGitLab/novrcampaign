@@ -7,13 +7,15 @@ export class AppError extends Error {
    * @param {number} statusCode
    * @param {string} message
    * @param {object} [details]
+   * @param {string} [code] machine-readable error code, surfaced as `error.code`
    */
-  constructor(statusCode, message, details) {
+  constructor(statusCode, message, details, code) {
     super(message);
     this.name = 'AppError';
     this.statusCode = statusCode;
     this.isOperational = true;
     if (details) this.details = details;
+    if (code) this.code = code;
     Error.captureStackTrace?.(this, this.constructor);
   }
 
@@ -32,6 +34,9 @@ export class AppError extends Error {
   static Conflict(message, details) {
     return new AppError(409, message || 'Conflict', details);
   }
+  static Gone(message, code) {
+    return new AppError(410, message || 'Gone', undefined, code);
+  }
   static Unprocessable(message, details) {
     return new AppError(422, message || 'Unprocessable entity', details);
   }
@@ -49,6 +54,7 @@ export const Unauthorized = AppError.Unauthorized;
 export const Forbidden = AppError.Forbidden;
 export const NotFound = AppError.NotFound;
 export const Conflict = AppError.Conflict;
+export const Gone = AppError.Gone;
 export const Unprocessable = AppError.Unprocessable;
 export const TooManyRequests = AppError.TooManyRequests;
 export const Internal = AppError.Internal;

@@ -220,6 +220,10 @@ function invalidatePulse(qc) {
   qc.invalidateQueries({ queryKey: ['pulse-events'] });
   qc.invalidateQueries({ queryKey: ['pulse-event'] });
   qc.invalidateQueries({ queryKey: ['publish'] });
+  // The Front Page's unassigned-drafts tray reads ['publish-items', …]; a
+  // create-from-event that succeeds but fails to attach would otherwise leave
+  // the orphan item invisible until a manual refresh.
+  qc.invalidateQueries({ queryKey: ['publish-items'] });
 }
 
 /** POST /api/publish/f7 — project eligible F7 events into draft items.
@@ -280,5 +284,69 @@ export function useReviewPulseEvent() {
       for (const [key, data] of ctx?.snapshots ?? []) qc.setQueryData(key, data);
     },
     onSettled: () => qc.invalidateQueries({ queryKey: ['pulse-events'] }),
+  });
+}
+
+/** POST /api/publish/from-event — create a writable editorial item FROM an
+ *  accepted inbox event for a chosen pillar (the Editorial Canvas entry point).
+ *  The server seeds the body deterministically and runs the defamation gate. */
+export function useCreateItemFromEvent() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ eventId, functionId }) =>
+      api('/publish/from-event', { method: 'POST', body: { eventId, functionId } }).then((r) => r.item),
+    onSuccess: () => invalidatePulse(qc),
+  });
+}
+
+// ── AI judgement review ────────────────────────────────────────────────────
+// Adjudication is a ONE-WAY transition out of `pending` server-side. The row
+// leaves the pending queue on success, so we optimistically remove it from the
+// cached `['ai-judgements']` lists and invalidate on settle (the server's view
+// wins). A 409 (already adjudicated) still settles back to a fresh fetch.
+
+/** Remove one judgement from every cached `['ai-judgements']` list. */
+function removeJudgementFromCache(qc, id) {
+  qc.setQueriesData({ queryKey: ['ai-judgements'] }, (prev) => {
+    if (!Array.isArray(prev)) return prev;
+    return prev.filter((j) => j.id !== id);
+  });
+}
+
+function optimisticJudgementRemoval(qc, id) {
+  return async () => {
+    await qc.cancelQueries({ queryKey: ['ai-judgements'] });
+    const snapshots = qc.getQueriesData({ queryKey: ['ai-judgements'] });
+    removeJudgementFromCache(qc, id);
+    return { snapshots };
+  };
+}
+
+function rollbackJudgements(qc, ctx) {
+  for (const [key, data] of ctx?.snapshots ?? []) qc.setQueryData(key, data);
+}
+
+/** POST /api/ai-judgements/:id/accept — confirm the AI's verdict. */
+export function useAcceptJudgement() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id) => api(`/ai-judgements/${id}/accept`, { method: 'POST' }).then((r) => r.judgement),
+    onMutate: (id) => optimisticJudgementRemoval(qc, id)(),
+    onError: (_err, _id, ctx) => rollbackJudgements(qc, ctx),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['ai-judgements'] }),
+  });
+}
+
+/** POST /api/ai-judgements/:id/reject — reject the AI's verdict with a REASON.
+ *  The reason is required training signal; the server enforces a minimum length
+ *  (400 when too short, 409 when already adjudicated). */
+export function useRejectJudgement() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, reason }) =>
+      api(`/ai-judgements/${id}/reject`, { method: 'POST', body: { reason } }).then((r) => r.judgement),
+    onMutate: ({ id }) => optimisticJudgementRemoval(qc, id)(),
+    onError: (_err, _vars, ctx) => rollbackJudgements(qc, ctx),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['ai-judgements'] }),
   });
 }

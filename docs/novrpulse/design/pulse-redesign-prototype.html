@@ -1,0 +1,2356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>NovrPulse — The Edition Prototype</title>
+<style>
+/* =====================================================================
+   NovrPulse Redesign Prototype — "The Edition"
+   ---------------------------------------------------------------------
+   Concept: EDITION-FIRST. The unit is one dated newsletter edition, not a
+   story. You open on TODAY'S BRIEFING (The Front Page) and everything else
+   feeds it. Three screens, three unmistakable shapes:
+     1. THE EDITION   -> the front page itself (newsletter masthead + the 8
+                         section blocks as the email's live skeleton). HOME.
+     2. TODAY'S WIRE  -> a filling action (reading app: one readable column
+                         of raw material bound to today's edition).
+     3. THE WRITER    -> a writing app (centred document, nothing else),
+                         edition-aware: "Drafting for the <date> edition".
+
+   Theme: dark navy. A light variant can be flipped by swapping the tokens
+   in :root below (surfaces/borders/text) — no structural change required.
+
+   Self-contained: inline CSS + vanilla JS, no external requests, no fonts
+   fetched, no CDNs. Pillar glyphs are unicode; icons are inline SVG.
+   ===================================================================== */
+
+:root {
+  /* Surfaces */
+  --bg:        #0A0F1E;
+  --surface:   #0F1629;
+  --card:      #1A2338;
+  --card-hi:   #212C46;
+  /* Borders */
+  --border:    #232D45;
+  --border-hi: #31405F;
+  /* Accent */
+  --accent:    #3B82F6;
+  --accent-dim:#1E3A6B;
+  /* Text */
+  --text:      #E5E9F4;
+  --muted:     #8B94AD;
+  --faint:     #5C6683;
+  /* Status */
+  --ready:     #34D399;
+  --empty:     #F59E0B;
+  --none:      #64748B;
+  /* Type */
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --serif: Georgia, "Times New Roman", serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --radius: 12px;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+button { font-family: inherit; cursor: pointer; }
+::selection { background: var(--accent-dim); }
+
+/* ---------------------------------------------------------------------
+   TOP BAR + PIPELINE STEPPER (persistent on every screen)
+   --------------------------------------------------------------------- */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: rgba(10,15,30,0.92);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border);
+}
+.topbar-inner {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 14px 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+.wordmark {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  font-size: 13px;
+  text-transform: uppercase;
+}
+.wordmark .dot {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 12px var(--accent);
+}
+.wordmark .sub { color: var(--faint); font-weight: 500; letter-spacing: 0.02em; text-transform: none; }
+
+.topbar-right { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+/* Edition pill: the date context never disappears while you move between screens */
+.edition-pill {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border-hi);
+  background: #131B30;
+  color: var(--muted);
+  font-size: 11.5px; font-weight: 700;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+.edition-pill::before {
+  content: "\25C6";
+  color: var(--accent);
+  font-size: 9px;
+}
+
+.stepper { display: flex; align-items: center; gap: 6px; }
+.step {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  transition: all .16s ease;
+}
+.step .num {
+  width: 20px; height: 20px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  background: #202A44;
+  color: var(--muted);
+  font-size: 11px;
+}
+.step:hover { color: var(--text); background: #141C31; }
+.step.active {
+  color: #fff;
+  background: var(--accent-dim);
+  border-color: #2C5AA8;
+  box-shadow: 0 0 18px rgba(59,130,246,0.28);
+}
+.step.active .num { background: var(--accent); color: #fff; }
+.step.done { color: var(--text); }
+.step.done .num { background: rgba(52,211,153,0.15); color: var(--ready); }
+.stepline { width: 22px; height: 1px; background: var(--border-hi); }
+
+.screen { display: none; }
+.screen.active { display: block; }
+
+/* =====================================================================
+   SCREEN 1 — "THE WIRE"  (reading app: single column of story cards)
+   ===================================================================== */
+.wire-head {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 40px 28px 8px;
+}
+.wire-head h1 {
+  margin: 0 0 4px;
+  font-size: 34px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.wire-head .dek { color: var(--muted); font-size: 15px; }
+.wire-head .dek b { color: var(--text); font-weight: 600; }
+
+.wire-toolbar {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 20px 28px 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 13px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 600;
+  transition: all .14s ease;
+}
+.chip .g { font-size: 12px; }
+.chip:hover { color: var(--text); border-color: var(--border-hi); }
+.chip.on {
+  color: #fff;
+  background: var(--accent-dim);
+  border-color: #2C5AA8;
+}
+.searchbox {
+  margin-left: auto;
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--faint);
+  font-size: 13px;
+  min-width: 230px;
+}
+
+/* The feed: a single readable column, centred, like Reeder/Feedly. */
+.feed {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 18px 28px 130px;
+}
+.story {
+  position: relative;
+  display: flex;
+  gap: 18px;
+  padding: 20px 20px 20px 18px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  margin-bottom: 14px;
+  transition: all .15s ease;
+}
+.story:hover {
+  border-color: var(--border-hi);
+  background: var(--card);
+  transform: translateY(-1px);
+}
+.story.checked {
+  border-color: #2C5AA8;
+  background: #14203A;
+  box-shadow: 0 0 22px rgba(59,130,246,0.14);
+}
+/* Reading-app selection checkbox */
+.tick {
+  flex: 0 0 22px;
+  width: 22px; height: 22px;
+  margin-top: 3px;
+  border-radius: 6px;
+  border: 1.5px solid var(--border-hi);
+  background: transparent;
+  display: flex; align-items: center; justify-content: center;
+  color: transparent;
+  font-size: 13px;
+  transition: all .14s ease;
+}
+.tick:hover { border-color: var(--accent); }
+.story.checked .tick { background: var(--accent); border-color: var(--accent); color: #fff; }
+/* Pillar-glyph thumbnail tile */
+.tile {
+  flex: 0 0 58px;
+  width: 58px; height: 58px;
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 24px;
+  background: linear-gradient(150deg, #22314F, #16203A);
+  border: 1px solid var(--border-hi);
+}
+.story-body { flex: 1; min-width: 0; }
+.story-title {
+  font-family: var(--serif);
+  font-size: 19px;
+  line-height: 1.3;
+  font-weight: 700;
+  margin: 0 0 6px;
+  letter-spacing: -0.01em;
+}
+.story-excerpt {
+  color: var(--muted);
+  font-size: 14px;
+  margin: 0 0 10px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.story-meta {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+  font-size: 12px; color: var(--faint);
+}
+.pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: #131B30;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+.pill .dot2 { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.sev { font-weight: 700; }
+.sev.hi { color: #F87171; }
+.sev.mid { color: #FBBF24; }
+.src { color: var(--muted); }
+
+/* FITS — one story can serve MULTIPLE news-derived pillars (01/04/07/08).
+   The row lists every pillar this story is eligible to feed, so a single
+   wire story can be written into more than one section. */
+.fits {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  margin-top: 11px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border);
+  font-size: 11px;
+}
+.fits .fits-label {
+  color: var(--faint); font-weight: 700;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  margin-right: 2px;
+}
+.fitchip {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  border: 1px solid #2C5AA8;
+  background: rgba(59,130,246,0.10);
+  color: #AFC4EC;
+  font-size: 10.5px; font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.fitchip .g { font-size: 10px; color: var(--accent); }
+.fits .nofit {
+  color: var(--faint); font-style: italic; font-size: 10.5px;
+}
+
+/* Bottom action bar (appears when stories are selected) */
+.actionbar {
+  position: fixed;
+  bottom: 22px; left: 50%;
+  transform: translateX(-50%) translateY(140%);
+  display: flex; align-items: center; gap: 14px;
+  padding: 12px 16px 12px 22px;
+  border-radius: 999px;
+  background: #16203A;
+  border: 1px solid #2C5AA8;
+  box-shadow: 0 14px 40px rgba(0,0,0,0.5), 0 0 26px rgba(59,130,246,0.18);
+  transition: transform .22s cubic-bezier(.2,.9,.3,1.2);
+  z-index: 50;
+}
+.actionbar.show { transform: translateX(-50%) translateY(0); }
+.actionbar .count { font-weight: 700; }
+.actionbar .count span { color: var(--accent); }
+
+/* =====================================================================
+   SCREEN 2 — "THE WRITER"  (writing app: centred document, nothing else)
+   ===================================================================== */
+.writer-top {
+  max-width: 1140px;
+  margin: 0 auto;
+  padding: 26px 28px 0;
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+}
+.crumb { color: var(--faint); font-size: 13px; }
+.crumb b { color: var(--text); font-weight: 600; }
+/* Edition-aware header: the draft always declares which edition + section
+   it is being written into. */
+.edition-banner {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 9px;
+  font-size: 13px; color: var(--muted);
+}
+.edition-banner b { color: var(--text); font-weight: 700; }
+.edition-banner .tag {
+  display: inline-flex; align-items: center;
+  padding: 5px 12px; border-radius: 999px;
+  background: rgba(59,130,246,0.09);
+  border: 1px solid #23406E;
+}
+.edition-banner .sec { display: inline-flex; align-items: center; gap: 6px; }
+.edition-banner .sec::before { content: "\25C6"; color: var(--accent); font-size: 8px; }
+.pillar-pick { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 14px; }
+.pchip {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  transition: all .14s ease;
+}
+.pchip:hover { color: var(--text); border-color: var(--border-hi); }
+.pchip .g { font-size: 13px; }
+.pchip.on {
+  color: #fff;
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  box-shadow: 0 0 16px rgba(59,130,246,0.22);
+}
+/* Eligibility gate: when the Writer was opened from a story, only the
+   story's eligible news-derived pillars are active. Everything else is
+   greyed and non-selectable — the story does not fit that section. */
+.pchip.disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+  color: var(--faint);
+  border-color: var(--border);
+  background: transparent;
+}
+.pchip.disabled:hover { color: var(--faint); border-color: var(--border); }
+.pchip.disabled .g { color: var(--faint); }
+.pchip-restrict {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.pchip-restrict b { color: var(--accent); font-weight: 700; }
+
+.docwrap {
+  display: grid;
+  grid-template-columns: 1fr minmax(0, 720px) 1fr;
+  max-width: 1140px;
+  margin: 0 auto;
+  padding: 22px 28px 130px;
+}
+.doc { grid-column: 2; }
+.doc-headline {
+  font-family: var(--serif);
+  font-size: 40px;
+  line-height: 1.12;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  margin: 8px 0 16px;
+  outline: none;
+  min-height: 44px;
+}
+.doc-headline:focus { box-shadow: 0 2px 0 var(--accent); }
+/* The document headline is the editor's OWN headline; it starts empty on
+   entry. The source publisher's title is attribution only and lives in the
+   Sources rail — it is never copied here. */
+.doc-headline:empty::before {
+  content: attr(data-placeholder);
+  color: var(--faint);
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+/* The hint that explains the copyright rule, shown until a headline is typed. */
+.doc-headline-hint {
+  margin: -6px 0 16px;
+  font-size: 12px;
+  color: var(--faint);
+  font-style: italic;
+}
+.doc-headline-hint b { color: var(--muted); font-style: normal; }
+.doc-byline {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+  font-size: 12.5px; color: var(--faint);
+  padding-bottom: 20px; margin-bottom: 22px;
+  border-bottom: 1px solid var(--border);
+}
+.doc-body {
+  font-size: 17px;
+  line-height: 1.75;
+  color: #D6DCEC;
+  outline: none;
+  min-height: 220px;
+}
+.doc-body p { margin: 0 0 18px; }
+.doc-body:focus { box-shadow: -3px 0 0 var(--accent); padding-left: 12px; margin-left: -12px; }
+
+/* ---------------------------------------------------------------------
+   PILLAR SCAFFOLDS — one editor engine, eight pre-shaped documents.
+   A prose pillar renders a SLOT OUTLINE (labelled placeholder blocks);
+   a structured pillar (05/06) renders a labelled FIELD FORM. The block
+   below owns the shared document-adjacent chrome for both shapes.
+   --------------------------------------------------------------------- */
+/* Slim guidance panel in the right rail: the pillar's editorial checklist.
+   It re-renders on every pillar change, so it must not depend on layout. */
+.guide {
+  margin-bottom: 14px;
+  border-radius: 12px;
+  border: 1px solid #23406E;
+  background: rgba(59,130,246,0.06);
+  overflow: hidden;
+}
+.guide-head {
+  display: flex; align-items: center; gap: 9px;
+  padding: 11px 14px;
+  font-size: 11.5px; font-weight: 800;
+  letter-spacing: 0.11em; text-transform: uppercase;
+  color: var(--accent);
+  border-bottom: 1px solid #23406E;
+}
+.guide-head .kind {
+  margin-left: auto;
+  font-size: 10px; font-weight: 700; letter-spacing: 0.06em;
+  color: var(--muted);
+  border: 1px solid var(--border-hi);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+.guide-list { margin: 0; padding: 12px 16px 14px; list-style: none; }
+.guide-list li {
+  position: relative;
+  padding-left: 22px;
+  margin-bottom: 9px;
+  font-size: 12.8px;
+  line-height: 1.5;
+  color: #C7D0E4;
+}
+.guide-list li:last-child { margin-bottom: 0; }
+.guide-list li::before {
+  content: "\2713";
+  position: absolute; left: 0; top: 0;
+  color: var(--accent);
+  font-size: 12px; font-weight: 700;
+}
+
+/* The scaffold is the pre-shaped document. A soft cross-fade on re-render
+   makes the pillar change legible without a jolt. */
+.scaffold { transition: opacity .18s ease, transform .18s ease; }
+.scaffold.swap { opacity: 0; transform: translateY(4px); }
+
+/* Prose pillar: slot outline. Each slot is a labelled block the writer
+   fills. Small-caps label + an editable area, kept in the serif feel. */
+.slot-block {
+  margin-bottom: 16px;
+  padding: 14px 16px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent-dim);
+  background: rgba(26,35,56,0.5);
+  transition: border-color .15s ease, background .15s ease;
+}
+.slot-block:hover { border-color: var(--border-hi); border-left-color: var(--accent); }
+.slot-label {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 10.5px; font-weight: 800;
+  letter-spacing: 0.13em; text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 8px;
+}
+.slot-label .n {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--faint);
+}
+.slot-area {
+  font-family: var(--serif);
+  font-size: 16.5px;
+  line-height: 1.7;
+  color: #D6DCEC;
+  outline: none;
+  min-height: 22px;
+}
+.slot-area:empty::before {
+  content: attr(data-placeholder);
+  color: var(--faint);
+  font-style: italic;
+}
+.slot-area:focus { box-shadow: 0 1px 0 var(--accent); }
+
+/* Structured pillar (05/06): the document becomes a labelled FIELD FORM.
+   Same document chrome, no free-prose body. */
+.fieldform {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.fieldrow {
+  display: grid;
+  grid-template-columns: 190px 1fr;
+  gap: 14px;
+  align-items: start;
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(26,35,56,0.4);
+}
+.fieldrow:last-child { border-bottom: none; }
+.fieldrow:hover { background: rgba(33,44,70,0.55); }
+.fieldrow label {
+  font-size: 11px; font-weight: 800;
+  letter-spacing: 0.09em; text-transform: uppercase;
+  color: var(--muted);
+  padding-top: 7px;
+}
+.fieldrow label .req { color: var(--accent); }
+.fieldrow input,
+.fieldrow textarea {
+  width: 100%;
+  font-family: inherit;
+  font-size: 14.5px;
+  color: var(--text);
+  background: #0D1425;
+  border: 1px solid var(--border-hi);
+  border-radius: 8px;
+  padding: 8px 11px;
+  outline: none;
+  resize: vertical;
+}
+.fieldrow input:focus,
+.fieldrow textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(59,130,246,0.16); }
+.fieldrow input::placeholder,
+.fieldrow textarea::placeholder { color: var(--faint); }
+.field-note {
+  margin-top: 14px;
+  font-size: 12px;
+  color: var(--faint);
+  font-style: italic;
+}
+
+.takeaways {
+  margin-top: 30px;
+  padding: 20px 22px;
+  border-radius: var(--radius);
+  background: rgba(59,130,246,0.07);
+  border: 1px solid #23406E;
+}
+.takeaways h4 {
+  margin: 0 0 12px;
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.takeaways ul { margin: 0; padding-left: 20px; }
+.takeaways li { margin-bottom: 8px; color: #D6DCEC; }
+
+/* Sources: collapsible right rail */
+.rail {
+  grid-column: 3;
+  align-self: start;
+  position: sticky;
+  top: 82px;
+  margin-left: 34px;
+}
+.rail-toggle {
+  width: 100%;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 12px; font-weight: 700;
+  letter-spacing: 0.08em; text-transform: uppercase;
+}
+.rail-toggle:hover { color: var(--text); border-color: var(--border-hi); }
+.rail-body { margin-top: 10px; }
+.rail-body.hidden { display: none; }
+.srcitem {
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  margin-bottom: 10px;
+}
+.srcitem .st { font-weight: 600; font-size: 13.5px; margin-bottom: 4px; }
+.srcitem .sm { color: var(--faint); font-size: 11.5px; }
+.srcitem .conf {
+  display: inline-block; margin-top: 8px;
+  padding: 2px 8px; border-radius: 999px;
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.conf.confirmed { background: rgba(52,211,153,0.14); color: var(--ready); }
+.conf.reported  { background: rgba(245,158,11,0.14); color: var(--empty); }
+
+/* Source attribution: the publisher's headline, kept small and quoted here
+   as attribution ONLY. It is not the edition's headline and never seeds the
+   document headline. */
+.rail-attrib {
+  padding: 11px 14px;
+  border-radius: 10px;
+  border: 1px dashed var(--border-hi);
+  background: rgba(59,130,246,0.05);
+  margin-bottom: 10px;
+}
+.rail-attrib .ra-kind {
+  font-size: 10px; font-weight: 800; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--accent);
+  margin-bottom: 5px;
+}
+.rail-attrib .ra-line { font-size: 12.5px; color: var(--muted); line-height: 1.5; }
+.rail-attrib .ra-line b { color: var(--text); font-weight: 600; }
+.rail-attrib .ra-line q { color: var(--muted); font-style: italic; }
+
+/* Slim footer actions */
+.writer-foot {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  background: rgba(10,15,30,0.94);
+  backdrop-filter: blur(10px);
+  border-top: 1px solid var(--border);
+  z-index: 45;
+}
+.writer-foot-inner {
+  max-width: 1140px; margin: 0 auto;
+  padding: 12px 28px;
+  display: flex; align-items: center; gap: 14px;
+}
+.writer-foot .saved { color: var(--faint); font-size: 12.5px; margin-right: auto; }
+.writer-foot .saved b { color: var(--ready); }
+
+/* =====================================================================
+   SCREEN 3 — "THE FRONT PAGE"  (newsletter taking shape: tray + skeleton)
+   ===================================================================== */
+.fp-head {
+  max-width: 1240px; margin: 0 auto;
+  padding: 34px 28px 6px;
+  display: flex; flex-wrap: wrap; align-items: flex-end; gap: 20px;
+  justify-content: space-between;
+}
+.fp-head h1 { margin: 0; font-size: 30px; font-weight: 800; letter-spacing: -0.02em; }
+.fp-head .dek { color: var(--muted); margin-top: 4px; }
+.fp-progress { display: flex; align-items: center; gap: 14px; }
+.track { width: 190px; height: 7px; border-radius: 999px; background: #1B2438; overflow: hidden; }
+.track > i {
+  display: block; height: 100%;
+  background: linear-gradient(90deg, var(--accent), #60A5FA);
+  width: 25%; transition: width .3s ease;
+}
+.fp-count b { font-size: 20px; }
+
+/* The newsletter masthead: wordmark, rule, dateline — this is the edition's
+   own front page, not a blog index. */
+.masthead {
+  max-width: 1240px; margin: 0 auto;
+  padding: 30px 28px 0;
+  text-align: center;
+}
+.masthead .mark {
+  font-size: 44px; font-weight: 800;
+  letter-spacing: 0.34em;
+  margin: 0;
+  padding-left: 0.34em; /* optical centring for the trailing letter-spacing */
+  background: linear-gradient(180deg, #FFFFFF, #AEBBD8);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.masthead .rule {
+  height: 3px; margin: 14px auto 0;
+  max-width: 1240px;
+  background: linear-gradient(90deg, transparent, var(--accent) 18%, var(--accent) 82%, transparent);
+}
+.masthead .dateline {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 12px;
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 12.5px; font-weight: 600;
+  letter-spacing: 0.06em; text-transform: uppercase;
+}
+.masthead .dateline .sep { color: var(--faint); }
+.masthead .dateline .issue { color: var(--accent); }
+
+.fp-grid {
+  max-width: 1240px; margin: 0 auto;
+  padding: 18px 28px 90px;
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  gap: 26px;
+  align-items: start;
+}
+/* Left: unassigned drafts tray */
+.tray {
+  position: sticky; top: 82px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 16px;
+}
+.tray h3 {
+  margin: 0 0 4px; font-size: 12px;
+  letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted);
+}
+.tray .hint { font-size: 12px; color: var(--faint); margin-bottom: 14px; }
+.draft {
+  display: block; width: 100%; text-align: left;
+  padding: 11px 13px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+  margin-bottom: 9px;
+  transition: all .14s ease;
+}
+.draft:hover { border-color: var(--border-hi); transform: translateX(2px); }
+.draft.sel {
+  border-color: var(--accent);
+  background: #14203A;
+  box-shadow: 0 0 18px rgba(59,130,246,0.22);
+}
+.draft .dt { font-weight: 600; font-size: 13.5px; line-height: 1.35; }
+.draft .dm { font-size: 11px; color: var(--faint); margin-top: 4px; }
+.tray-empty { color: var(--faint); font-size: 12.5px; font-style: italic; padding: 8px 2px; }
+
+/* Main: the newsletter skeleton */
+.sheet {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  overflow: hidden;
+}
+.sheet-head {
+  padding: 16px 22px;
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  border-bottom: 1px solid var(--border);
+  background: #0D1425;
+}
+.sheet-head .t { font-weight: 700; letter-spacing: 0.02em; }
+.sheet-head .t small { display: block; color: var(--faint); font-weight: 500; letter-spacing: 0; }
+
+.sec {
+  display: grid;
+  grid-template-columns: 44px 1fr;
+  gap: 16px;
+  padding: 20px 22px;
+  border-bottom: 1px solid var(--border);
+  transition: background .15s ease;
+}
+.sec:last-child { border-bottom: none; }
+.sec.dropok:hover { background: #121B2F; cursor: pointer; }
+.sec.hot { background: #16233E; box-shadow: inset 3px 0 0 var(--accent); }
+.sec-num {
+  font-family: var(--mono);
+  font-size: 15px; font-weight: 700;
+  color: var(--faint);
+  padding-top: 2px;
+}
+.sec-head { display: flex; align-items: center; gap: 10px; margin-bottom: 3px; }
+.sec-name { font-weight: 700; font-size: 15.5px; }
+.sec-job { color: var(--faint); font-size: 12.5px; margin-bottom: 12px; }
+
+.st {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 3px 10px; border-radius: 999px;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.02em;
+}
+.st.ready  { background: rgba(52,211,153,0.13); color: var(--ready); }
+.st.empty  { background: rgba(245,158,11,0.13); color: var(--empty); }
+.st.none   { background: rgba(100,116,139,0.16); color: var(--none); }
+.st .d { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+
+/* Slotted story card inside a section (reads like a newsletter block) */
+.slot {
+  display: flex; align-items: center; gap: 14px;
+  padding: 13px 15px;
+  border-radius: 10px;
+  background: var(--card);
+  border: 1px solid var(--border-hi);
+}
+.slot .tile { flex: 0 0 40px; width: 40px; height: 40px; font-size: 18px; border-radius: 8px; }
+.slot .slot-body .stt { font-family: var(--serif); font-weight: 700; font-size: 15px; }
+.slot .slot-body .smm { font-size: 11.5px; color: var(--faint); margin-top: 3px; }
+.slot .kick { margin-left: auto; color: var(--faint); font-size: 11px; white-space: nowrap; }
+.slot .kick b { color: var(--accent); cursor: pointer; }
+.slot .kick b:hover { text-decoration: underline; }
+
+/* Edition lead: an explicitly designated ONE story on the page. Independent
+   of the wire selection — a Wire story is never implicitly the lead. */
+.slot .lead-toggle {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 9px; border-radius: 999px;
+  border: 1px solid var(--border-hi);
+  background: transparent; color: var(--muted);
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.slot .lead-toggle:hover { color: #fff; border-color: var(--accent); }
+.slot .lead-toggle.on { color: #FBBF24; border-color: #6B5320; background: rgba(245,158,11,0.1); }
+.slot.lead { border-color: #6B5320; box-shadow: 0 0 0 1px rgba(245,158,11,0.25); }
+.sec-lead-badge {
+  display: none;
+  margin-left: 8px;
+  padding: 2px 9px; border-radius: 999px;
+  font-size: 10px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase;
+  background: rgba(245,158,11,0.14); color: #FBBF24;
+}
+.sec.has-lead .sec-lead-badge { display: inline-flex; align-items: center; gap: 4px; }
+
+.nostate {
+  padding: 13px 15px;
+  border-radius: 10px;
+  border: 1px dashed var(--border-hi);
+  color: var(--faint);
+  font-size: 13px;
+}
+.dropnote {
+  margin-top: 10px; color: var(--accent); font-size: 12px; font-weight: 600;
+  opacity: 0; transition: opacity .15s ease;
+}
+.sec.hot .dropnote { opacity: 1; }
+.sec.nolimit .dropnote { color: var(--empty); }
+
+/* "Fill from today's wire" — the subtle inline action on an empty section.
+   It reinforces that everything serves the edition: an empty block is not a
+   dead end, it is a prompt to go get raw material for THIS briefing. */
+.fill-link {
+  display: inline-flex; align-items: center; gap: 7px;
+  margin-top: 11px;
+  padding: 7px 13px;
+  border-radius: 999px;
+  border: 1px dashed var(--border-hi);
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px; font-weight: 600;
+  transition: all .14s ease;
+}
+.fill-link:hover { color: #fff; border-color: var(--accent); border-style: solid; background: var(--accent-dim); }
+.fill-link .arw { color: var(--accent); font-weight: 700; }
+/* The wire is not a test fixture. It is where this edition gets its material. */
+.fill-link .ctx { color: var(--faint); font-weight: 500; }
+
+/* ---------------------------------------------------------------------
+   "AI SUGGESTS" — per-section recommendation row.
+   Only the news-derived sections (01/04/07/08) get this: the recommender
+   proposes 1–2 story chips drawn from today's wire for THIS section. A
+   dashed + sparkle treatment reads as a suggestion, never as content.
+   Accepting or rejecting a chip is the training signal — the real store is
+   ai_judgement(kind='recommend', accept/reject + reason).
+   --------------------------------------------------------------------- */
+.ai-suggests {
+  margin-top: 11px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px dashed #4A3A6B;
+  background: rgba(124,92,255,0.07);
+}
+.ai-suggests .ai-label {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 10.5px; font-weight: 800;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  color: #B79CFF;
+  margin-bottom: 9px;
+}
+.ai-suggests .ai-label .sp { font-size: 12px; }
+.ai-suggests .ai-label .why {
+  margin-left: auto;
+  font-size: 9.5px; font-weight: 700; letter-spacing: 0.02em;
+  text-transform: none;
+  color: var(--faint);
+  border: 1px solid var(--border-hi);
+  border-radius: 999px;
+  padding: 1px 8px;
+  cursor: help;
+}
+.ai-chip {
+  display: flex; align-items: center; gap: 9px;
+  width: 100%; text-align: left;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px dashed #4A3A6B;
+  background: rgba(124,92,255,0.05);
+  color: #D8D2F0;
+  font-size: 12.5px;
+  margin-bottom: 7px;
+  transition: all .14s ease;
+}
+.ai-chip:last-child { margin-bottom: 0; }
+.ai-chip:hover {
+  border-style: solid;
+  border-color: #7C5CFF;
+  background: rgba(124,92,255,0.16);
+  color: #fff;
+  transform: translateX(2px);
+}
+.ai-chip .sp { color: #B79CFF; font-size: 11px; flex: 0 0 auto; }
+.ai-chip .ai-t { flex: 1; min-width: 0; }
+.ai-chip .ai-add {
+  flex: 0 0 auto;
+  color: #B79CFF; font-weight: 800; font-size: 11px;
+  letter-spacing: 0.03em;
+}
+.ai-chip .ai-fits {
+  flex: 0 0 auto;
+  font-size: 9.5px; font-weight: 700; color: var(--faint);
+}
+
+/* =====================================================================
+   PREVIEW MODAL — styled like the rendered dark email
+   ===================================================================== */
+.modal-back {
+  position: fixed; inset: 0; z-index: 80;
+  background: rgba(4,7,15,0.78);
+  backdrop-filter: blur(4px);
+  display: none; align-items: flex-start; justify-content: center;
+  padding: 40px 20px; overflow-y: auto;
+}
+.modal-back.open { display: flex; }
+.email {
+  width: 100%; max-width: 600px;
+  border-radius: 14px; overflow: hidden;
+  border: 1px solid #24365C;
+  box-shadow: 0 30px 80px rgba(0,0,0,0.6);
+  background: #0C1322;
+}
+.email-head {
+  padding: 26px 30px;
+  background: linear-gradient(160deg, #101A32, #0A0F1E);
+  border-bottom: 2px solid var(--accent);
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+}
+.email-head .brand {
+  display: flex; align-items: center; gap: 10px;
+  font-weight: 800; letter-spacing: 0.18em; font-size: 16px; text-transform: uppercase;
+}
+.email-head .brand .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 12px var(--accent); }
+.email-head .date { color: var(--muted); font-size: 12.5px; text-align: right; }
+.email-body { padding: 26px 30px; }
+.email-intro { color: var(--muted); font-size: 14px; margin-bottom: 24px; }
+.email-sec { margin-bottom: 26px; }
+.email-sec h2 {
+  margin: 0 0 12px; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--accent);
+  display: flex; align-items: center; gap: 9px;
+}
+.email-sec h2 .n { color: var(--faint); font-family: var(--mono); }
+.email-story { border-left: 2px solid #24365C; padding-left: 14px; margin-bottom: 12px; }
+.email-story .et { font-family: var(--serif); font-weight: 700; font-size: 17px; margin-bottom: 5px; }
+.email-story .ee { color: var(--muted); font-size: 13.5px; }
+.email-empty { color: var(--faint); font-size: 13px; font-style: italic; border-left: 2px dashed #24365C; padding-left: 14px; }
+.email-foot {
+  padding: 22px 30px; border-top: 1px solid #1B2438;
+  background: #0A0F1E;
+  color: var(--faint); font-size: 12px; text-align: center;
+}
+.email-foot a { color: var(--muted); text-decoration: none; }
+.close-x {
+  position: sticky; top: 0; float: right;
+  width: 34px; height: 34px; border-radius: 50%;
+  background: #1A2338; border: 1px solid var(--border-hi); color: var(--muted);
+  font-size: 17px; line-height: 1;
+}
+.close-x:hover { color: #fff; border-color: var(--accent); }
+
+/* Buttons */
+.btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 9px 16px;
+  border-radius: 9px;
+  border: 1px solid var(--border-hi);
+  background: var(--card);
+  color: var(--text);
+  font-size: 13.5px; font-weight: 600;
+  transition: all .14s ease;
+}
+.btn:hover { border-color: #3D4E73; background: var(--card-hi); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.primary:hover { background: #2E74E8; box-shadow: 0 0 20px rgba(59,130,246,0.35); }
+.btn.ghost { background: transparent; border-color: transparent; color: var(--muted); }
+.btn.ghost:hover { color: var(--text); background: #141C31; }
+.btn.danger { color: #F87171; border-color: #4A2A31; }
+.btn.danger:hover { background: #2A161C; }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn.sm { padding: 7px 13px; font-size: 12.5px; }
+</style>
+</head>
+<body>
+
+<!-- =====================================================================
+     PERSISTENT TOP BAR + EDITION STEPPER
+     The stepper reads as production stages of ONE edition, in order:
+       ① Today's Wire -> ② Write -> ③ The Front Page
+     but the DEFAULT landing is ③ The Front Page (today's edition). The
+     edition pill (date) beside the stepper keeps the edition context
+     visible on every screen.
+     ===================================================================== -->
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="wordmark"><span class="dot"></span> NovrPulse <span class="sub">/ edition desk</span></div>
+    <div class="topbar-right">
+      <span class="edition-pill" id="editionPill" title="Today's edition">Mon 23 Nov 2026 · Daily Brief</span>
+      <nav class="stepper" aria-label="Pipeline">
+        <button class="step" data-goto="wire"><span class="num">1</span> Today's Wire</button>
+        <span class="stepline"></span>
+        <button class="step" data-goto="writer"><span class="num">2</span> Write</button>
+        <span class="stepline"></span>
+        <button class="step active" data-goto="frontpage"><span class="num">3</span> The Front Page</button>
+      </nav>
+    </div>
+  </div>
+</header>
+
+<!-- =====================================================================
+     SCREEN 1 — TODAY'S WIRE  (a filling action, reached FROM the edition)
+     Raw material for today's briefing: a reading-app column of stories,
+     checkboxes and the bottom action bar. Not the home screen.
+     ===================================================================== -->
+<main class="screen" id="screen-wire">
+  <div class="wire-head">
+    <div class="crumb" style="margin-bottom:10px">
+      <button class="btn ghost sm" id="backToEdition" style="margin-left:-13px">← Back to the 23 November edition</button>
+    </div>
+    <h1>Today's Wire</h1>
+    <div class="dek"><b>548 stories</b> collected · Monday, 23 November 2026 · <b>Raw material for the 23 November briefing</b> — triage the feed, then draft a piece for the edition.</div>
+  </div>
+
+  <!-- Filter chips -->
+  <div class="wire-toolbar">
+    <button class="chip on"><span class="g">✦</span> All pillars</button>
+    <button class="chip"><span class="g">§</span> 01 Regulatory</button>
+    <button class="chip"><span class="g">✦</span> 07 Breaking</button>
+    <button class="chip"><span class="g">⛨</span> 08 CyberIntel</button>
+    <button class="chip"><span class="g">⚠</span> High severity</button>
+    <div class="searchbox"><span>⌕</span> Search the wire…</div>
+  </div>
+
+  <!-- The feed: one clean column of story cards -->
+  <div class="feed" id="feed">
+
+    <article class="story" data-title="NCC directs ISPs on subscriber data protection" data-src="Techpoint Africa" data-pillar="01 Regulatory Impact" data-pillars="01">
+      <button class="tick" aria-label="Select story">✓</button>
+      <div class="tile" title="01 Regulatory Impact">§</div>
+      <div class="story-body">
+        <h3 class="story-title">NCC directs ISPs on subscriber data protection ahead of NDPA deadline</h3>
+        <p class="story-excerpt">The Commission issued fresh directives requiring internet service providers to audit how subscriber records are stored, shared and retained, with compliance returns due within 30 days.</p>
+        <div class="story-meta">
+          <span class="pill"><span class="dot2"></span> 01 Regulatory Impact</span>
+          <span class="src">Techpoint Africa</span>
+          <span>· 2h ago</span>
+          <span>· <span class="sev mid">SEV 3</span></span>
+        </div>
+        <div class="fits">
+          <span class="fits-label">Fits:</span>
+          <span class="fitchip"><span class="g">§</span> 01 Regulatory</span>
+        </div>
+      </div>
+    </article>
+
+    <article class="story" data-title="CBN issues new capital directive for banks" data-src="BusinessDay" data-pillar="01 Regulatory Impact" data-pillars="01,07">
+      <button class="tick" aria-label="Select story">✓</button>
+      <div class="tile" title="01 Regulatory Impact">§</div>
+      <div class="story-body">
+        <h3 class="story-title">CBN issues new capital directive for banks with cyber-resilience conditions</h3>
+        <p class="story-excerpt">A circular raises minimum capital requirements and ties part of the compliance window to demonstrable incident-response capability and board-level cyber oversight.</p>
+        <div class="story-meta">
+          <span class="pill"><span class="dot2"></span> 01 Regulatory Impact</span>
+          <span class="src">BusinessDay</span>
+          <span>· 4h ago</span>
+          <span>· <span class="sev hi">SEV 4</span></span>
+        </div>
+        <div class="fits">
+          <span class="fits-label">Fits:</span>
+          <span class="fitchip"><span class="g">§</span> 01 Regulatory</span>
+          <span class="fitchip"><span class="g">✦</span> 07 Breaking</span>
+        </div>
+      </div>
+    </article>
+
+    <article class="story" data-title="Zenith Bank customers targeted by phishing campaign" data-src="The Guardian Nigeria" data-pillar="07 Breaking News" data-pillars="04,07,08">
+      <button class="tick" aria-label="Select story">✓</button>
+      <div class="tile" title="07 Breaking News">✦</div>
+      <div class="story-body">
+        <h3 class="story-title">Zenith Bank customers targeted by phishing campaign impersonating alerts</h3>
+        <p class="story-excerpt">Fraudulent messages mimicking transaction alerts are pushing customers to credential-harvesting pages. The bank says no breach of its systems has been detected.</p>
+        <div class="story-meta">
+          <span class="pill"><span class="dot2"></span> 07 Breaking News</span>
+          <span class="src">The Guardian Nigeria</span>
+          <span>· 1h ago</span>
+          <span>· <span class="sev hi">SEV 4</span></span>
+        </div>
+        <div class="fits">
+          <span class="fits-label">Fits:</span>
+          <span class="fitchip"><span class="g">✦</span> 07 Breaking</span>
+          <span class="fitchip"><span class="g">⛨</span> 04 Cyber Hygiene</span>
+          <span class="fitchip"><span class="g">⛨</span> 08 CyberIntel</span>
+        </div>
+      </div>
+    </article>
+
+    <article class="story" data-title="ngCERT raises alert level after ransomware wave" data-src="ngCERT Advisory" data-pillar="08 CyberIntel" data-pillars="07,08">
+      <button class="tick" aria-label="Select story">✓</button>
+      <div class="tile" title="08 CyberIntel">⛨</div>
+      <div class="story-body">
+        <h3 class="story-title">ngCERT raises alert level after ransomware wave hits health and education sectors</h3>
+        <p class="story-excerpt">The agency reports a coordinated spike in double-extortion intrusions, urging affected organisations to isolate backups and report incidents through its portal.</p>
+        <div class="story-meta">
+          <span class="pill"><span class="dot2"></span> 08 CyberIntel</span>
+          <span class="src">ngCERT Advisory</span>
+          <span>· 3h ago</span>
+          <span>· <span class="sev hi">SEV 5</span></span>
+        </div>
+        <div class="fits">
+          <span class="fits-label">Fits:</span>
+          <span class="fitchip"><span class="g">⛨</span> 08 CyberIntel</span>
+          <span class="fitchip"><span class="g">✦</span> 07 Breaking</span>
+        </div>
+      </div>
+    </article>
+
+    <article class="story" data-title="NITDA opens digital literacy programme" data-src="NITDA" data-pillar="03 Public Education & Advocacy" data-pillars="">
+      <button class="tick" aria-label="Select story">✓</button>
+      <div class="tile" title="03 Public Education & Advocacy">◎</div>
+      <div class="story-body">
+        <h3 class="story-title">NITDA opens digital literacy programme across 12 states</h3>
+        <p class="story-excerpt">A free training roll-out targets artisans, teachers and small-business owners with modules on safe online payments and device hygiene.</p>
+        <div class="story-meta">
+          <span class="pill"><span class="dot2"></span> 03 Public Education &amp; Advocacy</span>
+          <span class="src">NITDA</span>
+          <span>· 6h ago</span>
+          <span>· SEV 2</span>
+        </div>
+        <div class="fits">
+          <span class="fits-label">Fits:</span>
+          <span class="nofit">No pillar fit — write in the Inbox</span>
+        </div>
+      </div>
+    </article>
+
+    <article class="story" data-title="EFCC arrests suspects over business email compromise" data-src="Premium Times" data-pillar="07 Breaking News" data-pillars="07,08">
+      <button class="tick" aria-label="Select story">✓</button>
+      <div class="tile" title="07 Breaking News">✦</div>
+      <div class="story-body">
+        <h3 class="story-title">EFCC announces arrests over business email compromise ring in Lagos</h3>
+        <p class="story-excerpt">Three suspects were taken into custody over an alleged scheme that redirected corporate invoice payments. A charge is not a conviction.</p>
+        <div class="story-meta">
+          <span class="pill"><span class="dot2"></span> 07 Breaking News</span>
+          <span class="src">Premium Times</span>
+          <span>· 5h ago</span>
+          <span>· <span class="sev mid">SEV 3</span></span>
+        </div>
+        <div class="fits">
+          <span class="fits-label">Fits:</span>
+          <span class="fitchip"><span class="g">✦</span> 07 Breaking</span>
+          <span class="fitchip"><span class="g">⛨</span> 08 CyberIntel</span>
+        </div>
+      </div>
+    </article>
+
+    <article class="story" data-title="NDPC fines fintech over data breach" data-src="Nairametrics" data-pillar="01 Regulatory Impact" data-pillars="01,04">
+      <button class="tick" aria-label="Select story">✓</button>
+      <div class="tile" title="01 Regulatory Impact">§</div>
+      <div class="story-body">
+        <h3 class="story-title">NDPC fines a Lagos fintech over customer data breach</h3>
+        <p class="story-excerpt">The Commission says the firm failed to notify it within the statutory window after an unauthorised access incident exposed records of loan applicants.</p>
+        <div class="story-meta">
+          <span class="pill"><span class="dot2"></span> 01 Regulatory Impact</span>
+          <span class="src">Nairametrics</span>
+          <span>· 7h ago</span>
+          <span>· <span class="sev mid">SEV 3</span></span>
+        </div>
+        <div class="fits">
+          <span class="fits-label">Fits:</span>
+          <span class="fitchip"><span class="g">§</span> 01 Regulatory</span>
+          <span class="fitchip"><span class="g">⛨</span> 04 Cyber Hygiene</span>
+        </div>
+      </div>
+    </article>
+
+    <article class="story" data-title="Cybersecurity forum to hold annual summit in Abuja" data-src="Cybersec Nigeria" data-pillar="05 Events" data-pillars="">
+      <button class="tick" aria-label="Select story">✓</button>
+      <div class="tile" title="05 Events">▤</div>
+      <div class="story-body">
+        <h3 class="story-title">Cybersecurity forum to hold annual summit in Abuja</h3>
+        <p class="story-excerpt">Organisers confirm a two-day hybrid summit for practitioners, regulators and executives, with sessions on incident response and AI risk.</p>
+        <div class="story-meta">
+          <span class="pill"><span class="dot2"></span> 05 Events</span>
+          <span class="src">Cybersec Nigeria</span>
+          <span>· 8h ago</span>
+          <span>· SEV 1</span>
+        </div>
+        <div class="fits">
+          <span class="fits-label">Fits:</span>
+          <span class="nofit">No pillar fit — write in the Inbox</span>
+        </div>
+      </div>
+    </article>
+
+    <article class="story" data-title="Naira slides as CBN adjusts FX corridor" data-src="BusinessDay" data-pillar="—" data-pillars="">
+      <button class="tick" aria-label="Select story">✓</button>
+      <div class="tile" title="Wire item — no news-derived pillar fit">◇</div>
+      <div class="story-body">
+        <h3 class="story-title">Naira slides as CBN adjusts the FX corridor against the dollar</h3>
+        <p class="story-excerpt">The naira weakened at the official window after the central bank widened its trading band. The move is monetary policy, not a cyber or regulatory-impact story.</p>
+        <div class="story-meta">
+          <span class="pill"><span class="dot2"></span> Markets</span>
+          <span class="src">BusinessDay</span>
+          <span>· 3h ago</span>
+          <span>· SEV 1</span>
+        </div>
+        <div class="fits">
+          <span class="fits-label">Fits:</span>
+          <span class="nofit">No pillar fit — none of 01 / 04 / 07 / 08</span>
+        </div>
+      </div>
+    </article>
+
+  </div>
+
+  <!-- Bottom action bar: appears only when stories are checked -->
+  <div class="actionbar" id="actionbar">
+    <span class="count"><span id="selCount">0</span> selected</span>
+    <button class="btn ghost sm" id="clearSel">Dismiss</button>
+    <button class="btn primary" id="writeBtn" disabled>Write piece →</button>
+  </div>
+</main>
+
+<!-- =====================================================================
+     SCREEN 2 — THE WRITER  (writing app: centred document, nothing else)
+     Edition-aware: the header binds the draft to the edition + section.
+     ===================================================================== -->
+<main class="screen" id="screen-writer">
+  <div class="writer-top">
+    <div class="edition-banner">
+      <span class="tag">Drafting for the <b>23 November edition</b></span>
+      <span class="sep">·</span>
+      <span class="sec">Section <b id="writerSection">07 Breaking News</b></span>
+    </div>
+    <div class="btn ghost sm" id="backToWire">← Back to today's wire</div>
+  </div>
+
+  <div class="docwrap">
+    <!-- Pillar chosen here (or set when opening from the Wire) -->
+    <div class="doc">
+      <div class="pillar-pick" id="pillarPick">
+        <button class="pchip on"><span class="g">§</span> 01 Regulatory Impact</button>
+        <button class="pchip"><span class="g">✦</span> 02 Forum Topic of the Day</button>
+        <button class="pchip"><span class="g">◎</span> 03 Public Education &amp; Advocacy</button>
+        <button class="pchip"><span class="g">⛨</span> 04 Cyber Hygiene / CAC</button>
+        <button class="pchip"><span class="g">▤</span> 05 Events</button>
+        <button class="pchip"><span class="g">↗</span> 06 Outreach Initiatives</button>
+        <button class="pchip"><span class="g">✦</span> 07 Breaking News</button>
+        <button class="pchip"><span class="g">⛨</span> 08 CyberIntel</button>
+      </div>
+      <!-- The story you opened may fit several sections. Only its ELIGIBLE
+           news-derived pillars are active here; the rest are greyed. Write one
+           piece, add it to the Front Page, come back, pick another eligible
+           pillar — one story can yield several pieces. -->
+      <div class="pchip-restrict" id="pchipRestrict"></div>
+
+      <!-- THE DOCUMENT HEADLINE. This is YOUR headline — the piece's own
+           original headline, written by the editor. It starts EMPTY on entry
+           and is NEVER seeded from the wire story's publisher title
+           (copyright: do not reuse the publisher's headline). The source
+           title is attribution only and lives in the Sources rail. -->
+      <h1 class="doc-headline" contenteditable="true" id="docHeadline" data-placeholder="Write your headline — not the source's"></h1>
+      <div class="doc-headline-hint" id="docHeadlineHint">
+        <b>Your original headline</b> — the source's title stays in Sources for attribution.
+      </div>
+      <div class="doc-byline" id="docByline">
+        <span class="pill"><span class="dot2"></span> <span id="writerPillar">01 Regulatory Impact</span></span>
+        <span class="srcline">The Guardian Nigeria</span>
+        <span>· 1h ago</span>
+        <span>· Confidence: <b style="color:var(--empty)">reported</b></span>
+      </div>
+
+      <!-- The scaffold: re-rendered by JS whenever the pillar changes.
+           Prose pillars get a slot outline; 05/06 get a field form. -->
+      <div class="scaffold" id="scaffold"></div>
+
+      <div class="takeaways">
+        <h4>Key takeaways</h4>
+        <ul>
+          <li>Legitimate banks never ask for your full card details or PIN through a link.</li>
+          <li>Verify any alert against the bank's official app before acting.</li>
+          <li>Report suspicious messages to your bank and to ngCERT.</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Right rail: pillar guidance (top) + collapsible sources -->
+    <aside class="rail">
+      <!-- Shape panel: the pillar's editorial checklist. Changes with the pillar. -->
+      <div class="guide" id="guide">
+        <div class="guide-head">Shape · guidance <span class="kind" id="guideKind">prose</span></div>
+        <ul class="guide-list" id="guideList"></ul>
+      </div>
+
+      <button class="rail-toggle" id="railToggle">Sources &amp; provenance <span id="railCaret">−</span></button>
+      <div class="rail-body" id="railBody">
+        <!-- Source attribution: the publisher's title as attribution ONLY.
+             Populated when a piece is opened from the wire; it never becomes
+             the document headline. -->
+        <div class="rail-attrib" id="railAttrib">
+          <div class="ra-kind">Source</div>
+          <div class="ra-line" id="railAttribLine"><b>The Guardian Nigeria</b> — <q>Zenith Bank customers targeted by phishing campaign</q></div>
+        </div>
+        <div class="srcitem">
+          <div class="st">The Guardian Nigeria</div>
+          <div class="sm">"Zenith Bank customers targeted by phishing campaign" · 1h ago</div>
+          <span class="conf reported">reported</span>
+        </div>
+        <div class="srcitem">
+          <div class="st">Zenith Bank statement</div>
+          <div class="sm">Press response: "no breach of our systems" · 1h ago</div>
+          <span class="conf confirmed">confirmed</span>
+        </div>
+        <div class="srcitem">
+          <div class="st">ngCERT guidance</div>
+          <div class="sm">Standing advisory on credential phishing · reference</div>
+          <span class="conf confirmed">confirmed</span>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- Slim footer actions -->
+  <div class="writer-foot">
+    <div class="writer-foot-inner">
+      <span class="saved">Draft saved to the 23 November edition · <b>just now</b></span>
+      <button class="btn danger" id="rejectBtn">Reject</button>
+      <button class="btn primary" id="toFrontPage">Add to the Front Page →</button>
+    </div>
+  </div>
+</main>
+
+<!-- =====================================================================
+     SCREEN 3 — THE FRONT PAGE  (HOME: today's edition, tray + 8 sections)
+     This is the edition itself: a newsletter masthead, then the eight
+     section blocks as the email's live skeleton.
+     ===================================================================== -->
+<main class="screen active" id="screen-frontpage">
+  <!-- Newsletter masthead: wordmark, rule, dateline -->
+  <div class="masthead" id="masthead">
+    <h1 class="mark">NOVRPULSE</h1>
+    <div class="rule"></div>
+    <div class="dateline">
+      <span>Monday 23 November 2026</span>
+      <span class="sep">·</span>
+      <span>Daily Brief</span>
+      <span class="sep">·</span>
+      <span class="issue" id="issueLine">Issue #412 · public tier</span>
+    </div>
+  </div>
+
+  <div class="fp-head">
+    <div>
+      <h1>Today's Briefing</h1>
+      <div class="dek">One dated edition, eight fixed sections. Fill it, then send it.</div>
+    </div>
+    <div class="fp-progress">
+      <div class="fp-count"><b id="readyCount">0</b> <span style="color:var(--muted)">of 8 ready</span></div>
+      <div class="track"><i id="readyBar"></i></div>
+      <button class="btn primary" id="previewBtn">Preview email ↗</button>
+    </div>
+  </div>
+
+  <div class="fp-grid">
+    <!-- Left tray: unassigned drafts (click to select a chip) -->
+    <aside class="tray">
+      <h3>Unassigned drafts</h3>
+      <div class="hint">Select a draft, then click a section slot.</div>
+      <div id="draftTray">
+        <!-- TWO pieces drafted from ONE wire story: the Zenith phishing story
+             fits 07 Breaking and 04 Cyber Hygiene, so it produced two drafts.
+             In the real model: one event with functions[], one publish_item
+             per (event, pillar). -->
+        <button class="draft" data-id="d1" data-title="Zenith phishing — 07 Breaking" data-pillar="07 Breaking News" data-glyph="✦" data-src="The Guardian Nigeria" data-source-headline="Zenith Bank customers targeted by phishing campaign impersonating alerts">
+          <div class="dt">Zenith phishing — 07 Breaking</div>
+          <div class="dm">07 Breaking News · drafted 12m ago</div>
+        </button>
+        <button class="draft" data-id="d1b" data-title="Zenith phishing — 04 Cyber Hygiene" data-pillar="04 Cyber Hygiene / CAC" data-glyph="⛨" data-src="The Guardian Nigeria" data-source-headline="Zenith Bank customers targeted by phishing campaign impersonating alerts">
+          <div class="dt">Zenith phishing — 04 Cyber Hygiene</div>
+          <div class="dm">04 Cyber Hygiene / CAC · drafted 11m ago</div>
+        </button>
+        <button class="draft" data-id="d2" data-title="What the NCC's new data rules mean for ISPs" data-pillar="01 Regulatory Impact" data-glyph="§" data-src="Techpoint Africa" data-source-headline="NCC directs ISPs on subscriber data protection ahead of NDPA deadline">
+          <div class="dt">What the NCC's new data rules mean for ISPs</div>
+          <div class="dm">01 Regulatory Impact · drafted 28m ago</div>
+        </button>
+        <button class="draft" data-id="d3" data-title="Inside the ransomware wave hitting health and schools" data-pillar="08 CyberIntel" data-glyph="⛨" data-src="ngCERT Advisory" data-source-headline="ngCERT raises alert level after ransomware wave hits health and education sectors">
+          <div class="dt">Inside the ransomware wave hitting health and schools</div>
+          <div class="dm">08 CyberIntel · drafted 40m ago</div>
+        </button>
+        <button class="draft" data-id="d4" data-title="What this year's cybersecurity summit will actually cover" data-pillar="05 Events" data-glyph="▤" data-src="Cybersec Nigeria" data-source-headline="Cybersecurity forum to hold annual summit in Abuja">
+          <div class="dt">What this year's cybersecurity summit will actually cover</div>
+          <div class="dm">05 Events · drafted 55m ago</div>
+        </button>
+      </div>
+      <div class="tray-empty" id="trayEmpty">All drafts assigned to the page.</div>
+    </aside>
+
+    <!-- Main: the newsletter skeleton (8 ordered sections) -->
+    <section class="sheet" id="sheet">
+      <div class="sheet-head">
+        <div class="t">Today's Briefing<small>NOVRPULSE · 8 sections · public tier</small></div>
+        <div style="color:var(--faint);font-size:12px">Mon 23 Nov 2026</div>
+      </div>
+      <!-- Sections are generated by JS from the eight-pillar definition -->
+    </section>
+  </div>
+</main>
+
+<!-- =====================================================================
+     PREVIEW MODAL — the rendered dark email
+     ===================================================================== -->
+<div class="modal-back" id="modal">
+  <div style="max-width:600px;width:100%">
+    <button class="close-x" id="closeModal" aria-label="Close preview">✕</button>
+    <div class="email" id="emailOut">
+      <div class="email-head">
+        <div class="brand"><span class="dot"></span> NovrPulse</div>
+        <div class="date">Monday 23 November 2026<br>The Front Page · Daily Brief · Issue #412</div>
+      </div>
+      <div class="email-body" id="emailBody">
+        <p class="email-intro">Your briefing on Nigeria's cybersecurity and regulatory landscape — the 23 November edition, assembled from today's wire.</p>
+        <!-- sections injected here by JS -->
+      </div>
+      <div class="email-foot">
+        NovrPulse · Nigeria Cyber Intelligence Daily<br>
+        You are receiving this as part of the NovrPulse briefing.
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* =====================================================================
+   NAVIGATION — stepper switches screens; CTAs advance the flow.
+   The edition (The Front Page) is the home screen on load. The stepper
+   highlights where you are; the edition pill keeps the date in view.
+   ===================================================================== */
+var steps = document.querySelectorAll('.step');
+function go(name) {
+  document.querySelectorAll('.screen').forEach(function (s) {
+    s.classList.remove('active');
+  });
+  document.getElementById('screen-' + name).classList.add('active');
+  steps.forEach(function (s) {
+    var active = s.dataset.goto === name;
+    s.classList.toggle('active', active);
+  });
+  window.scrollTo(0, 0);
+}
+steps.forEach(function (s) {
+  s.addEventListener('click', function () { go(s.dataset.goto); });
+});
+
+/* =====================================================================
+   SCREEN 1 — TODAY'S WIRE
+   - checkboxes drive the bottom action bar
+   - "Write piece" advances to the Writer, carrying the selected story
+     AND binding the draft to the edition + the story's section.
+   ===================================================================== */
+var stories = Array.prototype.slice.call(document.querySelectorAll('.story'));
+var actionbar = document.getElementById('actionbar');
+var selCount = document.getElementById('selCount');
+var writeBtn = document.getElementById('writeBtn');
+var currentStory = null;
+
+function refreshWire() {
+  var picked = stories.filter(function (s) { return s.classList.contains('checked'); });
+  selCount.textContent = picked.length;
+  actionbar.classList.toggle('show', picked.length > 0);
+  writeBtn.disabled = picked.length === 0;
+  writeBtn.textContent = 'Write piece for the 23 Nov edition →';
+}
+
+stories.forEach(function (story) {
+  story.querySelector('.tick').addEventListener('click', function (e) {
+    e.stopPropagation();
+    story.classList.toggle('checked');
+    refreshWire();
+  });
+});
+document.getElementById('clearSel').addEventListener('click', function () {
+  stories.forEach(function (s) { s.classList.remove('checked'); });
+  refreshWire();
+});
+writeBtn.addEventListener('click', function () {
+  var first = stories.filter(function (s) { return s.classList.contains('checked'); })[0];
+  if (!first) return;
+  // The wire story is RAW MATERIAL. Its publisher title is attribution ONLY:
+  // it is passed to the Sources rail, NEVER to the document headline. The
+  // editor writes their own original headline.
+  // A story can serve SEVERAL news-derived pillars; data-pillars carries the
+  // full eligible set ("04,07,08"). data-pillar is only the lead glyph.
+  currentStory = {
+    sourceHeadline: first.dataset.title,
+    src: first.dataset.src,
+    pillar: first.dataset.pillar,
+    pillars: parseEligible(first.dataset.pillars)
+  };
+  // Bind the draft to the edition + its section in the Writer header,
+  // and pre-shape the document for the story's FIRST eligible pillar. A story
+  // that fits no news-derived section opens on a manual pillar so the document
+  // still has a valid scaffold.
+  var startPillar = currentStory.pillars.length
+    ? labelForPillarNum(currentStory.pillars[0])
+    : (pillarNumFromLabel(currentStory.pillar) ? currentStory.pillar : '02 Forum Topic of the Day');
+  document.getElementById('writerSection').textContent = startPillar;
+  document.getElementById('writerPillar').textContent = startPillar;
+  // Start with a clean, EMPTY, editor-owned headline.
+  resetHeadline();
+  // Put the publisher's title in the Sources rail as attribution only.
+  setSourceAttribution(currentStory.src, currentStory.sourceHeadline);
+  // Restrict the pillar chips to this story's eligible set (if it has one).
+  applyPillarEligibility(currentStory.pillars, true);
+  selectPillarByLabel(startPillar);
+  renderScaffold(startPillar);
+  go('writer');
+});
+refreshWire();
+
+/* =====================================================================
+   SCREEN 2 — THE WRITER
+   - one selected pillar state
+   - the document is a SCAFFOLD: one editor engine, eight pre-shaped
+     documents (see SCAFFOLDS below). Prose pillars render a slot outline;
+     05/06 render a labelled field form.
+   - a guidance panel (right rail) lists the pillar's editorial checklist
+   - collapsible sources rail
+   - footer advances to the Front Page
+   ===================================================================== */
+
+/* ---------------------------------------------------------------------
+   SCAFFOLD DEFINITIONS — THE PILLAR CONTRACTS
+   One entry per pillar. `kind` is 'prose' (slot outline the writer fills)
+   or 'fields' (a labelled form; no free-prose body). `slots` are the
+   pre-labelled blocks; `guidance` is the checklist shown in the rail.
+   This single structure drives the document, the byline and the rail:
+   switching a pillar re-renders all three from here.
+   --------------------------------------------------------------------- */
+var SCAFFOLDS = {
+  '01': {
+    kind: 'prose',
+    byline: 'The Guardian Nigeria · regulator notice',
+    slots: [
+      'Regulator',
+      'What was issued (and date)',
+      'Who is affected',
+      'What it means for organisations',
+      'Action to consider',
+      'Source & page ref'
+    ],
+    guidance: [
+      'Distinguish legal obligations from editorial interpretation.',
+      'Verify provisions against the primary notice before stating them.',
+      'Convert the notice into "what this means for you".',
+      'Cite the regulator, the date and the page reference.'
+    ]
+  },
+  '02': {
+    kind: 'prose',
+    byline: 'NovrPulse Editorial · forum desk',
+    slots: [
+      'Discussion prompt',
+      'Why it matters now',
+      'Link to forum thread'
+    ],
+    guidance: [
+      'One topic a day — never more.',
+      'Invite participation; ask a genuine question, not a restated headline.',
+      'Do not introduce a claim absent from the item you select from.'
+    ]
+  },
+  '03': {
+    kind: 'prose',
+    byline: 'NovrPulse Editorial · advocacy desk',
+    slots: [
+      'Explain in plain terms',
+      'The institution or body involved (NPF-CCC, ngCERT, DefenseCERT, NCC-CSIRT)',
+      'What readers should do'
+    ],
+    guidance: [
+      'Use simple language anyone can understand.',
+      'Verify institutional claims before publishing them.',
+      'Prefer a concrete, Nigeria-relevant example.',
+      'Give the reader 1–2 clear actions.'
+    ]
+  },
+  '04': {
+    kind: 'prose',
+    byline: 'NovrPulse Editorial · cyber hygiene',
+    slots: [
+      'How the attack works',
+      'How to stay protected',
+      'Common mistake to avoid'
+    ],
+    guidance: [
+      'Keep it practical, technical but accessible.',
+      'Explain the pattern, not one news event.',
+      'One message per piece — two messages is two pieces.'
+    ]
+  },
+  '05': {
+    kind: 'fields',
+    byline: 'NovrPulse Editorial · events desk',
+    fields: [
+      { label: 'Event title', type: 'text', placeholder: 'e.g. Cybersecurity Forum annual summit' },
+      { label: 'Organiser', type: 'text', placeholder: 'e.g. Cybersec Nigeria' },
+      { label: 'Date & time', type: 'text', placeholder: 'e.g. 14–15 January 2027, 09:00 WAT' },
+      { label: 'Venue or online link', type: 'text', placeholder: 'e.g. Transcorp Hilton, Abuja — or paste the meeting link' },
+      { label: 'Registration link', type: 'text', placeholder: 'paste the registration link' },
+      { label: 'Notes', type: 'textarea', placeholder: 'Format, audience, anything the reader needs.' }
+    ],
+    guidance: [
+      'Publish only verified events.',
+      "Give at least 7 days' notice before the event.",
+      'Confirm the date and venue, not just report them.',
+      'An expired event is archived, not deleted.'
+    ]
+  },
+  '06': {
+    kind: 'fields',
+    byline: 'NovrPulse Editorial · outreach desk',
+    fields: [
+      { label: 'Opportunity title', type: 'text', placeholder: 'e.g. NITDA digital literacy programme' },
+      { label: 'Kind (scholarship/course/programme)', type: 'text', placeholder: 'scholarship | course | programme' },
+      { label: 'Provider', type: 'text', placeholder: 'e.g. NITDA' },
+      { label: 'Deadline', type: 'text', placeholder: 'e.g. 31 December 2026' },
+      { label: 'Eligibility', type: 'text', placeholder: 'who can apply' },
+      { label: 'Link', type: 'text', placeholder: 'paste the official link' }
+    ],
+    guidance: [
+      'Verified, charity-based opportunities only.',
+      'Confirm the deadline against the primary page.',
+      'Reject any host that cannot be confirmed legitimate.',
+      'State eligibility clearly — a wrong deadline wastes a reader\'s chance.'
+    ]
+  },
+  '07': {
+    kind: 'prose',
+    byline: 'The Guardian Nigeria · breaking',
+    slots: [
+      'What happened',
+      'Who is affected',
+      'Where',
+      'Source'
+    ],
+    guidance: [
+      'Attribute every allegation to the agency or outlet that made it.',
+      'No names of arrestees in public pieces.',
+      'No pre-conviction labels (fraudster, culprit, scammer).',
+      'A charge is not a conviction.'
+    ]
+  },
+  '08': {
+    kind: 'prose',
+    byline: 'ngCERT Advisory · analyst desk',
+    slots: [
+      'What happened',
+      'Who/what is affected',
+      'The threat or actor',
+      'Does it affect the reader',
+      'Recommended action'
+    ],
+    guidance: [
+      'Give deeper context than breaking news.',
+      'Keep analysis visibly separate from fact.',
+      'Every claim carries its provenance and confidence.',
+      '"unknown" is a valid actor — do not manufacture attribution.'
+    ]
+  }
+};
+
+var pchips = Array.prototype.slice.call(document.querySelectorAll('.pchip'));
+var scaffoldEl = document.getElementById('scaffold');
+var guideListEl = document.getElementById('guideList');
+var guideKindEl = document.getElementById('guideKind');
+var docBylineEl = document.getElementById('docByline');
+var docHeadlineEl = document.getElementById('docHeadline');
+var docHeadlineHintEl = document.getElementById('docHeadlineHint');
+var scaffoldSwapTimer = null;
+
+/* The document headline is EMPTY on entry — it is the editor's own headline,
+   never the wire source's. The empty state shows the placeholder via
+   .doc-headline:empty::before. */
+function resetHeadline() {
+  if (docHeadlineEl) docHeadlineEl.textContent = '';
+  if (docHeadlineHintEl) docHeadlineHintEl.style.display = '';
+}
+/* The headline is the editor's once they type; hide the first-run hint. The
+   source title is untouched and stays in the Sources rail. */
+if (docHeadlineEl) {
+  docHeadlineEl.addEventListener('input', function () {
+    var has = docHeadlineEl.textContent.trim().length > 0;
+    if (docHeadlineHintEl) docHeadlineHintEl.style.display = has ? 'none' : '';
+  });
+}
+
+/* Write the publisher's headline into the Sources rail as ATTRIBUTION ONLY:
+   Source · <publisher> — "<source headline>". */
+function setSourceAttribution(publisher, sourceHeadline) {
+  var line = document.getElementById('railAttribLine');
+  if (!line) return;
+  line.innerHTML = '';
+  var pub = document.createElement('b');
+  pub.textContent = publisher || 'Unknown publisher';
+  line.appendChild(pub);
+  line.appendChild(document.createTextNode(' — '));
+  var q = document.createElement('q');
+  q.textContent = sourceHeadline || '';
+  line.appendChild(q);
+}
+
+/* Pull the two-digit pillar number out of a chip label (e.g. "01 Regulatory Impact"). */
+function pillarNumFromLabel(label) {
+  return (String(label).match(/\b(0[1-8])\b/) || [])[1];
+}
+
+/* The news-derived pillars: the ONLY sections a wire story can feed. 02/03/05/06
+   are cadence/manual sections — they are never offered as a story's "Fits". */
+var NEWS_DERIVED = ['01', '04', '07', '08'];
+
+/* Parse a story's eligible pillar set from data-pillars ("01,04,07" -> ["01","04","07"]). */
+function parseEligible(raw) {
+  if (!raw) return [];
+  return String(raw).split(',')
+    .map(function (s) { return s.replace(/\D/g, ''); })
+    .filter(function (n) { return n && NEWS_DERIVED.indexOf(n) !== -1; });
+}
+
+/* Map a two-digit pillar number to its full chip label, e.g. "04" -> "04 Cyber Hygiene / CAC". */
+function labelForPillarNum(num) {
+  var p = PILLARS.filter(function (x) { return x.n === num; })[0];
+  return p ? (p.n + ' ' + p.name) : num;
+}
+
+/* Eligibility gate on the Writer's pillar chips. When opened from a story, the
+   news-derived chips (01/04/07/08) are active ONLY for that story's eligible
+   set; a story that fits none of them greys all four (write it in the Inbox
+   instead). The manual/cadence pillars (02/03/05/06) stay available. With no
+   story context (fromStory=false) every chip returns to its normal state. */
+function applyPillarEligibility(eligible, fromStory) {
+  var note = document.getElementById('pchipRestrict');
+  var restricted = !!fromStory;
+  pchips.forEach(function (c) {
+    var num = pillarNumFromLabel(c.textContent.replace(/\s+/g, ' '));
+    var isNews = NEWS_DERIVED.indexOf(num) !== -1;
+    var ok = !restricted || !isNews || (eligible && eligible.indexOf(num) !== -1);
+    c.classList.toggle('disabled', !ok);
+    c.setAttribute('aria-disabled', ok ? 'false' : 'true');
+    if (ok) {
+      c.removeAttribute('title');
+    } else {
+      c.setAttribute('title', 'This story doesn\u2019t fit this section');
+    }
+  });
+  if (!note) return;
+  if (restricted && eligible && eligible.length) {
+    note.innerHTML = 'This story fits <b>' + eligible.length + '</b> section' +
+      (eligible.length === 1 ? '' : 's') +
+      ' \u2014 add a piece, then come back and pick another to write from the same story.';
+  } else if (restricted) {
+    note.innerHTML = 'This story fits <b>none</b> of the news-derived sections \u2014 write it in the Inbox.';
+  } else {
+    note.textContent = '';
+  }
+}
+
+/* Pillar chips are clickable only when not disabled. */
+function pillarChipLocked(c) { return c.classList.contains('disabled'); }
+
+/* Render the prose slot outline: a labelled, editable block per slot. */
+function renderProseSlots(outline) {
+  var host = document.createElement('div');
+  outline.forEach(function (label, i) {
+    var block = document.createElement('div');
+    block.className = 'slot-block';
+    var lab = document.createElement('div');
+    lab.className = 'slot-label';
+    lab.innerHTML = '<span class="n">' + (i + 1 < 10 ? '0' + (i + 1) : (i + 1)) + '</span>' + label;
+    var area = document.createElement('div');
+    area.className = 'slot-area';
+    area.setAttribute('contenteditable', 'true');
+    area.setAttribute('data-placeholder', 'Write the ' + label.toLowerCase() + ' here\u2026');
+    block.appendChild(lab);
+    block.appendChild(area);
+    host.appendChild(block);
+  });
+  return host;
+}
+
+/* Render the structured field form for 05/06 (no free-prose body). */
+function renderFieldForm(def) {
+  var form = document.createElement('div');
+  form.className = 'fieldform';
+  def.fields.forEach(function (f) {
+    var row = document.createElement('div');
+    row.className = 'fieldrow';
+    var lab = document.createElement('label');
+    lab.innerHTML = f.label + ' <span class="req">*</span>';
+    var input;
+    if (f.type === 'textarea') {
+      input = document.createElement('textarea');
+      input.rows = 3;
+    } else {
+      input = document.createElement('input');
+      input.type = 'text';
+    }
+    input.setAttribute('placeholder', f.placeholder || '');
+    row.appendChild(lab);
+    row.appendChild(input);
+    form.appendChild(row);
+  });
+  return form;
+}
+
+/* Render the guidance checklist (the "Shape" panel) for a pillar. */
+function renderGuidance(def) {
+  guideKindEl.textContent = def.kind === 'fields' ? 'structured form' : 'prose outline';
+  guideListEl.innerHTML = '';
+  def.guidance.forEach(function (g) {
+    var li = document.createElement('li');
+    li.textContent = g;
+    guideListEl.appendChild(li);
+  });
+}
+
+/* Re-render the whole editor for a pillar: scaffold + byline + guidance.
+   Called by the chips AND when a story opens the Writer, so the document
+   is always pre-shaped by the selected pillar. */
+function renderScaffold(label) {
+  var num = pillarNumFromLabel(label);
+  var def = SCAFFOLDS[num];
+  if (!def) return;
+
+  // Swap the document in with a short cross-fade.
+  scaffoldEl.classList.add('swap');
+  if (scaffoldSwapTimer) clearTimeout(scaffoldSwapTimer);
+  scaffoldSwapTimer = setTimeout(function () {
+    scaffoldEl.innerHTML = '';
+    scaffoldEl.appendChild(
+      def.kind === 'fields' ? renderFieldForm(def) : renderProseSlots(def.slots)
+    );
+    scaffoldEl.classList.remove('swap');
+  }, 120);
+
+  // Byline reflects the pillar.
+  if (docBylineEl) {
+    var old = docBylineEl.querySelector('.srcline');
+    if (old) old.textContent = def.byline;
+  }
+
+  // Guidance panel reflects the pillar.
+  renderGuidance(def);
+}
+
+/* Chips set the pillar AND re-render the scaffold. */
+function selectPillarByLabel(label) {
+  pchips.forEach(function (c) {
+    c.classList.toggle('on', c.textContent.replace(/\s+/g, ' ').indexOf(label) !== -1);
+  });
+}
+pchips.forEach(function (c) {
+  c.addEventListener('click', function () {
+    if (pillarChipLocked(c)) return; // story doesn't fit this section
+    pchips.forEach(function (x) { x.classList.remove('on'); });
+    c.classList.add('on');
+    var label = c.textContent.replace(/\s+/g, ' ').trim();
+    document.getElementById('writerPillar').textContent = label;
+    document.getElementById('writerSection').textContent = label; // keep the header in sync
+    renderScaffold(label);
+  });
+});
+document.getElementById('railToggle').addEventListener('click', function () {
+  var body = document.getElementById('railBody');
+  body.classList.toggle('hidden');
+  document.getElementById('railCaret').textContent = body.classList.contains('hidden') ? '+' : '−';
+});
+document.getElementById('toFrontPage').addEventListener('click', function () {
+  // "Add to the Front Page" files the current draft as an unassigned tray chip.
+  // The editor stays in the Writer (the piece is now in the tray), then picks
+  // ANOTHER eligible pillar to write a second piece from the SAME story.
+  addDraftToTray();
+  go('frontpage');
+});
+document.getElementById('backToWire').addEventListener('click', function () { go('wire'); });
+document.getElementById('backToEdition').addEventListener('click', function () { go('frontpage'); });
+document.getElementById('rejectBtn').addEventListener('click', function () { go('wire'); });
+
+/* Initial scaffold: the Writer opens pre-shaped for the default pillar. */
+renderScaffold('01 Regulatory Impact');
+
+/* =====================================================================
+   SCREEN 3 — THE FRONT PAGE
+   - the eight sections, in order, with their real job descriptions
+   - click a tray chip (select) -> click a section slot (drop)
+   - progress "N of 8 ready" recomputes; sections that already hold a
+     piece are marked "No updates" rather than accepting a second one
+     (F2 has a single-topic rule; keep the prototype simple: one slot
+     per section).
+   ===================================================================== */
+var PILLARS = [
+  { n: '01', name: 'Regulatory Impact',       glyph: '§', job: 'Regulator notice, turned into "what this means for you".' },
+  { n: '02', name: 'Forum Topic of the Day',  glyph: '✦', job: 'One genuine question drawn from the day\u2019s strongest item.' },
+  { n: '03', name: 'Public Education & Advocacy', glyph: '◎', job: 'Awareness content: scam patterns and safety basics.' },
+  { n: '04', name: 'Cyber Hygiene / CAC',     glyph: '⛨', job: 'Campaign-led messaging and cyber-hygiene content.' },
+  { n: '05', name: 'Events',                  glyph: '▤', job: 'Cybersecurity events across Nigeria and Africa.' },
+  { n: '06', name: 'Outreach Initiatives',    glyph: '↗', job: 'Scholarships, training, grants and opportunities.' },
+  { n: '07', name: 'Breaking News',           glyph: '✦', job: 'Advisories and incidents, fast and attributed.' },
+  { n: '08', name: 'CyberIntel',              glyph: '⛨', job: 'Deeper analysis: actor, vector, context, assessment.' }
+];
+
+var sheet = document.getElementById('sheet');
+var secEls = {};
+
+/* AI recommendations, PER SECTION. Drawn from today's wire, these are the
+   recommender's proposals for a given news-derived section — the prototype
+   stand-in for the real ai_judgement(kind='recommend') rows. Only 01/04/07/08
+   appear here: cadence/manual sections (02/03/05/06) are never suggested. */
+var AI_SUGGESTIONS = {
+  '01': [
+    { t: 'CBN capital directive binds compliance to cyber-resilience', src: 'BusinessDay', fits: '01' },
+    { t: 'NDPC fines a Lagos fintech over a customer data breach', src: 'Nairametrics', fits: '01' }
+  ],
+  '04': [
+    { t: 'Zenith phishing: the message pattern customers must recognise', src: 'The Guardian Nigeria', fits: '04' }
+  ],
+  '07': [
+    { t: 'ngCERT raises alert level after ransomware wave', src: 'ngCERT Advisory', fits: '07' },
+    { t: 'EFCC announces BEC arrest ring in Lagos', src: 'Premium Times', fits: '07' }
+  ],
+  '08': [
+    { t: 'Inside the double-extortion ransomware wave', src: 'ngCERT Advisory', fits: '08' }
+  ]
+};
+
+/* Build the eight-section skeleton once */
+PILLARS.forEach(function (p) {
+  var newsDerived = NEWS_DERIVED.indexOf(p.n) !== -1;
+  var sec = document.createElement('div');
+  sec.className = 'sec dropok';
+  sec.dataset.n = p.n;
+  // The AI-suggest row is rendered ONLY on news-derived sections. The dashed +
+  // sparkle treatment keeps it visibly distinct from real content.
+  var aiHtml = '';
+  if (newsDerived) {
+    var chips = (AI_SUGGESTIONS[p.n] || []).map(function (s, i) {
+      return '<button class="ai-chip" type="button" data-ai="' + p.n + '" data-i="' + i + '">' +
+        '<span class="sp">\u2726</span>' +
+        '<span class="ai-t">' + escapeHtml(s.t) + '</span>' +
+        '<span class="ai-fits">' + escapeHtml(s.src) + '</span>' +
+        '<span class="ai-add">+ add</span>' +
+      '</button>';
+    }).join('');
+    aiHtml =
+      '<div class="ai-suggests" data-ai-host="' + p.n + '">' +
+        '<div class="ai-label"><span class="sp">\u2726</span> AI suggests for this section' +
+          '<span class="why" title="AI suggestion \u2014 accepting or rejecting this trains the recommender.">trains the recommender</span>' +
+        '</div>' + chips +
+      '</div>';
+  }
+  sec.innerHTML =
+    '<div class="sec-num">' + p.n + '</div>' +
+    '<div>' +
+      '<div class="sec-head"><span class="sec-name">' + p.name + '</span>' +
+        '<span class="st empty"><span class="d"></span> Empty</span>' +
+        '<span class="sec-lead-badge">\u2605 Edition lead</span></div>' +
+      '<div class="sec-job">' + p.job + '</div>' +
+      '<div class="slot-host"></div>' +
+      '<div class="dropnote">Click to drop the selected draft here</div>' +
+      aiHtml +
+      '<button class="fill-link" data-fill="' + p.n + '">' +
+        'Fill from today\u2019s wire <span class="arw">\u2192</span>' +
+        '<span class="ctx">for the 23 Nov edition</span>' +
+      '</button>' +
+    '</div>';
+  sheet.appendChild(sec);
+  secEls[p.n] = sec;
+  sec.addEventListener('click', function () { assign(p.n); });
+  // The "fill" action is the edition's demand signal: an empty block sends
+  // you out to the wire to get raw material for the briefing.
+  var fill = sec.querySelector('.fill-link');
+  fill.addEventListener('click', function (e) {
+    e.stopPropagation();
+    go('wire');
+  });
+  // Accepting an AI suggestion assigns it into the section directly. In the
+  // real system this writes an ai_judgement(kind='recommend', decision='accept')
+  // and creates the (event, pillar) publish_item. Rejecting (the section's own
+  // controls) logs decision='reject' with a reason.
+  var aiHost = sec.querySelector('.ai-suggests');
+  if (aiHost) {
+    aiHost.addEventListener('click', function (e) {
+      var chip = e.target.closest ? e.target.closest('.ai-chip') : null;
+      if (!chip) return;
+      e.stopPropagation();
+      acceptAiSuggestion(p.n, chip);
+    });
+  }
+});
+
+/* --- Tray selection --- */
+var selectedDraft = null;
+var drafts = Array.prototype.slice.call(document.querySelectorAll('.draft'));
+function refreshTray() {
+  // A chip that has been dropped into a section is removed from the DOM,
+  // so presence in the document is what tells us whether the tray is empty.
+  var any = drafts.some(function (d) { return document.body.contains(d); });
+  document.getElementById('trayEmpty').style.display = any ? 'none' : 'block';
+}
+function bindDraft(d) {
+  d.addEventListener('click', function () {
+    if (selectedDraft === d) {
+      d.classList.remove('sel'); selectedDraft = null; return;
+    }
+    drafts.forEach(function (x) { x.classList.remove('sel'); });
+    d.classList.add('sel');
+    selectedDraft = d;
+  });
+}
+drafts.forEach(bindDraft);
+
+/* File the piece currently in the Writer as an unassigned tray chip. This is
+   what makes the "one story -> several pieces" path real: after the first
+   piece lands in the tray, the Writer's eligible chips stay active so the
+   editor writes a second piece from the same story. In the real model each
+   filed piece is a publish_item row bound to (event, pillar). */
+function addDraftToTray() {
+  var num = pillarNumFromLabel(document.getElementById('writerPillar').textContent);
+  if (!num) return;
+  var headline = (document.getElementById('docHeadline').textContent || '').trim();
+  var pillarLabel = document.getElementById('writerPillar').textContent.trim();
+  var title = headline || (currentStory && currentStory.sourceHeadline ? currentStory.sourceHeadline : 'Untitled draft');
+  // A visible disambiguator so two pieces from one story read apart in the tray.
+  title = title + ' — ' + num + ' ' + shortPillarName(num);
+
+  var chip = document.createElement('button');
+  chip.className = 'draft';
+  chip.dataset.id = 'draft-' + num + '-' + Date.now();
+  chip.dataset.title = title;
+  chip.dataset.pillar = pillarLabel;
+  chip.dataset.glyph = glyphForPillarNum(num);
+  chip.dataset.src = (currentStory && currentStory.src) || 'NovrPulse Editorial';
+  chip.dataset.sourceHeadline = (currentStory && currentStory.sourceHeadline) || '';
+  chip.innerHTML =
+    '<div class="dt">' + escapeHtml(title) + '</div>' +
+    '<div class="dm">' + escapeHtml(pillarLabel) + ' · drafted just now</div>';
+  document.getElementById('draftTray').appendChild(chip);
+  drafts.push(chip);
+  bindDraft(chip);
+  refreshTray();
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"]/g, function (c) {
+    return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c];
+  });
+}
+function glyphForPillarNum(num) {
+  var p = PILLARS.filter(function (x) { return x.n === num; })[0];
+  return p ? p.glyph : '\u25C7';
+}
+function shortPillarName(num) {
+  var p = PILLARS.filter(function (x) { return x.n === num; })[0];
+  if (!p) return '';
+  var name = p.name;
+  // "Cyber Hygiene / CAC" -> "Cyber Hygiene"; "Public Education & Advocacy" -> short form
+  return name.split('/')[0].split('&')[0].trim();
+}
+
+/* --- Accept an AI suggestion (kind='recommend') into a section ---
+   Clicking a sparkle chip assigns it into the section directly, exactly like
+   dropping a tray chip. The row disappears once the section is filled. This
+   stands in for writing ai_judgement(kind='recommend', decision='accept') and
+   creating the (event, pillar) publish_item. */
+function acceptAiSuggestion(n, chip) {
+  var sec = secEls[n];
+  if (sec.querySelector('.slot')) return; // already holds a piece
+  var s = (AI_SUGGESTIONS[n] || [])[Number(chip.dataset.i)];
+  if (!s) return;
+  var p = PILLARS.filter(function (x) { return x.n === n; })[0];
+  var host = sec.querySelector('.slot-host');
+  host.innerHTML =
+    '<div class="slot">' +
+      '<div class="tile">' + (p ? p.glyph : '\u25C7') + '</div>' +
+      '<div class="slot-body">' +
+        '<div class="stt">' + escapeHtml(s.t) + '</div>' +
+        '<div class="smm">' + escapeHtml(s.src) + ' · ' + p.n + ' ' + p.name + ' · from AI suggestion</div>' +
+      '</div>' +
+      '<div class="kick">' +
+        '<button class="lead-toggle" type="button" data-lead="' + n + '" title="Designate this story as the edition lead">\u2605 Set as lead</button>' +
+        ' <b data-remove="1">remove</b>' +
+      '</div>' +
+    '</div>';
+  host.querySelector('[data-remove]').addEventListener('click', function (e) {
+    e.stopPropagation();
+    rejectFromSection(n);
+  });
+  host.querySelector('[data-lead]').addEventListener('click', function (e) {
+    e.stopPropagation();
+    toggleLead(n);
+  });
+  markSectionReady(sec);
+  refreshProgress();
+}
+
+/* Remove an AI-accepted slot: this is the reject path — it pulls the piece out
+   and brings the AI-suggest row back, mirroring ai_judgement(decision='reject',
+   reason) which also retrains the recommender. */
+function rejectFromSection(n) {
+  var sec = secEls[n];
+  clearLead(n);
+  sec.querySelector('.slot-host').innerHTML = '';
+  var badge = sec.querySelector('.st');
+  badge.className = 'st empty';
+  badge.innerHTML = '<span class="d"></span> Empty';
+  sec.classList.add('dropok');
+  sec.querySelector('.fill-link').style.display = '';
+  sec.querySelector('.dropnote').style.display = '';
+  var ai = sec.querySelector('.ai-suggests');
+  if (ai) ai.style.display = '';
+  refreshProgress();
+}
+
+function markSectionReady(sec) {
+  var badge = sec.querySelector('.st');
+  badge.className = 'st ready';
+  badge.innerHTML = '<span class="d"></span> Ready';
+  sec.classList.remove('dropok');
+  sec.querySelector('.fill-link').style.display = 'none';
+  sec.querySelector('.dropnote').style.display = 'none';
+  var ai = sec.querySelector('.ai-suggests');
+  if (ai) ai.style.display = 'none';
+}
+
+/* --- Drop a selected draft into a section --- */
+function assign(n) {
+  var sec = secEls[n];
+  if (!selectedDraft) {
+    if (!sec.querySelector('.slot')) {
+      // nudge: briefly highlight the tray
+      flashTray();
+    }
+    return;
+  }
+  if (sec.querySelector('.slot')) return; // one story per section in the prototype
+
+  var d = selectedDraft;
+  var host = sec.querySelector('.slot-host');
+  host.innerHTML =
+    '<div class="slot">' +
+      '<div class="tile">' + d.dataset.glyph + '</div>' +
+      '<div class="slot-body">' +
+        '<div class="stt">' + d.dataset.title + '</div>' +
+        '<div class="smm">' + d.dataset.src + ' · ' + d.dataset.pillar + '</div>' +
+      '</div>' +
+      '<div class="kick">' +
+        '<button class="lead-toggle" type="button" data-lead="' + n + '" title="Designate this story as the edition lead">\u2605 Set as lead</button>' +
+        ' <b data-remove="1">remove</b>' +
+      '</div>' +
+    '</div>';
+
+  host.querySelector('[data-remove]').addEventListener('click', function (e) {
+    e.stopPropagation();
+    removeFromSection(n, d);
+  });
+  // The edition lead is an EXPLICIT designation made here at the Front Page.
+  // It is never implied by which wire story was opened in the Writer.
+  host.querySelector('[data-lead]').addEventListener('click', function (e) {
+    e.stopPropagation();
+    toggleLead(n);
+  });
+
+  // Move the chip out of the tray
+  d.remove();
+  markSectionReady(sec);
+  selectedDraft = null;
+  refreshTray();
+  refreshProgress();
+}
+
+function removeFromSection(n, d) {
+  var sec = secEls[n];
+  clearLead(n);
+  sec.querySelector('.slot-host').innerHTML = '';
+  var badge = sec.querySelector('.st');
+  badge.className = 'st empty';
+  badge.innerHTML = '<span class="d"></span> Empty';
+  sec.classList.add('dropok');
+  sec.querySelector('.fill-link').style.display = '';
+  sec.querySelector('.dropnote').style.display = '';
+  var ai = sec.querySelector('.ai-suggests');
+  if (ai) ai.style.display = '';
+  // restore the chip to the tray
+  document.getElementById('draftTray').appendChild(d);
+  d.classList.remove('sel');
+  refreshTray();
+  refreshProgress();
+}
+
+function flashTray() {
+  var t = document.querySelector('.tray');
+  t.style.boxShadow = '0 0 0 2px rgba(59,130,246,0.5)';
+  setTimeout(function () { t.style.boxShadow = 'none'; }, 500);
+}
+
+/* --- The edition lead (ONE at a time) ---
+   "Lead" is a Front Page designation, not a wire-selection side effect. */
+function clearLead(n) {
+  var sec = secEls[n];
+  if (!sec) return;
+  sec.classList.remove('has-lead');
+  var slot = sec.querySelector('.slot');
+  if (slot) slot.classList.remove('lead');
+  var t = sec.querySelector('.lead-toggle');
+  if (t) { t.classList.remove('on'); t.innerHTML = '\u2605 Set as lead'; }
+}
+function toggleLead(n) {
+  var sec = secEls[n];
+  var slot = sec.querySelector('.slot');
+  if (!slot) return;
+  var on = sec.classList.contains('has-lead');
+  // Only one lead across the whole edition.
+  Object.keys(secEls).forEach(function (k) {
+    if (k !== n) clearLead(k);
+  });
+  if (on) { clearLead(n); return; }
+  sec.classList.add('has-lead');
+  slot.classList.add('lead');
+  var t = sec.querySelector('.lead-toggle');
+  if (t) { t.classList.add('on'); t.innerHTML = '\u2605 Lead'; }
+}
+
+function refreshProgress() {
+  var ready = document.querySelectorAll('.sec .st.ready').length;
+  document.getElementById('readyCount').textContent = ready;
+  document.getElementById('readyBar').style.width = Math.round((ready / 8) * 100) + '%';
+}
+refreshTray();
+refreshProgress();
+
+/* =====================================================================
+   PREVIEW MODAL — assemble the current page into the dark email
+   ===================================================================== */
+var modal = document.getElementById('modal');
+function openPreview() {
+  var body = document.getElementById('emailBody');
+  // keep the intro, rebuild sections
+  body.innerHTML = '<p class="email-intro">Your briefing on Nigeria\u2019s cybersecurity and regulatory landscape — the 23 November edition, assembled from today\u2019s wire.</p>';
+  PILLARS.forEach(function (p) {
+    var sec = secEls[p.n];
+    var slot = sec.querySelector('.slot');
+    var wrap = document.createElement('div');
+    wrap.className = 'email-sec';
+    var heading = '<h2><span class="n">' + p.n + '</span> ' + p.name +
+      (sec.classList.contains('has-lead') ? ' <span style="color:#FBBF24">\u2605 lead</span>' : '') +
+      '</h2>';
+    if (slot) {
+      var title = slot.querySelector('.stt').textContent;
+      var src = slot.querySelector('.smm').textContent;
+      wrap.innerHTML = heading +
+        '<div class="email-story"><div class="et">' + title + '</div>' +
+        '<div class="ee">' + src + ' — full piece rendered from the drafted body, take­aways and source link.</div></div>';
+    } else {
+      wrap.innerHTML = heading + '<div class="email-empty">No updates for this section today.</div>';
+    }
+    body.appendChild(wrap);
+  });
+  modal.classList.add('open');
+}
+document.getElementById('previewBtn').addEventListener('click', openPreview);
+document.getElementById('closeModal').addEventListener('click', function () { modal.classList.remove('open'); });
+modal.addEventListener('click', function (e) { if (e.target === modal) modal.classList.remove('open'); });
+document.addEventListener('keydown', function (e) { if (e.key === 'Escape') modal.classList.remove('open'); });
+</script>
+</body>
+</html>

@@ -1,8 +1,9 @@
 import Joi from 'joi';
 import { prisma } from '../utils/prisma.js';
-import { BadRequest, Conflict, NotFound } from '../utils/AppError.js';
+import { BadRequest, Conflict, Gone, NotFound } from '../utils/AppError.js';
 import { deriveStatus } from './publishController.js';
 import { PILLARS, pillarLabel } from '../services/novrpulse/pillars.js';
+import { renderBriefingPreview, selectStories, formatBriefingDate } from '../services/novrpulse/briefingPreview.js';
 
 /**
  * Daily Briefing Desk.
@@ -220,6 +221,30 @@ const SECTION_INCLUDE = {
   },
 };
 
+/**
+ * Prisma include for the preview: each section item's publish item (body +
+ * functionId) and its linked event, with the first provenance source for
+ * attribution (source name) plus the event's canonical URL.
+ */
+const PREVIEW_ITEM_INCLUDE = {
+  publishItem: {
+    include: {
+      event: {
+        select: {
+          title: true,
+          publishedAt: true,
+          canonicalUrl: true,
+          sources: {
+            orderBy: { extractedAt: 'asc' },
+            take: 1,
+            select: { rawDocument: { select: { source: { select: { name: true } } } } },
+          },
+        },
+      },
+    },
+  },
+};
+
 /** Load a briefing by id or throw 404. */
 async function requireBriefing(id) {
   const briefing = await prisma.briefing.findUnique({ where: { id } });
@@ -325,7 +350,55 @@ export async function getBriefing(req, res) {
 }
 
 /**
- * POST /api/briefings — create a briefing and auto-seed its eight sections in
+ * POST /api/briefings/:id/preview — render the assembled briefing through the
+ * `pulse-daily-brief.html` email template and return the full HTML for the
+ * Briefing Desk's sandboxed-iframe preview.
+ *
+ * The view model is built server-side from the briefing's sections (ordered by
+ * position) and their ordered items:
+ *  - Stories are flattened from the sections in priority order (§07 Breaking →
+ *    §08 CyberIntel → §01 Regulatory → others), taking the first five items with
+ *    a non-empty body.
+ *  - `source`/`sourceUrl` come from the item's linked event (source name + date,
+ *    event canonical URL); a manually-authored item with no event is attributed
+ *    to 'NovrPulse'.
+ * `unsubscribeUrl` is left as the literal `{{unsubscribeUrl}}` pass-through that
+ * Plunk fills at send time.
+ *
+ * SECURITY: the template is rendered server-side and every injected value is
+ * HTML-escaped by `.renderBriefingPreview` — article text is untrusted and must
+ * never be able to inject markup. The client only displays the returned string in
+ * a `sandbox=""` iframe.
+ */
+export async function previewBriefing(req, res) {
+  const briefing = await prisma.briefing.findUnique({
+    where: { id: req.params.id },
+    include: {
+      sections: {
+        orderBy: { position: 'asc' },
+        include: { items: { orderBy: { position: 'asc' }, include: PREVIEW_ITEM_INCLUDE } },
+      },
+    },
+  });
+  if (!briefing) throw NotFound('Briefing not found');
+
+  const stories = selectStories(briefing.sections);
+
+  const html = renderBriefingPreview({
+    date: formatBriefingDate(briefing.briefingDate),
+    issueLine: 'Daily Intelligence Brief',
+    preheader: briefing.title ?? '',
+    intro: '',
+    stories,
+    readMoreUrl: '',
+    unsubscribeUrl: '{{unsubscribeUrl}}',
+  });
+
+  return res.json({ html });
+}
+
+/**
+ * POST /api/briefings/:id — create a briefing and auto-seed its eight sections in
  * ONE transaction. `position` equals `functionId`; every section starts
  * `empty`. A duplicate date is a 409 (the `briefingDate` unique key).
  */
@@ -510,47 +583,61 @@ export async function reorderSectionItems(req, res) {
 }
 
 /**
- * POST /api/briefings/:id/sections/:functionId/author — manually author a NEW
- * publish item and attach it to the section, in one transaction.
+ * POST /api/briefings/:id/sections/:functionId/author — RETIRED.
  *
- * This is how the desk writes §02/§03/§04/§06 content directly, without waiting
- * for an automated renderer. The item is created `tier: 'public'`,
- * `templateVersion: 'manual@1.0.0'`, `functionId` from the section,
- * `editorId: req.user.id` (session only), and `approvedAt: null` — it is a
- * draft, not a sign-off.
+ * The Desk is an attach-only surface: editorial content is written in exactly one
+ * place, the Editorial Canvas (Inbox → Write → pillar → item). Authoring here
+ * duplicated that surface and made "needs write-up" meaningless, so the route is
+ * permanently refused server-side — not merely hidden in the UI — with a 410 Gone
+ * and a stable `AUTHOR_MOVED_TO_CANVAS` code the client can branch on.
+ *
+ * The original authoring implementation is retained (inert) in the comment below
+ * so the historical create-and-attach transaction stays documented; the guard
+ * short-circuits before any validation or database access.
  */
-export async function authorSectionItem(req, res) {
-  const { body, contentType } = await validate(authorSchema, req.body);
-  const section = await requireSection(req.params.id, req.params.functionId);
-
-  const last = await prisma.briefingSectionItem.findFirst({
-    where: { sectionId: section.id },
-    orderBy: { position: 'desc' },
-    select: { position: true },
-  });
-  const position = last ? last.position + 1 : 0;
-
-  await prisma.$transaction(async (tx) => {
-    const item = await tx.publishItem.create({
-      data: {
-        functionId: section.functionId,
-        tier: 'public',
-        contentType,
-        body,
-        templateVersion: 'manual@1.0.0',
-        editorId: req.user?.id ?? null,
-        // Draft: no sign-off recorded here.
-        approvedAt: null,
-      },
-    });
-    await tx.briefingSectionItem.create({
-      data: { sectionId: section.id, publishItemId: item.id, position },
-    });
-  });
-
-  const fresh = await reloadSection(section.id);
-  return res.status(201).json({ section: serializeSection(fresh) });
+export async function authorSectionItem() {
+  throw Gone(
+    'Editorial content is created in the Editorial Canvas; the Desk only attaches existing items.',
+    'AUTHOR_MOVED_TO_CANVAS',
+  );
 }
+
+/*
+ * Original implementation (retired alongside the rule above). It created a
+ * `publish_item` — `tier: 'public'`, `templateVersion: 'manual@1.0.0'`,
+ * `functionId` from the section, `editorId` from the session, `approvedAt: null`
+ * (a draft, not a sign-off) — and attached it to the section in one transaction:
+ *
+ *   const { body, contentType } = await validate(authorSchema, req.body);
+ *   const section = await requireSection(req.params.id, req.params.functionId);
+ *
+ *   const last = await prisma.briefingSectionItem.findFirst({
+ *     where: { sectionId: section.id },
+ *     orderBy: { position: 'desc' },
+ *     select: { position: true },
+ *   });
+ *   const position = last ? last.position + 1 : 0;
+ *
+ *   await prisma.$transaction(async (tx) => {
+ *     const item = await tx.publishItem.create({
+ *       data: {
+ *         functionId: section.functionId,
+ *         tier: 'public',
+ *         contentType,
+ *         body,
+ *         templateVersion: 'manual@1.0.0',
+ *         editorId: req.user?.id ?? null,
+ *         approvedAt: null,
+ *       },
+ *     });
+ *     await tx.briefingSectionItem.create({
+ *       data: { sectionId: section.id, publishItemId: item.id, position },
+ *     });
+ *   });
+ *
+ *   const fresh = await reloadSection(section.id);
+ *   return res.status(201).json({ section: serializeSection(fresh) });
+ */
 
 // ── supporting records (§05 events / §06 opportunities / §02 forum topics) ─────
 

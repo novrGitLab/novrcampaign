@@ -31,6 +31,12 @@ const REGION_ALIASES = {
 
 const REVIEW_STATUSES = ['new', 'accepted', 'dismissed'];
 
+// Language filter: the accepted request values. "All" sends no param. `en` is
+// the common case; `non-en` selects everything whose `language` is not `en`
+// (this is the flagging filter for the bad-feed-item case). Any concrete code
+// (e.g. `ja`, `ru`) is also accepted so a reviewer can narrow to one language.
+const LANGUAGE_FILTERS = ['en', 'non-en'];
+
 const listSchema = Joi.object({
   page: Joi.number().integer().min(1).default(1),
   pageSize: Joi.number().integer().min(1).max(100).default(20),
@@ -42,6 +48,18 @@ const listSchema = Joi.object({
     .trim()
     .lowercase()
     .valid(...Object.keys(REGION_ALIASES)),
+  // `en` | `non-en` | a specific ISO 639-1 code (e.g. `ja`). Lowercased so the
+  // request value matches the stored codes. The `en`/`non-en` sentinels are the
+  // named filters; any two-letter code passes the pattern.
+  language: Joi.string()
+    .trim()
+    .lowercase()
+    .max(10)
+    .custom((value, helpers) => {
+      if (LANGUAGE_FILTERS.includes(value)) return value;
+      if (/^[a-z]{2}$/.test(value)) return value;
+      return helpers.error('any.invalid');
+    }, 'language filter'),
 });
 
 // Body schema for the review endpoint. Values mirror the `reviewStatus` column.
@@ -84,9 +102,43 @@ const CARD_SELECT = {
   whatItMeans: true,
   publishedAt: true,
   canonicalUrl: true,
+  language: true,
   functions: true,
   eventType: true,
   reviewStatus: true,
+};
+
+/**
+ * Excerpt length (characters) for a card's description fallback. The raw
+ * article `body` is long; the DTO carries only a short, collapsed opening.
+ */
+const EXCERPT_LENGTH = 220;
+
+/**
+ * The `sources` include used by the list/review select: the first provenance
+ * row, narrowed to the source NAME (for attribution) and the raw document BODY
+ * (for the excerpt fallback). Only `body` is selected from the raw document —
+ * never the whole row. `take: 1` keeps it a single join, so there is no N+1.
+ */
+const SOURCES_INCLUDE = {
+  orderBy: { extractedAt: 'asc' },
+  take: 1,
+  select: {
+    rawDocument: {
+      select: { body: true, source: { select: { name: true } } },
+    },
+  },
+};
+
+/** The `sources` include used by the detail endpoint (adds url/licence for display). */
+const SOURCES_INCLUDE_DETAIL = {
+  orderBy: { extractedAt: 'asc' },
+  select: {
+    pageRef: true,
+    rawDocument: {
+      select: { body: true, url: true, source: { select: { name: true, licence: true } } },
+    },
+  },
 };
 
 /**
@@ -138,17 +190,67 @@ function publishDraftOf(event) {
 }
 
 /**
+ * Collapse runs of whitespace in `text` to single spaces and trim the ends.
+ * The raw article body is multi-line HTML/plain text; the card wants one line.
+ */
+function collapseWhitespace(text) {
+  return String(text).replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * The first source's raw document body, if the event has provenance and the
+ * document carries text. Returns null otherwise.
+ */
+function rawBodyOf(event) {
+  const first = event.sources?.[0];
+  const body = first?.rawDocument?.body;
+  return typeof body === 'string' && body.trim() ? body : null;
+}
+
+/**
+ * Build the card's `excerpt` (the short description shown under the title).
+ *
+ * Rule (documented):
+ *  - If `summary` is populated, prefer it (it is NovrPulse's own words).
+ *  - Otherwise fall back to the first source's raw article body, whitespace-
+ *    collapsed and trimmed to `EXCERPT_LENGTH` chars, with a trailing ellipsis
+ *    ("…") when truncated.
+ *  - If neither exists, return null (the UI shows nothing — no fabricated text).
+ *
+ * The full body is NEVER returned; only this bounded opening.
+ */
+function excerptOf(event) {
+  const summary = typeof event.summary === 'string' ? event.summary.trim() : '';
+  if (summary) return summary;
+
+  const body = rawBodyOf(event);
+  if (!body) return null;
+
+  const collapsed = collapseWhitespace(body);
+  if (collapsed.length <= EXCERPT_LENGTH) return collapsed;
+  return `${collapsed.slice(0, EXCERPT_LENGTH).trimEnd()}…`;
+}
+
+/**
  * Mirror the DTO in `CARD_SELECT` for a Prisma row (also used by the detail
  * endpoint's merged select). Dates are normalised to ISO strings.
+ *
+ * `excerpt` is the description shown under the title (summary first, then the
+ * raw article body opening). `hasSummary` lets the UI distinguish NovrPulse's
+ * own words from the "from the article" fallback.
  */
 function serializeCard(event) {
+  const summary = typeof event.summary === 'string' ? event.summary.trim() : '';
   return {
     id: event.id,
     title: event.title,
     summary: event.summary,
     whatItMeans: event.whatItMeans,
+    excerpt: excerptOf(event),
+    hasSummary: summary.length > 0,
     publishedAt: event.publishedAt instanceof Date ? event.publishedAt.toISOString() : (event.publishedAt ?? null),
     canonicalUrl: event.canonicalUrl ?? null,
+    language: event.language ?? 'en',
     functions: event.functions,
     eventType: event.eventType ?? null,
     reviewStatus: event.reviewStatus ?? 'new',
@@ -171,11 +273,11 @@ function sourceNameOf(event) {
  * Order: publishedAt desc (nulls last), then createdAt desc.
  *
  * Filters are independent and compose with AND: `function`, `region`,
- * `reviewStatus`, `q`, `since` may be combined freely (e.g. Pillar + Region,
- * or Region + Review status).
+ * `reviewStatus`, `q`, `since`, `language` may be combined freely (e.g. Pillar +
+ * Region, or Region + Review status).
  */
 export async function listPulseEvents(req, res) {
-  const { page, pageSize, function: functionId, reviewStatus, q, since, region } =
+  const { page, pageSize, function: functionId, reviewStatus, q, since, region, language } =
     await validateQuery(req.query);
 
   const where = {};
@@ -183,6 +285,11 @@ export async function listPulseEvents(req, res) {
   if (reviewStatus !== undefined) where.reviewStatus = reviewStatus;
   if (since !== undefined) where.publishedAt = { gte: new Date(since) };
   if (q) where.title = { contains: q, mode: 'insensitive' };
+  if (language !== undefined) {
+    // `non-en` is the flagging filter: everything not labelled English.
+    if (language === 'non-en') where.language = { not: 'en' };
+    else where.language = language;
+  }
   if (region !== undefined) {
     // The event's own `region` is unpopulated; region is derived from the
     // provenance chain: event → sources → rawDocument → source → region.
@@ -198,11 +305,7 @@ export async function listPulseEvents(req, res) {
       take: pageSize,
       select: {
         ...CARD_SELECT,
-        sources: {
-          orderBy: { extractedAt: 'asc' },
-          take: 1,
-          select: { rawDocument: { select: { source: { select: { name: true } } } } },
-        },
+        sources: SOURCES_INCLUDE,
         publishItems: {
           orderBy: PUBLISH_ITEM_ORDER_BY,
           select: PUBLISH_ITEM_SELECT,
@@ -236,13 +339,7 @@ export async function getPulseEvent(req, res) {
     where: { id: req.params.id },
     select: {
       ...CARD_SELECT,
-      sources: {
-        orderBy: { extractedAt: 'asc' },
-        select: {
-          pageRef: true,
-          rawDocument: { select: { url: true, source: { select: { name: true, licence: true } } } },
-        },
-      },
+      sources: SOURCES_INCLUDE_DETAIL,
       entities: {
         select: { role: true, entity: { select: { type: true, canonicalName: true } } },
       },
@@ -293,7 +390,7 @@ export async function reviewPulseEvent(req, res) {
   const updated = await prisma.npEvent.update({
     where: { id: req.params.id },
     data: { reviewStatus: status },
-    select: { ...CARD_SELECT, sources: { orderBy: { extractedAt: 'asc' }, take: 1, select: { rawDocument: { select: { source: { select: { name: true } } } } } }, publishItems: { orderBy: PUBLISH_ITEM_ORDER_BY, select: PUBLISH_ITEM_SELECT } },
+    select: { ...CARD_SELECT, sources: SOURCES_INCLUDE, publishItems: { orderBy: PUBLISH_ITEM_ORDER_BY, select: PUBLISH_ITEM_SELECT } },
   });
 
   return res.json({
@@ -305,4 +402,4 @@ export async function reviewPulseEvent(req, res) {
   });
 }
 
-export { listSchema, reviewSchema, serializeCard };
+export { listSchema, reviewSchema, serializeCard, excerptOf, EXCERPT_LENGTH };

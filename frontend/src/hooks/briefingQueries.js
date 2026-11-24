@@ -42,6 +42,19 @@ export function useBriefing(id) {
   });
 }
 
+/**
+ * POST /api/briefings/:id/preview — render the assembled briefing through the
+ * email template and return `{ html }`. A mutation (not a query): the preview is
+ * an explicit user action and always re-renders from the current composition.
+ * The returned HTML is untrusted article text and is ONLY ever displayed inside a
+ * sandboxed iframe — never injected into the app DOM.
+ */
+export function usePreviewBriefing(id) {
+  return useMutation({
+    mutationFn: () => api(`/briefings/${id}/preview`, { method: 'POST' }).then((r) => r.html),
+  });
+}
+
 // ── Briefing mutations ───────────────────────────────────────────────────────
 
 /** Invalidate both the list and a briefing's detail after any write. */
@@ -168,20 +181,6 @@ export function useReorderItems(briefingId, functionId) {
   );
 }
 
-/** POST .../author — manually author a new publish item into the section. */
-export function useAuthorItem(briefingId, functionId) {
-  const qc = useQueryClient();
-  return useMutation(
-    buildSectionMutation(qc, {
-      briefingId,
-      functionId,
-      method: 'POST',
-      path: () => '/author',
-      bodyFrom: ({ body }) => ({ body }),
-    }),
-  );
-}
-
 // ── Supporting records (§05 events / §06 opportunities / §02 forum topics) ────
 
 /** Factory for a supporting-record list query keyed by kind. */
@@ -241,17 +240,20 @@ export function useDeleteSupporting(kind) {
 // ── Available publish items (for "Attach existing") ──────────────────────────
 
 /**
- * GET /api/publish — editorial publish items available to attach.
+ * GET /api/publish?usableForDesk=true — editorial publish items available to
+ * attach to a briefing section.
  *
- * NOTE: the publish serializer does not currently expose `contentType`, so the
- * list cannot be filtered to `contentType='briefing'` client-side; the desk
- * presents every item the endpoint returns and shows what it carries (pillar,
- * status, body preview). See the deferred note in the deliverable.
+ * The server applies the desk-eligibility rule (manually-authored items, plus
+ * items whose linked inbox event was Accepted); the picker therefore only ever
+ * offers items that are usable today. The serializer still does not expose
+ * `contentType`, so the client presents what the endpoint returns (pillar,
+ * status, body preview).
  */
 export function useAvailablePublishItems({ limit = 50 } = {}) {
   return useQuery({
-    queryKey: ['publish-items', { limit }],
-    queryFn: () => api('/publish', { query: { limit } }).then((r) => r.items ?? []),
+    queryKey: ['publish-items', { limit, usableForDesk: true }],
+    queryFn: () =>
+      api('/publish', { query: { limit, usableForDesk: true } }).then((r) => r.items ?? []),
     staleTime: 15_000,
   });
 }

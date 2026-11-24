@@ -222,6 +222,7 @@ model NpEvent {
   entities NpEventEntity[]
   publishItems PublishItem[]
   publishItemEvents PublishItemEvent[]
+  aiJudgements AiJudgement[] @relation("AiJudgementPrimary")
 
   @@unique([canonicalUrl])
   @@index([publishedAt(sort: Desc)])
@@ -328,9 +329,52 @@ model PublishItem {
   briefing     PublishedBriefing?
   sectionItems BriefingSectionItem[]
   forumTopics  ForumTopic[]
+  aiJudgements AiJudgement[]
 
   @@index([functionId, tier, publishedAt(sort: Desc)])
   @@map("publish_item")
+}
+
+// The AI judgement ledger (owner decision 2026-11-23). One row per AI decision
+// the layer makes over a subject: a 'dedup' pairing, a 'rewrite', or a
+// 'recommend'. The row is the frozen INPUT SNAPSHOT (`scenario`/`detail`) plus
+// the model's OUTPUT (`decision`/`confidence`/`rationale`) and the human REVIEW
+// outcome. It is append-only training data: only the review columns
+// (`outcome`/`reason`/`reviewerId`/`reviewedAt`) may ever change after insert,
+// and a row is never deleted (enforced by DB triggers — see the migration).
+//
+// Exactly one subject must be present: an event (`eventId`), a dedup counterpart
+// (`counterpartEventId`), or a publish item (`publishItemId`). `subjectKey` is a
+// stable denormalised display/grouping key (e.g. the sorted dedup pair) so a
+// review list does not need the counterpart rows to render. Fields kept as plain
+// String/Float to match the existing enum-house style.
+model AiJudgement {
+  id                 String       @id @default(uuid())
+  kind               String
+  eventId            String?
+  event              NpEvent?     @relation("AiJudgementPrimary", fields: [eventId], references: [id], onDelete: SetNull)
+  counterpartEventId String?
+  publishItemId      String?
+  publishItem        PublishItem? @relation(fields: [publishItemId], references: [id], onDelete: SetNull)
+  subjectKey         String
+  scenario           Json
+  decision           String
+  confidence         Float?
+  rationale          String?
+  model              String
+  promptVersion      String
+  detail             Json?
+  outcome            String       @default("pending")
+  reason             String?
+  reviewerId         String?
+  reviewedAt         DateTime?
+  createdAt          DateTime     @default(now())
+
+  @@index([kind, outcome, createdAt(sort: Desc)])
+  @@index([eventId])
+  @@index([subjectKey])
+  @@index([publishItemId])
+  @@map("ai_judgement")
 }
 
 // The ordered linkage of a publish item to the events it covers. A publish item

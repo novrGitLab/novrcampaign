@@ -173,12 +173,12 @@ export function useCampaignFeedEntries(campaignId) {
  * `since` is still forwarded when given so the server can narrow the window.
  */
 export function usePulseEvents(params = {}) {
-  const { page, pageSize = 100, function: functionId, reviewStatus, q, since, region } = params;
+  const { page, pageSize = 100, function: functionId, reviewStatus, q, since, region, language } = params;
   return useQuery({
-    queryKey: ['pulse-events', { page, pageSize, functionId, reviewStatus, q, since, region }],
+    queryKey: ['pulse-events', { page, pageSize, functionId, reviewStatus, q, since, region, language }],
     queryFn: () =>
       api('/pulse/events', {
-        query: { page, pageSize, function: functionId, reviewStatus, q, since, region },
+        query: { page, pageSize, function: functionId, reviewStatus, q, since, region, language },
       }),
     placeholderData: keepPreviousData,
     staleTime: 15_000,
@@ -191,6 +191,40 @@ export function usePulseEvent(id) {
     queryKey: ['pulse-event', id],
     queryFn: () => api(`/pulse/events/${id}`).then((r) => r.event),
     enabled: Boolean(id),
+    staleTime: 15_000,
+  });
+}
+
+/**
+ * The AI judgement review queue (`GET /api/ai-judgements`).
+ *
+ * Every AI decision (dedup, rewrite, recommend) is recorded and awaits a human
+ * accept/reject. Defaults to `outcome: 'pending'` — the review queue. Returns
+ * `{ judgements: [...] }` where each row carries the frozen `scenario` (what the
+ * AI saw), the `decision`/`confidence`/`rationale` (its verdict), and a resolved
+ * `subject` with the event titles.
+ *
+ * @param {{kind?: string, outcome?: string, limit?: number}} [params]
+ */
+export function useAiJudgements({ kind, outcome = 'pending', limit = 50 } = {}) {
+  return useQuery({
+    queryKey: ['ai-judgements', { kind, outcome, limit }],
+    queryFn: () => api('/ai-judgements', { query: { kind, outcome, limit } }).then((r) => r.judgements ?? []),
+    placeholderData: keepPreviousData,
+    staleTime: 15_000,
+  });
+}
+
+/**
+ * Publish items already created from a given inbox event (Editorial Canvas
+ * "prior work" panel). Server-side filters compose: `contentType` narrows to
+ * briefing items, `eventId` scopes to this event.
+ */
+export function usePublishItemsForEvent(eventId, { contentType = 'briefing' } = {}) {
+  return useQuery({
+    queryKey: ['publish', { eventId, contentType }],
+    queryFn: () => api('/publish', { query: { eventId, contentType } }).then((r) => r.items ?? []),
+    enabled: Boolean(eventId),
     staleTime: 15_000,
   });
 }

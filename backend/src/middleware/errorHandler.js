@@ -13,6 +13,7 @@ export function errorHandler(err, req, res, _next) {
   const body = {
     error: {
       message: isOperational ? err.message : 'Internal server error',
+      ...(err.code ? { code: err.code } : {}),
       ...(err.details ? { details: err.details } : {}),
       ...(config.isProd ? {} : { stack: err.stack }),
     },

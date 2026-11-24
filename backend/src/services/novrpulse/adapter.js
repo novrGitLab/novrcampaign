@@ -1,4 +1,5 @@
 import { prisma } from '../../utils/prisma.js';
+import { detectLanguage } from '@novr/ingest';
 
 /**
  * NovrPulse store adapter for the @novr/ingest engine.
@@ -53,6 +54,11 @@ async function createEvent(sourceId, item, raw) {
         whatItMeans: '',
         publishedAt: item.publishedAt ? new Date(item.publishedAt) : null,
         canonicalUrl: item.link,
+        // Script-based detection over the collected title (summary is empty at
+        // collection). Flag only — see the note in `storeBatch`. A source that
+        // becomes predominantly non-English may later warrant per-source
+        // auto-disable; that is NOT done here.
+        language: detectLanguage(`${item.title || ''} `),
         functions: [],
         sources: { create: { rawDocumentId: raw.id } },
       },
@@ -130,6 +136,13 @@ async function storeBatch(items) {
             whatItMeans: '',
             publishedAt: item.publishedAt ? new Date(item.publishedAt) : null,
             canonicalUrl: item.link,
+            // Detection is script-based on the collected title (+ summary, which
+            // collection leaves empty). The understanding layer may later fill
+            // `summary`; the backfill script recomputes `language` from both.
+            // NOTE: a source that becomes PREDOMINANTLY non-English is a case
+            // the owner may later want to auto-disable per source; this change
+            // only FLAGS non-English events and never disables a source.
+            language: detectLanguage(`${item.title || ''} `),
             functions: [],
             sources: { create: { rawDocumentId: raw.id } },
           },

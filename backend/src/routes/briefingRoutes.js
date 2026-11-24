@@ -25,6 +25,9 @@ router.delete('/supporting/forum-topics/:id', asyncHandler(briefingController.de
 router.get('/', asyncHandler(briefingController.listBriefings));
 router.post('/', asyncHandler(briefingController.createBriefing));
 router.get('/:id', asyncHandler(briefingController.getBriefing));
+// Preview the assembled briefing rendered through the email template. Registered
+// on the literal `/preview` suffix so it can never be read as a briefing id.
+router.post('/:id/preview', asyncHandler(briefingController.previewBriefing));
 router.patch('/:id', asyncHandler(briefingController.updateBriefing));
 router.delete('/:id', asyncHandler(briefingController.deleteBriefing));
 
@@ -37,7 +40,10 @@ router.post('/:id/sections/:functionId/items', asyncHandler(briefingController.a
 router.patch('/:id/sections/:functionId/items/reorder', asyncHandler(briefingController.reorderSectionItems));
 router.delete('/:id/sections/:functionId/items/:itemId', asyncHandler(briefingController.detachSectionItem));
 
-// Manual editorial authoring.
+// Manual editorial authoring is RETIRED: the Desk only attaches existing items,
+// and editorial content is created in the Editorial Canvas. The route stays
+// registered so the endpoint remains documented and discoverable, but the handler
+// refuses every call with 410 Gone (AUTHOR_MOVED_TO_CANVAS).
 router.post('/:id/sections/:functionId/author', asyncHandler(briefingController.authorSectionItem));
 
 export default router;

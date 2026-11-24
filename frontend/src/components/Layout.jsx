@@ -30,8 +30,8 @@ const AUTOMATIONS = [
 const PULSE = {
   label: 'Pulse',
   items: [
-    { to: '/pulse', label: 'Intelligence Inbox', icon: Radar },
-    { to: '/pulse/desk', label: 'Briefing Desk', icon: Newspaper },
+    { to: '/pulse', label: 'Front Page', icon: Newspaper, end: true },
+    { to: '/pulse/wire', label: 'The Wire', icon: Radar },
   ],
 };
 

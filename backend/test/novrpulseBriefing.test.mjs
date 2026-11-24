@@ -51,7 +51,6 @@ function makeStore(seed = {}) {
   const forumTopics = (seed.forumTopics ?? []).map((f) => ({ ...f }));
 
   let seq = 0;
-  const nextId = (prefix) => `${prefix}-${(seq += 1)}`;
 
   const cmpDesc = (key) => (a, b) => new Date(b[key]).getTime() - new Date(a[key]).getTime();
   const cmpAsc = (key) => (a, b) => new Date(a[key]).getTime() - new Date(b[key]).getTime();
@@ -595,16 +594,16 @@ describe('briefing: reorder', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 5. Manual authoring.
+// 5. Manual authoring — RETIRED: the Desk only attaches (Model B).
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('briefing: author', () => {
-  test('creates a new publish item (manual@1.0.0, tier public, editorId from session) and attaches it', async () => {
+describe('briefing: author (retired)', () => {
+  test('authoring is refused with 410 AUTHOR_MOVED_TO_CANVAS and creates nothing', async () => {
     const store = makeStore();
     await withPrisma(store, () => callController(createBriefing, { user: { id: 'u' }, body: { briefingDate: '2026-11-19' } }));
     const briefingId = store.briefings[0].id;
 
-    const { statusCode, payload } = await withPrisma(store, () =>
+    const { error } = await withPrisma(store, () =>
       callController(authorSectionItem, {
         user: { id: 'editor-7' },
         params: { id: briefingId, functionId: '3' },
@@ -612,34 +611,13 @@ describe('briefing: author', () => {
       }),
     );
 
-    assert.equal(statusCode, 201);
-    assert.equal(store.publishItems.length, 1);
-    const created = store.publishItems[0];
-    assert.equal(created.body, 'Hand-written public-education piece');
-    assert.equal(created.contentType, 'briefing');
-    assert.equal(created.tier, 'public');
-    assert.equal(created.functionId, 3);
-    assert.equal(created.templateVersion, 'manual@1.0.0');
-    assert.equal(created.editorId, 'editor-7');
-    assert.equal(created.approvedAt, null, 'authored item is a draft');
-
-    assert.equal(payload.section.functionId, 3);
-    assert.equal(payload.section.items.length, 1);
-    assert.equal(payload.section.items[0].publishItemId, created.id);
-  });
-
-  test('authored item appears as draft and honours contentType', async () => {
-    const store = makeStore();
-    await withPrisma(store, () => callController(createBriefing, { user: { id: 'u' }, body: { briefingDate: '2026-11-19' } }));
-    const briefingId = store.briefings[0].id;
-    await withPrisma(store, () =>
-      callController(authorSectionItem, {
-        user: { id: 'editor-7' },
-        params: { id: briefingId, functionId: '3' },
-        body: { body: 'Urgent piece', contentType: 'urgent_alert' },
-      }),
-    );
-    assert.equal(store.publishItems[0].contentType, 'urgent_alert');
+    assert.ok(error, 'authoring throws rather than succeeding');
+    assert.equal(error.statusCode, 410);
+    assert.equal(error.code, 'AUTHOR_MOVED_TO_CANVAS');
+    // The guard short-circuits before touching the database: no publish item is
+    // created and no link is attached.
+    assert.equal(store.publishItems.length, 0, 'no publish item is authored');
+    assert.equal(store.sectionItems.length, 0, 'nothing is attached');
   });
 });
 

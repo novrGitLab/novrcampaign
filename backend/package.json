@@ -24,6 +24,8 @@
     "collect:pull": "node scripts/collect-pull.mjs",
     "sources": "node scripts/sources.mjs",
     "understand": "node scripts/understand.mjs",
+    "dedup": "node scripts/dedup.mjs",
+    "export:judgements": "node scripts/export-judgements.mjs",
     "test": "node --test",
     "db:studio": "prisma studio"
   },
