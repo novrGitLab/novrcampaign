@@ -169,16 +169,16 @@ export function useCampaignFeedEntries(campaignId) {
 
 /**
  * The day's collected intel. The events API has no `date` param, so the caller
- * pages by `pageSize` and filters to a Lagos day client-side (see PulseReview);
+ * pages by `pageSize` and filters to a Lagos day client-side (see PulseToday);
  * `since` is still forwarded when given so the server can narrow the window.
  */
 export function usePulseEvents(params = {}) {
-  const { page, pageSize = 100, function: functionId, reviewStatus, q, since, region, language } = params;
+  const { page, pageSize = 100, function: functionId, reviewStatus, q, since, region, language, cyber } = params;
   return useQuery({
-    queryKey: ['pulse-events', { page, pageSize, functionId, reviewStatus, q, since, region, language }],
+    queryKey: ['pulse-events', { page, pageSize, functionId, reviewStatus, q, since, region, language, cyber }],
     queryFn: () =>
       api('/pulse/events', {
-        query: { page, pageSize, function: functionId, reviewStatus, q, since, region, language },
+        query: { page, pageSize, function: functionId, reviewStatus, q, since, region, language, cyber },
       }),
     placeholderData: keepPreviousData,
     staleTime: 15_000,

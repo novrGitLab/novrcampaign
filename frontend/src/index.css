@@ -60,43 +60,6 @@
     color-scheme: light;
   }
 
-  /* --------------------- Scoped Pulse "newsroom" theme ---------------------
-     A dark-navy theme contained entirely within the Pulse surface. Applying
-     `.theme-pulse` to a wrapper overrides the semantic tokens for that subtree
-     only, so campaigns/contacts/etc. stay light regardless. Values match
-     docs/novrpulse/design/pulse-redesign-prototype.html exactly. */
-  .theme-pulse {
-    color-scheme: dark;
-    --color-background: #0a0f1e;
-    --color-foreground: #e5e9f4;
-    --color-card: #0f1629;
-    --color-card-foreground: #e5e9f4;
-    --color-secondary: #1a2338;
-    --color-secondary-foreground: #e5e9f4;
-    --color-muted: #1a2338;
-    --color-muted-foreground: #8b94ad;
-    --color-accent: #212c46;
-    --color-accent-foreground: #e5e9f4;
-    --color-border: #232d45;
-    --color-input: #232d45;
-    --color-ring: #3b82f6;
-    --color-primary: #3b82f6;
-    --color-primary-foreground: #ffffff;
-    --color-destructive: #f87171;
-    --color-destructive-foreground: #0a0f1e;
-    --color-success: #34d399;
-    --color-success-foreground: #0a0f1e;
-    --color-warning: #f59e0b;
-    --color-warning-foreground: #0a0f1e;
-
-    /* Pulse-only extras (not currently global tokens). */
-    --pulse-accent-dim: #1e3a6b;
-    --pulse-border-hi: #31405f;
-    --pulse-faint: #5c6683;
-    --pulse-card-hi: #212c46;
-    --pulse-track: #1b2438;
-  }
-
   .dark {
     color-scheme: dark;
     --color-background: hsl(0 0% 3.9%);
@@ -249,12 +212,6 @@
       animation: none;
     }
   }
-
-  /* Pulse "newsroom" section status pills (scoped). The tone class carries the
-     tint + text colour, matching the prototype's .st.ready / .st.empty / .st.none. */
-  .theme-pulse .st-ready { background: rgba(52, 211, 153, 0.13); color: var(--color-success); }
-  .theme-pulse .st-empty { background: rgba(245, 158, 11, 0.13); color: var(--color-warning); }
-  .theme-pulse .st-none { background: rgba(100, 116, 139, 0.16); color: #64748b; }
 
   /* Tiptap rich email editor content — fixed light email canvas, immune to dark mode */
   .tiptap { background-color: #ffffff; color: #1e1e26; }

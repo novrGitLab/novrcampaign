@@ -317,7 +317,7 @@ function SupportingCreateForm({ kind }) {
   );
 }
 
-/** Collapsible supporting-records drawer, ported from the old Briefing Desk. */
+/** Collapsible supporting-records drawer, ported from the old Briefing surface. */
 export function PulseSupportingPanel({ open, onToggle }) {
   const [tab, setTab] = useState('events');
   return (

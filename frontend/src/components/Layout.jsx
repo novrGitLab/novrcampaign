@@ -3,7 +3,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Users, Mail, LogOut, UsersRound, LayoutTemplate,
   Search, Sun, Moon, ShieldAlert, Menu, X, ChevronDown, Bell, AlertTriangle,
-  BarChart3, Rss, Radar, Newspaper,
+  BarChart3, Rss, Radar, PanelLeftClose, PanelLeftOpen,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useAuth } from '../hooks/useAuth';
@@ -11,6 +11,9 @@ import { useTheme } from '../hooks/useTheme';
 import { Badge } from './ui';
 import { useCampaigns, useHealth } from '../hooks/queries';
 import CommandPalette from './CommandPalette';
+
+// Desktop sidebar collapse state — persisted per browser so the choice sticks.
+const SIDEBAR_COLLAPSED_KEY = 'novr.sidebarCollapsed';
 
 const NAV = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
@@ -25,13 +28,12 @@ const AUTOMATIONS = [
   { to: '/templates', label: 'Templates', icon: LayoutTemplate },
 ];
 
-// Pulse is a grouped section so future surfaces (Briefing Desk, Calendar,
-// Alerts) slot in as additional children without touching the flat NAV list.
+// Pulse is a grouped section. The minimal desk is ONE screen ("Today"), so the
+// group holds a single item; future surfaces slot in as additional children.
 const PULSE = {
   label: 'Pulse',
   items: [
-    { to: '/pulse', label: 'Front Page', icon: Newspaper, end: true },
-    { to: '/pulse/wire', label: 'The Wire', icon: Radar },
+    { to: '/pulse', label: 'Pulse', icon: Radar, end: true },
   ],
 };
 
@@ -45,6 +47,7 @@ function NavItem({ to, label, icon: Icon, end, badge, collapsed, onClick }) {
       to={to}
       end={end}
       onClick={onClick}
+      title={collapsed ? label : undefined}
       className={({ isActive }) =>
         cn(
           'relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
@@ -107,6 +110,14 @@ export function Layout() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [bellOpen, setBellOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  // Desktop collapse (icon-only rail). Defaults expanded; persisted per browser.
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === 'true';
+    } catch {
+      return false;
+    }
+  });
 
   const bellRef = useRef(null);
   const menuRef = useRef(null);
@@ -115,6 +126,14 @@ export function Layout() {
 
   useClickOutside(() => setBellOpen(false), [bellRef]);
   useClickOutside(() => setMenuOpen(false), [menuRef]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(sidebarCollapsed));
+    } catch {
+      // Storage unavailable (private mode, quota) — collapse state is cosmetic.
+    }
+  }, [sidebarCollapsed]);
 
   useEffect(() => {
     setBellOpen(false);
@@ -138,76 +157,107 @@ export function Layout() {
     navigate('/login');
   };
 
-  const sidebar = (isMobile) => (
-    <aside className="flex h-screen w-60 shrink-0 flex-col overflow-y-auto border-r border-border bg-background">
+  const sidebar = (isMobile) => {
+    // The collapse rail is a desktop affordance only; mobile always shows full.
+    const collapsed = !isMobile && sidebarCollapsed;
+    return (
+    <aside
+      className={cn(
+        'flex h-screen shrink-0 flex-col overflow-y-auto border-r border-border bg-background',
+        collapsed ? 'w-16' : 'w-60',
+      )}
+    >
       {/* Logo + palette trigger */}
-      <div className="flex items-center justify-between px-4 pb-1 pt-5">
-        <img src="/cybernovr-logo.png" alt="CyberNovr" className="h-7 w-auto" />
-        <button
-          onClick={() => setPaletteOpen(true)}
-          aria-label="Search"
-          className="hidden items-center gap-0.5 rounded border border-border bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground lg:flex"
-        >
-          ⌘K
-        </button>
+      <div className={cn('flex items-center pb-1 pt-5', collapsed ? 'flex-col gap-2 px-2' : 'justify-between px-4')}>
+        {collapsed ? (
+          <img src="/cybernovr-logo.png" alt="CyberNovr" className="h-7 w-7 object-contain" />
+        ) : (
+          <img src="/cybernovr-logo.png" alt="CyberNovr" className="h-7 w-auto" />
+        )}
+        {!isMobile && (
+          <button
+            onClick={() => setSidebarCollapsed((v) => !v)}
+            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            aria-pressed={collapsed}
+            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            className="hidden items-center justify-center rounded-lg p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:flex"
+          >
+            {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+          </button>
+        )}
+        {!collapsed && (
+          <button
+            onClick={() => setPaletteOpen(true)}
+            aria-label="Search"
+            className="hidden items-center gap-0.5 rounded border border-border bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground lg:flex"
+          >
+            ⌘K
+          </button>
+        )}
       </div>
 
       {/* Brand gradient rule */}
-      <div className="mx-4 mt-2 h-0.5 rounded-full bg-linear-to-r from-brand-blue via-brand-purple to-brand-red" />
+      <div className={cn('mt-2 h-0.5 rounded-full bg-linear-to-r from-brand-blue via-brand-purple to-brand-red', collapsed ? 'mx-2' : 'mx-4')} />
 
       {/* Project switcher (visual — single project workspace) */}
-      <div className="px-3 pt-3">
-        <div className="flex w-full items-center justify-between rounded-lg border border-border px-2.5 py-1.5">
-          <div className="flex min-w-0 items-center gap-2">
-            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-secondary text-[11px] font-bold text-foreground">
-              N
-            </span>
-            <span className="truncate text-sm font-medium text-foreground">NovrPulse</span>
+      {!collapsed && (
+        <div className="px-3 pt-3">
+          <div className="flex w-full items-center justify-between rounded-lg border border-border px-2.5 py-1.5">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-secondary text-[11px] font-bold text-foreground">
+                N
+              </span>
+              <span className="truncate text-sm font-medium text-foreground">NovrPulse</span>
+            </div>
+            <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
           </div>
-          <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
         </div>
-      </div>
+      )}
 
       {/* Nav */}
-      <nav className="mt-4 flex-1 space-y-4 overflow-y-auto px-3 pb-4">
+      <nav className={cn('mt-4 flex-1 space-y-4 overflow-y-auto pb-4', collapsed ? 'px-2' : 'px-3')}>
         <div className="space-y-0.5">
           {NAV.map((item) => (
-            <NavItem key={item.to} {...item} onClick={isMobile ? () => setMobileOpen(false) : undefined} />
+            <NavItem key={item.to} {...item} collapsed={collapsed} onClick={isMobile ? () => setMobileOpen(false) : undefined} />
           ))}
         </div>
 
         <div>
-          <p className="mb-1 px-3 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/80">
-            {PULSE.label}
-          </p>
+          {!collapsed && (
+            <p className="mb-1 px-3 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/80">
+              {PULSE.label}
+            </p>
+          )}
           <div className="space-y-0.5">
             {PULSE.items.map((item) => (
-              <NavItem key={item.to} {...item} onClick={isMobile ? () => setMobileOpen(false) : undefined} />
+              <NavItem key={item.to} {...item} collapsed={collapsed} onClick={isMobile ? () => setMobileOpen(false) : undefined} />
             ))}
           </div>
         </div>
 
         <div>
-          <p className="mb-1 px-3 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/80">
-            Automations
-          </p>
+          {!collapsed && (
+            <p className="mb-1 px-3 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/80">
+              Automations
+            </p>
+          )}
           <div className="space-y-0.5">
             {AUTOMATIONS.map((item) => (
-              <NavItem key={item.to} {...item} onClick={isMobile ? () => setMobileOpen(false) : undefined} />
+              <NavItem key={item.to} {...item} collapsed={collapsed} onClick={isMobile ? () => setMobileOpen(false) : undefined} />
             ))}
           </div>
         </div>
 
         <div className="space-y-0.5">
           {BOTTOM.map((item) => (
-            <NavItem key={item.to} {...item} onClick={isMobile ? () => setMobileOpen(false) : undefined} />
+            <NavItem key={item.to} {...item} collapsed={collapsed} onClick={isMobile ? () => setMobileOpen(false) : undefined} />
           ))}
         </div>
       </nav>
 
       {/* Footer: notifications, plunk status, account */}
       <div className="border-t border-border p-3">
-        {health?.checks?.plunk && (
+        {health?.checks?.plunk && !collapsed && (
           <div className="mb-2 flex items-center justify-between rounded-lg bg-secondary px-3 py-1.5">
             <span className="text-xs font-medium text-muted-foreground">Plunk</span>
             <Badge status={health?.checks?.plunk === 'configured' ? 'connected' : 'not_configured'}>
@@ -220,7 +270,11 @@ export function Layout() {
         <div className="relative" ref={bellRef}>
           <button
             onClick={() => { setBellOpen((v) => !v); setMenuOpen(false); }}
-            className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary/70 hover:text-foreground"
+            title={collapsed ? 'Notifications' : undefined}
+            className={cn(
+              'flex w-full items-center gap-3 rounded-lg py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary/70 hover:text-foreground',
+              collapsed ? 'justify-center px-0' : 'px-3',
+            )}
           >
             <span className="relative">
               <Bell className="h-4 w-4" />
@@ -230,7 +284,7 @@ export function Layout() {
                 </span>
               )}
             </span>
-            <span className="flex-1 text-left">Notifications</span>
+            {!collapsed && <span className="flex-1 text-left">Notifications</span>}
           </button>
           {bellOpen && (
             <div className="absolute bottom-full left-2 right-2 mb-1 rounded-xl border border-border bg-card p-2 shadow-lg animate-fade-rise">
@@ -262,17 +316,25 @@ export function Layout() {
         <div className="relative" ref={menuRef}>
           <button
             onClick={() => { setMenuOpen((v) => !v); setBellOpen(false); }}
-            className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary/70 hover:text-foreground"
+            title={collapsed ? (user?.name || user?.email) : undefined}
+            className={cn(
+              'flex w-full items-center gap-3 rounded-lg py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary/70 hover:text-foreground',
+              collapsed ? 'justify-center px-0' : 'px-3',
+            )}
           >
             <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-600/15 text-[11px] font-bold text-emerald-700 dark:bg-emerald-600/25 dark:text-emerald-300">
               {(user?.name || user?.email || '?').trim().charAt(0).toUpperCase()}
             </span>
-            <span className="min-w-0 flex-1 text-left">
-              <span className="block truncate text-sm font-medium text-foreground">
-                {user?.name || user?.email}
-              </span>
-            </span>
-            <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            {!collapsed && (
+              <>
+                <span className="min-w-0 flex-1 text-left">
+                  <span className="block truncate text-sm font-medium text-foreground">
+                    {user?.name || user?.email}
+                  </span>
+                </span>
+                <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              </>
+            )}
           </button>
           {menuOpen && (
             <div className="absolute bottom-full left-2 right-2 mb-1 rounded-xl border border-border bg-card p-1.5 shadow-lg animate-fade-rise">
@@ -297,7 +359,8 @@ export function Layout() {
         </div>
       </div>
     </aside>
-  );
+    );
+  };
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">

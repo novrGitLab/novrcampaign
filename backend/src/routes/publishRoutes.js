@@ -5,6 +5,7 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 const router = Router();
 
 router.get('/', asyncHandler(publishController.listPublishItems));
+router.post('/', asyncHandler(publishController.createManualItem));
 router.post('/f7', asyncHandler(publishController.projectF7Items));
 router.post('/from-event', asyncHandler(publishController.createItemFromEvent));
 router.post('/:id/approve', asyncHandler(publishController.approvePublishItem));

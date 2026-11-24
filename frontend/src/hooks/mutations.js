@@ -289,6 +289,24 @@ export function useReviewPulseEvent() {
   });
 }
 
+/**
+ * POST /api/pulse/collect/run — trigger ONE real collection run from sources.
+ *
+ * The guard lives server-side (controller `runPulseCollection`): it accepts the
+ * cron bearer secret OR an authenticated ADMIN session, and returns 401 for
+ * anyone else. There is no silent fallback and no query params are trusted, so
+ * the client sends an empty body (the server defaults `maxAgeDays`). On success
+ * the list caches are invalidated so the pulled stories appear immediately.
+ * Errors are surfaced to the caller (the page maps 403 → a graceful message).
+ */
+export function useRunPulseCollection() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api('/pulse/collect/run', { method: 'POST' }),
+    onSuccess: () => invalidatePulse(qc),
+  });
+}
+
 /** POST /api/publish/from-event — create a writable editorial item FROM an
  *  accepted inbox event for a chosen pillar (the Editorial Canvas entry point).
  *  The server seeds the body deterministically and runs the defamation gate. */

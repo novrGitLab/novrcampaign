@@ -92,6 +92,18 @@ function makeStore(seed) {
       );
       if (!anyMatch) return false;
     }
+    // AND clauses (used by the cyber filter): every clause must match.
+    if (Array.isArray(where.AND)) {
+      for (const clause of where.AND) {
+        const ids = clause.sources?.some?.rawDocument?.source?.id?.in;
+        if (Array.isArray(ids)) {
+          const anyMatch = (row.sources ?? []).some(
+            (s) => ids.includes(s.rawDocument?.source?.id),
+          );
+          if (!anyMatch) return false;
+        }
+      }
+    }
     return true;
   }
 
@@ -443,9 +455,76 @@ describe('pulse API: region filter', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 4. Language filter — `en` | `non-en` | a specific code.
+// 3b. Cyber filter — `cyber=true` narrows to dedicated cybersecurity sources.
 // ─────────────────────────────────────────────────────────────────────────────
 
+describe('pulse API: cyber filter', () => {
+  // An event whose provenance source carries an `id` (the filter key) and a region.
+  const cyberEvent = (id, sourceIds, region = 'GLOBAL') =>
+    event({
+      id,
+      sources: sourceIds.map((sid) => ({ rawDocument: { source: { id: sid, name: sid, region } } })),
+    });
+
+  test('cyber=true keeps only events whose source is in CYBER_SOURCE_IDS', async () => {
+    const store = makeStore([
+      cyberEvent('bleeping', ['bleepingcomputer']),
+      cyberEvent('scoop', ['cyberscoop']),
+      cyberEvent('general', ['techcabal']),
+    ]);
+
+    const { payload } = await withPrisma(store, () =>
+      callController(listPulseEvents, { query: { cyber: 'true' } }),
+    );
+
+    assert.deepEqual(payload.items.map((i) => i.id).sort(), ['bleeping', 'scoop']);
+    assert.equal(payload.total, 2);
+    // The filter is pushed as an AND clause on the source id set.
+    const andClause = store.calls.findMany.at(-1).where.AND[0];
+    assert.deepEqual(
+      andClause.sources.some.rawDocument.source.id.in,
+      ['bleepingcomputer', 'hackernews', 'therecord', 'securityweek', 'darkreading', 'cyberscoop'],
+    );
+  });
+
+  test('cyber omitted (or false) does not narrow — the param is off by default', async () => {
+    const store = makeStore([
+      cyberEvent('bleeping', ['bleepingcomputer']),
+      cyberEvent('general', ['techcabal']),
+    ]);
+    const off = await withPrisma(store, () => callController(listPulseEvents, { query: {} }));
+    assert.deepEqual(off.payload.items.map((i) => i.id).sort(), ['bleeping', 'general']);
+    assert.equal(store.calls.findMany.at(-1).where.AND, undefined, 'no AND clause when cyber is off');
+
+    const explicitlyFalse = await withPrisma(store, () =>
+      callController(listPulseEvents, { query: { cyber: 'false' } }),
+    );
+    assert.deepEqual(explicitlyFalse.payload.items.map((i) => i.id).sort(), ['bleeping', 'general']);
+  });
+
+  test('cyber composes with region (AND)', async () => {
+    const store = makeStore([
+      cyberEvent('cyber-ng', ['cyberscoop'], 'NG'),
+      cyberEvent('cyber-global', ['cyberscoop'], 'GLOBAL'),
+      cyberEvent('general-ng', ['techcabal'], 'NG'),
+    ]);
+
+    const { payload } = await withPrisma(store, () =>
+      callController(listPulseEvents, { query: { cyber: 'true', region: 'NG' } }),
+    );
+    assert.deepEqual(payload.items.map((i) => i.id), ['cyber-ng']);
+    // Region stays on `sources`; cyber rides in the AND list — both apply.
+    assert.deepEqual(store.calls.findMany.at(-1).where.sources, {
+      some: { rawDocument: { source: { region: 'NG' } } },
+    });
+    assert.ok(Array.isArray(store.calls.findMany.at(-1).where.AND));
+  });
+});
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 4. Language filter — `en` | `non-en` | a specific code.
+// ─────────────────────────────────────────────────────────────────────────────
 describe('pulse API: language filter', () => {
   test('language=non-en keeps only events whose language is not "en"', async () => {
     const store = makeStore([

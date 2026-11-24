@@ -50,6 +50,15 @@ function makeStore(seed = {}) {
         Object.entries(where ?? {}).every(([k, v]) => row[k] === v),
       );
     },
+    // The idempotency guard added to createItemFromEvent: an existing LIVE item
+    // for (eventId, functionId) is returned instead of creating a duplicate.
+    // Mirrors the simple-equality matcher above (withdrawnAt/publishedAt/
+    // rejectedAt are compared to null).
+    async findFirst({ where } = {}) {
+      return items.find((row) =>
+        Object.entries(where ?? {}).every(([k, v]) => row[k] === v),
+      ) ?? null;
+    },
   };
 
   const publishItemEvent = {
@@ -343,9 +352,78 @@ describe('canvas: defamation gate is reused on the from-event path', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 4. LIST — the contentType filter (and eventId scoping) work.
+// 3b. IDEMPOTENCY — a repeat from-event for the same (event, function) reuses
+//     the live item instead of creating a duplicate.
 // ─────────────────────────────────────────────────────────────────────────────
 
+describe('canvas: idempotent from-event', () => {
+  test('a second from-event for the same event+functionId returns existed:true and writes no new row', async () => {
+    const store = makeStore({ events: [benignEvent()] });
+    const req = { user: { id: 'editor-1' }, body: { eventId: 'evt-ok', functionId: 1 } };
+
+    const first = await withPrisma(store, () => callController(createItemFromEvent, req));
+    assert.equal(first.statusCode, 201);
+    assert.equal(first.payload.existed, false, 'the first call creates and reports existed:false');
+    assert.equal(store.items.length, 1);
+
+    const second = await withPrisma(store, () => callController(createItemFromEvent, req));
+    assert.equal(second.statusCode, 200, 'a repeat returns 200, not 201');
+    assert.equal(second.payload.existed, true);
+    assert.equal(second.payload.item.id, first.payload.item.id, 'the existing item is returned');
+    assert.equal(store.items.length, 1, 'no duplicate row may be created');
+  });
+
+  test('a different functionId is a different item and IS created', async () => {
+    const store = makeStore({ events: [benignEvent()] });
+    await withPrisma(store, () =>
+      callController(createItemFromEvent, { user: { id: 'editor-1' }, body: { eventId: 'evt-ok', functionId: 1 } }),
+    );
+    const second = await withPrisma(store, () =>
+      callController(createItemFromEvent, { user: { id: 'editor-1' }, body: { eventId: 'evt-ok', functionId: 4 } }),
+    );
+    assert.equal(second.statusCode, 201);
+    assert.equal(second.payload.existed, false);
+    assert.equal(store.items.length, 2, 'a different pillar is a distinct item');
+  });
+
+  test('after the existing item is withdrawn, a new draft IS allowed', async () => {
+    const store = makeStore({
+      events: [benignEvent()],
+      // A previously withdrawn item for the same (event, function): it must NOT
+      // block a fresh draft.
+      items: [
+        { id: 'pi-old', eventId: 'evt-ok', functionId: 1, tier: 'public', contentType: 'briefing', body: 'old', templateVersion: 'canvas@1.0.0', withdrawnAt: new Date('2026-11-20T00:00:00Z') },
+      ],
+    });
+
+    const { statusCode, payload } = await withPrisma(store, () =>
+      callController(createItemFromEvent, { user: { id: 'editor-1' }, body: { eventId: 'evt-ok', functionId: 1 } }),
+    );
+
+    assert.equal(statusCode, 201, 'a withdrawn item does not block a fresh draft');
+    assert.equal(payload.existed, false);
+    assert.equal(store.items.length, 2);
+  });
+
+  test('a published item does not block a fresh draft either', async () => {
+    const store = makeStore({
+      events: [benignEvent()],
+      items: [
+        { id: 'pi-pub', eventId: 'evt-ok', functionId: 1, tier: 'public', contentType: 'briefing', body: 'pub', templateVersion: 'canvas@1.0.0', publishedAt: new Date('2026-11-20T00:00:00Z') },
+      ],
+    });
+    const { statusCode, payload } = await withPrisma(store, () =>
+      callController(createItemFromEvent, { user: { id: 'editor-1' }, body: { eventId: 'evt-ok', functionId: 1 } }),
+    );
+    assert.equal(statusCode, 201);
+    assert.equal(payload.existed, false);
+    assert.equal(store.items.length, 2);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 4. LIST — the contentType filter (and eventId scoping) work.
+// ─────────────────────────────────────────────────────────────────────────────
 describe('canvas: list filtering', () => {
   test('contentType=briefing returns only briefing items; eventId scopes to one event', async () => {
     const store = makeStore({

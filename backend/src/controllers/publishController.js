@@ -3,6 +3,7 @@ import { prisma } from '../utils/prisma.js';
 import { AppError, BadRequest, Conflict, Forbidden, NotFound } from '../utils/AppError.js';
 import { projectF7, DEFAULT_TIER } from '../services/novrpulse/project/projectF7.js';
 import { assertPublicArrestNameless, assertLicence, GateError } from '../services/novrpulse/project/gates.js';
+import { findPersonLikeNames, knownNonPersonTokens } from '../services/novrpulse/project/templates/f7.js';
 
 /**
  * Editorial workflow API for NovrPulse publish items (F7 projection slice).
@@ -93,6 +94,122 @@ const fromEventSchema = Joi.object({
   functionId: Joi.number().integer().min(1).max(8).required(),
 });
 
+// The template tag for a MANUALLY authored piece (no source event). Distinct
+// from canvas@1.0.0 (from-event) so provenance is legible per row.
+const MANUAL_TEMPLATE_VERSION = 'manual@2.0.0';
+
+/**
+ * POST /api/publish — create a MANUALLY written piece (no source event).
+ *
+ * Used by the minimal "Today" desk's free-write mode ("✎ Write your own"): the
+ * editor picks any of the eight pillars and types a headline + body directly,
+ * optionally citing a reference link. Unlike the from-event path there is no
+ * wire event to seed from, so the body is COMPOSED from what the editor typed.
+ *
+ * Body contract (matches the seed/tray-preview convention, see `seedCanvasBody`
+ * and `parseSeedBody`): `"<headline>\n\n<text>"`, with a final
+ * `Reference: <link>` line when a reference link is supplied.
+ */
+const manualPublishSchema = Joi.object({
+  functionId: Joi.number().integer().min(1).max(8).required(),
+  headline: Joi.string().trim().min(1).max(200).required(),
+  text: Joi.string().trim().min(1).max(20000).required(),
+  referenceLink: Joi.string().trim().uri({ scheme: ['http', 'https'] }).max(2000),
+});
+
+/**
+ * Compose the stored body for a manual piece from the editor's typed fields.
+ * Deterministic and LLM-free; the shape is the same "<headline>\n\n<text>"
+ * contract the tray preview and the from-event seed already produce.
+ *
+ * @param {{headline:string, text:string, referenceLink?:string}} input
+ * @returns {string}
+ */
+function composeManualBody({ headline, text, referenceLink }) {
+  const head = String(headline ?? '').trim();
+  const body = String(text ?? '').trim();
+  const link = String(referenceLink ?? '').trim();
+  const parts = [head, body];
+  if (link) parts.push(`Reference: ${link}`);
+  return parts.filter(Boolean).join('\n\n');
+}
+
+/**
+ * DEFAMATION GATE for a manual public-tier F7 item (owner spec).
+ *
+ * A manual piece has no source event and no entities, so the entity-based branch
+ * of `assertPublicArrestNameless` has nothing to match. The LEXICAL detector
+ * still applies: a person-like name typed into a public Breaking-News piece is
+ * refused. We reuse `findPersonLikeNames` from the F7 template with the same
+ * trusted non-person token set the F7 renderer uses (source-registry names,
+ * trusted acronyms, geography, function words) via `knownNonPersonTokens({})`
+ * — the event argument is empty because there is no event, so only the trusted
+ * code-derived allow-lists apply. FAIL-CLOSED: any surviving person-like token
+ * denies the item.
+ *
+ * @param {number} functionId
+ * @param {string} tier
+ * @param {string} body
+ * @throws {AppError} 422 named_individual_in_public_arrest
+ */
+function assertManualNameless(functionId, tier, body) {
+  if (functionId !== 7 || tier !== 'public') return;
+  // No event/entities exist on a manual piece, so the entity branch is a no-op
+  // by construction; only the lexical scan runs.
+  const known = knownNonPersonTokens({});
+  const personLike = findPersonLikeNames(String(body ?? ''), known);
+  if (personLike.length > 0) {
+    throw unprocessable(
+      'named_individual_in_public_arrest',
+      'Manual pieces must not name individuals — this is a public-tier Breaking News item.',
+      { leaked: personLike, reason: 'person_like_token' },
+    );
+  }
+}
+
+/**
+ * POST /api/publish — create a manually written publish item.
+ *
+ * Authorization: an authenticated session is required (route sits behind
+ * `requireAuth`); identity is ALWAYS the session user (`req.user.id`), never the
+ * body. The item is created as a DRAFT for the chosen pillar with
+ * `eventId: null` and `editorId` from the session.
+ *
+ * Licence gate: N/A — a manual piece has no source, so there is no licence to
+ * check. (The F7 defamation gate still applies; see `assertManualNameless`.)
+ *
+ * @throws {BadRequest} when validation fails.
+ * @throws {AppError} 422 named_individual_in_public_arrest when fn7 names a person.
+ */
+export async function createManualItem(req, res) {
+  requireEditorRole(req);
+
+  const { functionId, headline, text, referenceLink } = await validate(manualPublishSchema, req.body ?? {});
+
+  const tier = 'public';
+  const body = composeManualBody({ headline, text, referenceLink });
+
+  // Defamation control (fail-closed). Runs BEFORE the insert; a denial writes
+  // nothing.
+  assertManualNameless(functionId, tier, body);
+
+  const item = await prisma.publishItem.create({
+    data: {
+      functionId,
+      eventId: null,
+      contentType: 'briefing',
+      tier,
+      templateVersion: MANUAL_TEMPLATE_VERSION,
+      editorId: req.user.id,
+      body,
+      // Draft: the editor signs off separately (never auto-approved).
+      approvedAt: null,
+    },
+  });
+
+  return res.status(201).json({ item: serializeItem(item) });
+}
+
 /**
  * Build the starter draft body for an item created FROM an event.
  *
@@ -169,6 +286,7 @@ function serializeItem(item) {
     eventDate: item.eventDate instanceof Date ? item.eventDate.toISOString() : item.eventDate ?? null,
     templateVersion: item.templateVersion,
     editorId: item.editorId,
+    createdAt: item.createdAt instanceof Date ? item.createdAt.toISOString() : item.createdAt ?? null,
     approvedAt: item.approvedAt instanceof Date ? item.approvedAt.toISOString() : item.approvedAt,
     rejectedAt: item.rejectedAt instanceof Date ? item.rejectedAt.toISOString() : item.rejectedAt ?? null,
     publishedAt: item.publishedAt instanceof Date ? item.publishedAt.toISOString() : item.publishedAt ?? null,
@@ -293,6 +411,14 @@ export async function projectF7Items(req, res) {
  * that stops a named individual reaching a public item. A denial is a 4xx and
  * nothing is written; the path is never bypassed.
  *
+ * IDEMPOTENCY (owner spec 2026-11-24): calling this twice for the same
+ * (eventId, functionId) must NOT create a duplicate draft. If a LIVE working
+ * item already exists for that pair it is returned with `200 { item, existed:
+ * true }` (no write). "Live" is a draft/approved item — one that is neither
+ * withdrawn, published, nor rejected. A withdrawn/published/rejected item does
+ * NOT block a fresh draft: the editor may legitimately start again after
+ * withdrawing. A DIFFERENT functionId is a different item and is always created.
+ *
  * @throws {NotFound}  when the event does not exist.
  * @throws {BadRequest} when functionId is out of range (Joi) or the gate denies.
  */
@@ -300,6 +426,19 @@ export async function createItemFromEvent(req, res) {
   requireEditorRole(req);
 
   const { eventId, functionId } = await validate(fromEventSchema, req.body ?? {});
+
+  // Idempotency: an existing LIVE working item for this (event, function) is
+  // returned as-is (200, existed:true) rather than duplicated. Withdrawn,
+  // published, and rejected items are terminal outcomes, so they do not block a
+  // new draft — only a live draft/approved item does. Checked before any gate
+  // work, so a repeat call is cheap and side-effect-free.
+  const existing = await prisma.publishItem.findFirst({
+    where: { eventId, functionId, withdrawnAt: null, publishedAt: null, rejectedAt: null },
+    orderBy: { createdAt: 'desc' },
+  });
+  if (existing) {
+    return res.status(200).json({ item: serializeItem(existing), existed: true });
+  }
 
   // Load the event with the prose fields the gate scans (summary/whatItMeans/
   // title/body) and its sources (licence) + entities (person names). The raw
@@ -380,7 +519,7 @@ export async function createItemFromEvent(req, res) {
     return created;
   });
 
-  return res.status(201).json({ item: serializeItem(item) });
+  return res.status(201).json({ item: serializeItem(item), existed: false });
 }
 
 /**
@@ -552,4 +691,7 @@ export async function editPublishItem(req, res) {
   return res.json({ item: serializeItem(updated) });
 }
 
-export { listSchema, projectSchema, editSchema, fromEventSchema, deriveStatus, requireEditorRole, isEditor, seedCanvasBody };
+export {
+  listSchema, projectSchema, editSchema, fromEventSchema, manualPublishSchema,
+  deriveStatus, requireEditorRole, isEditor, seedCanvasBody, composeManualBody, assertManualNameless,
+};

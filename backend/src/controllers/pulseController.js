@@ -35,6 +35,30 @@ const REGION_ALIASES = {
 
 const REVIEW_STATUSES = ['new', 'accepted', 'dismissed'];
 
+/**
+ * CIP v1 deterministic "cybersecurity related" heuristic — the curated set of
+ * `np_source.id` values whose outlet is dedicated to cybersecurity coverage.
+ * These are the only sources whose every story is a cyber story; every other
+ * registry source (Nigerian tech/business outlets, regulators) is mixed-general
+ * and is deliberately NOT classified as cyber here.
+ *
+ * Every id below matches a `np_source.id` in the NovrPulse registry
+ * (`@novr/ingest` sources). Filtering is done on the SOURCE, not on the event's
+ * `eventType`/`functions`, because the LLM understanding stage has never run and
+ * those fields are empty on all collected events.
+ *
+ * UPGRADE PATH: replace this source-based heuristic with an `eventType`/
+ * `functions` filter once the LLM understanding stage has classified events.
+ */
+export const CYBER_SOURCE_IDS = [
+  'bleepingcomputer',
+  'hackernews',
+  'therecord',
+  'securityweek',
+  'darkreading',
+  'cyberscoop',
+];
+
 // Language filter: the accepted request values. "All" sends no param. `en` is
 // the common case; `non-en` selects everything whose `language` is not `en`
 // (this is the flagging filter for the bad-feed-item case). Any concrete code
@@ -48,6 +72,10 @@ const listSchema = Joi.object({
   reviewStatus: Joi.string().valid(...REVIEW_STATUSES),
   q: Joi.string().trim().max(200).allow(''),
   since: Joi.string().isoDate(),
+  // v1 deterministic cyber filter: `true` narrows to events whose source is a
+  // dedicated cybersecurity outlet (see CYBER_SOURCE_IDS). Sent as the query
+  // string `cyber=true`, so both the string and bare boolean forms are accepted.
+  cyber: Joi.boolean().truthy('true').falsy('false'),
   region: Joi.string()
     .trim()
     .lowercase()
@@ -288,7 +316,7 @@ function sourceNameOf(event) {
  * Region, or Region + Review status).
  */
 export async function listPulseEvents(req, res) {
-  const { page, pageSize, function: functionId, reviewStatus, q, since, region, language } =
+  const { page, pageSize, function: functionId, reviewStatus, q, since, region, language, cyber } =
     await validateQuery(req.query);
 
   const where = {};
@@ -305,6 +333,17 @@ export async function listPulseEvents(req, res) {
     // The event's own `region` is unpopulated; region is derived from the
     // provenance chain: event → sources → rawDocument → source → region.
     where.sources = { some: { rawDocument: { source: { region: REGION_ALIASES[region] } } } };
+  }
+  if (cyber === true) {
+    // A cyber story is one whose source is a dedicated cybersecurity outlet.
+    // Filter on the SOURCE (not functions/eventType, which are empty until the
+    // understanding stage runs). Kept as an independent `sources.some` clause via
+    // AND so it composes with the region filter (an event whose provenance
+    // includes a cyber source AND, when region is set, a region-matching source).
+    where.AND = [
+      ...(where.AND ?? []),
+      { sources: { some: { rawDocument: { source: { id: { in: CYBER_SOURCE_IDS } } } } } },
+    ];
   }
 
   // One findMany (with the source-name include) plus one count — no N+1.
