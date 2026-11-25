@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { format, formatDistanceToNow } from 'date-fns';
 import { Check, ChevronDown, CloudDownload, RefreshCw, Sparkles, X } from 'lucide-react';
 import { Button, EmptyState, Skeleton } from '../components/ui';
@@ -8,7 +9,7 @@ import AiJudgementCard from '../components/pulse/AiJudgementCard';
 import AiDraftNote from '../components/pulse/AiDraftNote';
 import { PulsePreviewModal } from '../components/pulse/PulsePanels';
 import PillarIcon from '../components/pulse/PillarIcon';
-import { PILLARS, pillarLabel } from '../lib/pillars';
+import { PILLARS } from '../lib/pillars';
 import { sectionNumber, parseSeedBody, scaffoldFor } from '../lib/canvasScaffolds';
 import { NEWS_DERIVED_PILLARS } from '../components/pulse/pulseNewsletter';
 import {
@@ -16,7 +17,7 @@ import {
 } from '../hooks/queries';
 import {
   useAcceptJudgement, useAiDraft, useCreateItemFromEvent,
-  useEditPublish, useRecommendEvents, useReviewPulseEvent, useRejectJudgement,
+  useEditPublish, useReviewPulseEvent, useRejectJudgement,
   useRunPulseCollection,
 } from '../hooks/mutations';
 import { useAvailablePublishItems, useBriefing, useBriefings, useCreateBriefing } from '../hooks/briefingQueries';
@@ -467,147 +468,9 @@ function WriteOverlay({ open, onClose, mode, source, onSave, busy, error }) {
 }
 
 // ── AI review modal ───────────────────────────────────────────────────────────
-// Two tabs over the same review queue:
-//   * Duplicates  — kind='dedup' pending (the existing AiJudgementCard row).
-//   * Suggestions — kind='recommend' pending: the event the AI picked, the
-//     section it was picked for, and the AI's reason + confidence.
-// Accept/Reject both go through the existing /api/ai-judgements endpoints and
-// refetch on settle. Keeping the Duplicates pane unchanged is deliberate.
-
-// ── Suggestion row (kind='recommend') ────────────────────────────────────────
-
-/** Confidence 0–1 → whole-number percent, or null when unknown. */
-function confidencePercent(value) {
-  if (typeof value !== 'number' || Number.isNaN(value)) return null;
-  return Math.round(Math.min(Math.max(value, 0), 1) * 100);
-}
-
-function SuggestionRow({ judgement, onAccept, onReject, acceptPending, rejectPending }) {
-  const [rejectOpen, setRejectOpen] = useState(false);
-  const [accepted, setAccepted] = useState(false);
-  const [actionError, setActionError] = useState(null);
-
-  const busy = acceptPending || rejectPending;
-  const functionId = judgement?.scenario?.functionId;
-  const title = judgement?.subject?.eventTitle || 'Untitled story';
-
-  const handleAccept = async () => {
-    setActionError(null);
-    try {
-      await onAccept(judgement.id);
-      setAccepted(true);
-    } catch (err) {
-      setActionError(err.message);
-    }
-  };
-
-  return (
-    <div className="rounded-lg border border-border bg-card p-3.5">
-      <div className="flex flex-wrap items-center gap-2">
-        {typeof functionId === 'number' && (
-          <span className="rounded-full bg-secondary px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.04em] text-secondary-foreground">
-            {sectionNumber(functionId)} {pillarLabel(functionId)}
-          </span>
-        )}
-        {confidencePercent(judgement.confidence) !== null && (
-          <span className="text-[12px] font-semibold text-muted-foreground">
-            {confidencePercent(judgement.confidence)}% confident
-          </span>
-        )}
-      </div>
-      <p className="mt-2 text-[14.5px] font-semibold text-foreground">{title}</p>
-      {judgement.rationale && (
-        <p className="mt-1 text-[13px] text-muted-foreground">{judgement.rationale}</p>
-      )}
-
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <Button variant="primary" size="sm" onClick={handleAccept} disabled={busy}>
-          <Check className="h-3.5 w-3.5" />
-          {acceptPending ? 'Accepting…' : 'Accept'}
-        </Button>
-        <Button variant="danger" size="sm" onClick={() => setRejectOpen(true)} disabled={busy}>
-          <X className="h-3.5 w-3.5" />
-          Reject
-        </Button>
-        {accepted && (
-          <span aria-live="polite" className="text-xs text-muted-foreground">
-            Accepted — use it from the list below.
-          </span>
-        )}
-      </div>
-
-      {actionError && <p role="alert" className="mt-2 text-xs text-destructive">{actionError}</p>}
-
-      <RejectReasonModal
-        open={rejectOpen}
-        onClose={() => setRejectOpen(false)}
-        onSubmit={onReject}
-        judgementId={judgement.id}
-        pending={rejectPending}
-      />
-    </div>
-  );
-}
-
-// ── Reject-with-reason modal (reason REQUIRED, min 3 chars) ───────────────────
-// Mirrored for the Suggestion rows; AiJudgementCard carries its own copy for the
-// Duplicates pane so that pane stays byte-for-byte as it is today.
-function RejectReasonModal({ open, onClose, onSubmit, judgementId, pending }) {
-  const [reason, setReason] = useState('');
-  const [serverError, setServerError] = useState(null);
-
-  useEffect(() => {
-    if (!open) return;
-    setReason('');
-    setServerError(null);
-  }, [open, judgementId]);
-
-  const trimmed = reason.trim();
-  const canSubmit = trimmed.length >= 3 && !pending;
-
-  const handleSubmit = async () => {
-    if (!canSubmit) return;
-    setServerError(null);
-    try {
-      await onSubmit({ id: judgementId, reason: trimmed });
-      onClose();
-    } catch (err) {
-      setServerError(err.message);
-    }
-  };
-
-  return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title="Reject this suggestion"
-      description="Why is the AI wrong? Your reason trains the model and is required."
-      className="max-w-xl"
-    >
-      <div className="space-y-4">
-        <textarea
-          value={reason}
-          onChange={(e) => setReason(e.target.value)}
-          rows={5}
-          aria-label="Reasoning"
-          placeholder="e.g. This event is already covered by another pick."
-          className="input min-h-[8rem] w-full text-sm"
-        />
-        {serverError && (
-          <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            {serverError}
-          </p>
-        )}
-        <div className="flex justify-end gap-2">
-          <Button variant="secondary" onClick={onClose} disabled={pending}>Cancel</Button>
-          <Button variant="danger" onClick={handleSubmit} disabled={!canSubmit}>
-            {pending ? 'Rejecting…' : 'Reject'}
-          </Button>
-        </div>
-      </div>
-    </Modal>
-  );
-}
+// Duplicate verdicts only. The recommendation ("Suggestions") pane that used to
+// live here is now absorbed into the edition wizard's step 1, so this modal owns
+// a single queue: the `kind='dedup'` pending judgements.
 
 /** One review pane's loading / error / empty shell around a list of rows. */
 function ReviewPane({ query, emptyTitle, emptyDescription, children }) {
@@ -638,109 +501,34 @@ function ReviewPane({ query, emptyTitle, emptyDescription, children }) {
 }
 
 function AiReviewModal({ open, onClose }) {
-  const [tab, setTab] = useState('duplicates');
-
   const dupQuery = useAiJudgements({ kind: 'dedup', outcome: 'pending' });
-  const recQuery = useAiJudgements({ kind: 'recommend', outcome: 'pending' });
   const accept = useAcceptJudgement();
   const reject = useRejectJudgement();
-  const recommend = useRecommendEvents();
-  const [recError, setRecError] = useState(null);
-
-  const dupCount = dupQuery.data?.length ?? 0;
-  const recCount = recQuery.data?.length ?? 0;
-
-  // Ask the AI for the day's section picks. Each pick lands in the recommend
-  // judgement queue; the mutation invalidates that cache, so `recQuery` refetches.
-  const onFindSuggestions = async () => {
-    setRecError(null);
-    try {
-      await recommend.mutateAsync({});
-    } catch (err) {
-      if (err?.status === 503) setRecError('AI is not configured.');
-      else setRecError(err?.message || 'Could not fetch suggestions.');
-    }
-  };
-
-  const tabs = [
-    { key: 'duplicates', label: 'Duplicates', count: dupCount },
-    { key: 'suggestions', label: 'Suggestions', count: recCount },
-  ];
 
   return (
-    <Modal open={open} onClose={onClose} title="AI review" description="Pending judgements." className="max-w-2xl">
-      <div className="mb-4 flex items-center gap-1 border-b border-border">
-        {tabs.map((t) => {
-          const active = tab === t.key;
-          return (
-            <button
-              key={t.key}
-              type="button"
-              onClick={() => setTab(t.key)}
-              aria-current={active ? 'page' : undefined}
-              className={
-                '-mb-px border-b-2 px-3 py-2 text-[13px] font-semibold transition-colors ' +
-                (active
-                  ? 'border-primary text-foreground'
-                  : 'border-transparent text-muted-foreground hover:text-foreground')
-              }
-            >
-              {t.label}
-              {t.count > 0 && <span className="ml-1.5 text-muted-foreground">({t.count})</span>}
-            </button>
-          );
-        })}
-      </div>
-
-      {tab === 'duplicates' ? (
-        <ReviewPane
-          query={dupQuery}
-          emptyTitle="Nothing to review"
-          emptyDescription="No duplicate pairings await review."
-        >
-          {(rows) => rows.map((j) => (
-            <AiJudgementCard
-              key={j.id}
-              judgement={j}
-              onAccept={accept.mutateAsync}
-              onReject={reject.mutateAsync}
-              acceptPending={accept.isPending}
-              rejectPending={reject.isPending}
-            />
-          ))}
-        </ReviewPane>
-      ) : (
-        <div className="space-y-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={onFindSuggestions}
-              disabled={recommend.isPending}
-            >
-              <Sparkles className={'h-3.5 w-3.5' + (recommend.isPending ? ' animate-pulse' : '')} />
-              {recommend.isPending ? 'Finding…' : 'Find suggestions'}
-            </Button>
-            {recError && <span role="alert" className="text-[12.5px] text-destructive">{recError}</span>}
-          </div>
-          <ReviewPane
-            query={recQuery}
-            emptyTitle="No suggestions"
-            emptyDescription="The AI has not suggested any stories for today's sections."
-          >
-            {(rows) => rows.map((j) => (
-              <SuggestionRow
-                key={j.id}
-                judgement={j}
-                onAccept={accept.mutateAsync}
-                onReject={reject.mutateAsync}
-                acceptPending={accept.isPending}
-                rejectPending={reject.isPending}
-              />
-            ))}
-          </ReviewPane>
-        </div>
-      )}
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="AI review"
+      description="Duplicate pairs awaiting your verdict."
+      className="max-w-2xl"
+    >
+      <ReviewPane
+        query={dupQuery}
+        emptyTitle="Nothing to review"
+        emptyDescription="No duplicate pairings await review."
+      >
+        {(rows) => rows.map((j) => (
+          <AiJudgementCard
+            key={j.id}
+            judgement={j}
+            onAccept={accept.mutateAsync}
+            onReject={reject.mutateAsync}
+            acceptPending={accept.isPending}
+            rejectPending={reject.isPending}
+          />
+        ))}
+      </ReviewPane>
     </Modal>
   );
 }
@@ -748,6 +536,7 @@ function AiReviewModal({ open, onClose }) {
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default function PulseToday() {
   const dayKey = lagosTodayKey();
+  const navigate = useNavigate();
 
   const [query, setQuery] = useState('');
   const [region, setRegion] = useState('all');
@@ -815,8 +604,10 @@ export default function PulseToday() {
       .sort((a, b) => (a.functionId ?? 0) - (b.functionId ?? 0));
   }, [publishItems, dayKey]);
 
-  // Pending AI judgements count for the header button (hidden while 0).
-  const { data: pendingJudgements } = useAiJudgements({ outcome: 'pending' });
+  // Pending DUPLICATE judgements count for the header button (hidden while 0).
+  // Recommendations now live in the edition wizard (step 1), so the header badge
+  // reflects only the dedup queue the AI-review modal still owns.
+  const { data: pendingJudgements } = useAiJudgements({ kind: 'dedup', outcome: 'pending' });
   const pendingCount = pendingJudgements?.length ?? 0;
 
   // Mutations.
@@ -1003,6 +794,14 @@ export default function PulseToday() {
                 </span>
               </Button>
             )}
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => navigate('/pulse/build')}
+              title="Build today's edition with the 3-step AI wizard"
+            >
+              ✦ Build today's edition
+            </Button>
             <Button
               size="sm"
               disabled

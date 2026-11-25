@@ -332,12 +332,17 @@ export function useCreateItemFromEvent() {
  * `AI_NOT_CONFIGURED`) rejects the promise with a normalised error (the caller
  * reads `err.status` / `err.code`). Existing item + judgement list caches are
  * invalidated on success so the new draft appears in "In today's email".
+ *
+ * `regenerate: true` asks the server for a FRESH draft over the existing live
+ * item (updated in place, same id, a new ledger row appended) — the Retry
+ * action in the edition wizard's Drafts step. Default false keeps the
+ * idempotent "return the existing draft" behaviour.
  */
 export function useAiDraft() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ eventId, functionId }) =>
-      api('/publish/ai-draft', { method: 'POST', body: { eventId, functionId } }),
+    mutationFn: ({ eventId, functionId, regenerate = false }) =>
+      api('/publish/ai-draft', { method: 'POST', body: { eventId, functionId, regenerate } }),
     onSuccess: () => invalidatePulse(qc),
   });
 }

@@ -8,6 +8,7 @@ import Contacts from './pages/Contacts';
 import Suppressions from './pages/Suppressions';
 import Feed from './pages/Feed';
 import PulseToday from './pages/PulseToday';
+import PulseWizard from './pages/PulseWizard';
 import Campaigns from './pages/Campaigns';
 import CampaignBuilder from './pages/CampaignBuilder';
 import CampaignAnalytics from './pages/CampaignAnalytics';
@@ -31,6 +32,8 @@ export default function App() {
           {/* Pulse — ONE screen: today's news, today's email. The old Inbox,
               Writer and Front Page all redirect to /pulse. */}
           <Route path="pulse" element={<PulseToday />} />
+          {/* The 3-step AI edition builder, opened from Today. */}
+          <Route path="pulse/build" element={<PulseWizard />} />
           <Route path="pulse/wire" element={<Navigate to="/pulse" replace />} />
           <Route path="pulse/desk" element={<Navigate to="/pulse" replace />} />
           <Route path="pulse/inbox/:eventId/canvas" element={<Navigate to="/pulse" replace />} />
