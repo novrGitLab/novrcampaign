@@ -494,13 +494,13 @@ export const RECOMMEND_SCHEMA = {
   },
 };
 
-/** Build the recommend system prompt for a section. */
-export function buildRecommendSystem(functionId) {
+/** Build the recommend system prompt for a section (limit = max picks). */
+export function buildRecommendSystem(functionId, limit = 4) {
   return `You are the commissioning editor of NovrPulse, a Nigerian cybersecurity briefing.
 
 The section is: ${pillarPurpose(functionId)}.
 
-From the numbered candidate stories, pick the best fit(s) for this section. Return STRICT JSON: {"picks":[{"index":<number>,"reason":"<short reason>","confidence":<0..1>}]}. Pick ZERO, ONE, or TWO stories — only those that genuinely fit. reason must be at most 160 characters. If none fit, return {"picks":[]}.`;
+From the numbered candidate stories, pick the best fit(s) for this section. Return STRICT JSON: {"picks":[{"index":<number>,"reason":"<short reason>","confidence":<0..1>}]}. Pick UP TO ${limit} stories — only those that genuinely fit; if fewer genuinely fit, return fewer; if none fit, return {"picks":[]}. reason must be at most 160 characters.`;
 }
 
 /** Render the numbered candidate block for a section. */
@@ -521,6 +521,10 @@ export function buildRecommendPrompt(candidates) {
  */
 export async function recommendCandidates({ now = new Date() } = {}) {
   const since = new Date(now.getTime() - RECOMMEND_WINDOW_HOURS * 3_600_000);
+  // Owner requirement: intelligence events are reusable across days — only
+  // stories drafted in the last 24h are "in play" for the current edition and
+  // excluded from recommendations. Older drafts never block reuse.
+  const inPlayCutoff = new Date(now.getTime() - 24 * 3_600_000);
   const events = await prisma.npEvent.findMany({
     where: { publishedAt: { gte: since } },
     orderBy: { publishedAt: 'desc' },
@@ -530,7 +534,10 @@ export async function recommendCandidates({ now = new Date() } = {}) {
       title: true,
       summary: true,
       publishItems: {
-        where: { withdrawnAt: null, publishedAt: null, rejectedAt: null },
+        where: {
+          withdrawnAt: null, publishedAt: null, rejectedAt: null,
+          createdAt: { gte: inPlayCutoff },
+        },
         select: { id: true },
         take: 1,
       },
@@ -581,7 +588,7 @@ export async function recommendEvents({ functionIds = NEWS_DERIVED_PILLARS, limi
   for (const functionId of functionIds) {
     const out = await client.complete({
       tier: 'bulk',
-      system: buildRecommendSystem(functionId),
+      system: buildRecommendSystem(functionId, limit),
       prompt: buildRecommendPrompt(candidates),
       schema: RECOMMEND_SCHEMA,
     });
