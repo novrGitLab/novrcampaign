@@ -20,16 +20,25 @@
  *    displays the returned string in a `sandbox=""` iframe.
  *
  * MAPPING (briefing section functionId → template block):
- *   fn 8 → 📰 lead (parses Summary/Impact/Affected/Mitigation/Why it matters)
- *   fn 7 → 📋 More news today (up to 3 compact blocks)
- *   fn 4 → ⚔️ Attack Scenario (parses Incident/Entry point/What the attacker did/
- *          Final impact/Key lesson)
+ *   fn 8 → 🧠 CyberIntel (the lead; parses Summary/Impact/Affected/Mitigation/
+ *          Why it matters)
+ *   fn 7 → 📰 Breaking News of the Day (ALL fn 7 pieces, pre-rendered)
+ *   fn 4 → 🛡️ Cybersecurity Awareness / Cyber Hygiene (case study: Incident/
+ *          Entry point/What the attacker did/Final impact/Key lesson)
  *   fn 1 → 🏛️ Regulatory Impact
  *   fn 5 → 📅 Events (Nigeria vs International by event region, else Nigeria)
- *   fn 6 → 📦 Product Corner / outreach
- *   fn 3 → 📖 Glossary
- *   Tool / Career / Glossary / Quiz curated blocks → clearly-marked placeholder
- *   text (manual in v1).
+ *   fn 6 → 🤝 Outreach Initiatives
+ *   fn 3 → 🎓 Public Education & Advocacy
+ *   fn 2 → 💬 Forum Topic of the Day
+ *
+ * SECTION HEADERS use the F1–F8 PILLAR NAMES (the emoji-prefixed strings in
+ * `PILLAR_HEADERS`), not editorial copy.
+ *
+ * EMPTY-SECTION OMISSION: a section with no content renders NOTHING at all —
+ * the whole block (header included) is dropped. A section WITH content renders
+ * ONLY its filled slots (no empty source links, no repeated placeholder rows).
+ * The pre-rendered section blocks are injected as RAW HTML via `RAWSECTIONS`;
+ * every untrusted value inside them is escaped here at build time.
  */
 
 import { readFileSync } from 'node:fs';
@@ -42,11 +51,34 @@ const TEMPLATE_PATH = fileURLToPath(
   new URL('../../templates/pulse-daily-brief.html', import.meta.url),
 );
 
-/** The maximum number of compact news-roll blocks the template supports. */
-export const MAX_NEWS = 3;
-
 /** The maximum number of events per region group the template supports. */
 export const MAX_EVENTS_PER_REGION = 2;
+
+/**
+ * The F1–F8 pillar section headers (emoji + pillar name). These are the ONLY
+ * headers rendered in the preview — no editorial copy is carried anywhere.
+ */
+export const PILLAR_HEADERS = {
+  1: '🏛️ Regulatory Impact',
+  2: '💬 Forum Topic of the Day',
+  3: '🎓 Public Education & Advocacy',
+  4: '🛡️ Cybersecurity Awareness / Cyber Hygiene',
+  5: '📅 Events',
+  6: '🤝 Outreach Initiatives',
+  7: '📰 Breaking News of the Day',
+  8: '🧠 CyberIntel',
+};
+
+/**
+ * The RAW-HTML section tokens. Each is replaced by a pre-rendered `<tr>` block
+ * (or '' when the section is empty, so the block is OMITTED entirely). They are
+ * substituted WITHOUT escaping — the builder escapes every value it interpolates.
+ */
+export const RAWSECTIONS = [
+  'leadSection', 'newsSection', 'attackSection', 'regulatorySection',
+  'eventsSection', 'careerSection', 'toolSection', 'productSection',
+  'glossarySection', 'quizSection',
+];
 
 /** Characters escaped for HTML-text/attribute contexts. */
 const HTML_ESCAPES = {
@@ -58,8 +90,9 @@ const HTML_ESCAPES = {
 };
 
 /**
- * The clearly-marked default text for a curated block with no content, so an
- * unfilled edition still renders cleanly (these blocks are manual in v1).
+ * RETAINED FOR COMPATIBILITY ONLY — no longer rendered. Unfilled curated blocks
+ * (Career / Tool / Assessment) are now OMITTED entirely instead of showing this
+ * placeholder, so an unfilled edition has no repeated placeholder rows.
  */
 export const CURATED_PLACEHOLDER = '— This week the team takes a break from this section —';
 
@@ -223,80 +256,220 @@ export function selectStories(sections, max = Number.MAX_SAFE_INTEGER) {
   return stories;
 }
 
-/** Build the 📰 lead tokens from the fn 8 story (or '' when absent). */
-function leadTokens(story) {
-  if (!story) return {};
-  const s = story.slots;
-  return {
-    'lead.headline': story.headline,
-    'lead.imageAlt': story.headline,
-    'lead.summary': slotValue(s, 'Summary'),
-    'lead.impact': slotValue(s, 'Impact'),
-    'lead.affected': slotValue(s, 'Affected'),
-    'lead.mitigation': slotValue(s, 'Mitigation'),
-    'lead.whyItMatters': slotValue(s, 'Why it matters'),
-    'lead.sourceName': story.source,
-    'lead.sourceUrl': story.sourceUrl,
-  };
-}
-
 /**
- * Build the compact news-roll tokens (news1..newsN) from the fn 7 stories.
- * The summary is capped to a compact two-sentence-ish line (the roll is SHORT
- * by design — the depth instruction for fn 7 says so).
+ * Pre-render the 🧠 CyberIntel lead block from the fn 8 story. Only FILLED
+ * slots render — an empty Impact/Affected/Mitigation line is dropped, and the
+ * 📌 Key Details box is omitted entirely when none of the three is present.
  */
-function newsTokens(stories) {
-  const out = {};
-  for (let i = 0; i < MAX_NEWS; i += 1) {
-    const n = i + 1;
-    const story = stories[i];
-    out[`news${n}.headline`] = story ? story.headline : '';
-    out[`news${n}.summary`] = story
-      ? slotValue(story.slots, 'What happened') || story.body
-      : '';
-    out[`news${n}.sourceName`] = story ? story.source : '';
-    out[`news${n}.sourceUrl`] = story ? story.sourceUrl : '';
+function leadSectionHtml(story) {
+  if (!story) return '';
+  const s = story.slots;
+  const summary = slotValue(s, 'Summary');
+  const impact = slotValue(s, 'Impact');
+  const affected = slotValue(s, 'Affected');
+  const mitigation = slotValue(s, 'Mitigation');
+  const whyItMatters = slotValue(s, 'Why it matters');
+
+  const parts = [sectionHeader(8)];
+  parts.push(`<p style="margin:16px 0 6px;font-size:18px;font-weight:bold;color:#ffffff;">${escapeHtml(story.headline)}</p>`);
+  if (story.sourceName || story.sourceUrl) {
+    const label = escapeHtml(story.source || 'source');
+    const link = story.sourceUrl
+      ? `<a href="${escapeHtml(story.sourceUrl)}" style="color:#8E9AD3;text-decoration:none;">${label}</a>`
+      : label;
+    parts.push(`<p style="margin:0 0 6px;font-size:12px;color:#6B76A3;">${link}</p>`);
   }
-  return out;
+  if (summary) {
+    parts.push(`<p style="margin:0;font-size:14px;line-height:1.6;color:#C4CBE4;"><strong style="color:#ffffff;">Summary:</strong> ${escapeHtml(summary)}</p>`);
+  }
+
+  const details = [];
+  if (impact) details.push(`<p style="margin:0 0 8px;font-size:14px;line-height:1.6;color:#C4CBE4;"><strong style="color:#ffffff;">Impact:</strong> ${escapeHtml(impact)}</p>`);
+  if (affected) details.push(`<p style="margin:0 0 8px;font-size:14px;line-height:1.6;color:#C4CBE4;"><strong style="color:#ffffff;">Affected:</strong> ${escapeHtml(affected)}</p>`);
+  if (mitigation) details.push(`<p style="margin:0;font-size:14px;line-height:1.6;color:#C4CBE4;"><strong style="color:#ffffff;">Mitigation:</strong> ${escapeHtml(mitigation)}</p>`);
+  if (details.length) {
+    parts.push(
+      '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#0A0F1C;border-radius:14px;margin:16px 0;">'
+      + '<tr><td style="padding:12px 16px;">'
+      + '<p style="margin:0 0 8px;font-size:14px;color:#ffffff;"><strong>📌 Key Details:</strong></p>'
+      + details.join('')
+      + '</td></tr></table>',
+    );
+  }
+
+  if (whyItMatters) {
+    parts.push(
+      '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-left:3px solid #f97316;background-color:#0F172A;border-radius:12px;">'
+      + '<tr><td style="padding:10px 16px;">'
+      + `<p style="margin:0;font-size:14px;line-height:1.6;color:#C4CBE4;"><strong style="color:#ffffff;">⚠️ Why It Matters:</strong> ${escapeHtml(whyItMatters)}</p>`
+      + sourceLine(story.sourceUrl, story.source)
+      + '</td></tr></table>',
+    );
+  }
+
+  return sectionShell(parts.join(''));
 }
 
-/** Build the ⚔️ Attack Scenario tokens from the fn 4 story (or '' when absent). */
-function attackTokens(story) {
-  if (!story) return {};
-  const s = story.slots;
-  return {
-    'attack.headline': story.headline,
-    'attack.incident': slotValue(s, 'Incident'),
-    'attack.entryPoint': slotValue(s, 'Entry point'),
-    'attack.attackerDid': slotValue(s, 'What the attacker did'),
-    'attack.finalImpact': slotValue(s, 'Final impact'),
-    'attack.keyLesson': slotValue(s, 'Key lesson'),
-    'attack.sourceName': story.source,
-    'attack.sourceUrl': story.sourceUrl,
-  };
+// ─────────────────────────────────────────────────────────────────────────────
+// Pre-rendered section blocks (raw HTML)
+//
+// Each section renders its OWN `<tr>` block so an EMPTY section can be dropped
+// entirely. Values are escaped HERE at build time; the blocks are injected raw.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** The shared section wrapper: a padded row with a top divider. */
+function sectionShell(inner) {
+  return `<tr><td class="m-px" style="padding:24px;border-top:1px solid #1E2A45;">${inner}</td></tr>`;
 }
 
-/** Build the 🏛️ Regulatory Impact tokens from the fn 1 story (or '' when absent). */
-function regulatoryTokens(story) {
-  if (!story) return {};
-  const s = story.slots;
-  return {
-    'regulatory.headline': story.headline,
-    'regulatory.body': slotValue(s, 'What it means for organisations') || story.body,
-  };
+/** The section header line — the pillar name with a purple left rule. */
+function sectionHeader(functionId) {
+  return `<p style="margin:0 0 4px;font-size:20px;font-weight:bold;color:#ffffff;border-left:4px solid #662F8E;padding-left:12px;">${escapeHtml(PILLAR_HEADERS[functionId] ?? '')}</p>`;
+}
+
+/** A muted attribution line, or '' when there is no source URL/name. */
+function sourceLine(url, name, prefix = '🔗 Source:') {
+  if (!url && !name) return '';
+  const label = escapeHtml(name || 'source');
+  const link = url
+    ? `<a href="${escapeHtml(url)}" style="color:#8E9AD3;text-decoration:none;">${label}</a>`
+    : label;
+  return `<p style="margin:8px 0 0;font-size:12px;color:#6B76A3;">${prefix} ${link}</p>`;
 }
 
 /**
- * Build the 📦 Product Corner / outreach tokens from the fn 6 opportunity-style
- * story (or '' when absent).
+ * Pre-render ALL fn 7 news pieces into one HTML block (no cap): one compact
+ * block per story with its own filled summary + source. Renders '' when there
+ * are no fn 7 stories, so the whole section is omitted.
  */
-function productTokens(story) {
-  if (!story) return {};
-  return {
-    'product.headline': story.headline,
-    'product.body': story.body,
-    'product.linkUrl': story.sourceUrl,
+function newsSectionHtml(stories) {
+  if (!stories.length) return '';
+  const blocks = stories.map((story, i) => {
+    const summary = slotValue(story.slots, 'What happened') || story.body;
+    const divider = i === 0 ? '' : '<hr style="border:0;border-top:1px solid #1E2A45;margin:16px 0;">';
+    const summaryHtml = summary
+      ? `<p style="margin:0;font-size:14px;line-height:1.6;color:#C4CBE4;">${escapeHtml(summary)}</p>`
+      : '';
+    const src = sourceLine(story.sourceUrl, story.source);
+    return `${divider}<p style="margin:16px 0 4px;font-size:16px;font-weight:bold;color:#ffffff;">${escapeHtml(story.headline)}</p>${summaryHtml}${src}`;
+  });
+  return sectionShell(sectionHeader(7) + blocks.join(''));
+}
+
+/**
+ * Pre-render the 🛡️ Cybersecurity Awareness / Cyber Hygiene case-study block
+ * from the fn 4 story. Only FILLED slots render; the 🔑 Key lesson callout is
+ * omitted when the slot is empty.
+ */
+function attackSectionHtml(story) {
+  if (!story) return '';
+  const s = story.slots;
+  const lines = [
+    ['Incident', 'Incident'],
+    ['Entry point', 'Entry Point'],
+    ['What the attacker did', 'What the attacker did'],
+    ['Final impact', 'Final Impact'],
+  ];
+  const parts = [
+    sectionHeader(4),
+    `<p style="margin:16px 0 8px;font-size:16px;font-weight:bold;color:#ffffff;">${escapeHtml(story.headline)}</p>`,
+  ];
+  for (const [label, display] of lines) {
+    const value = slotValue(s, label);
+    if (value) {
+      parts.push(`<p style="margin:0 0 8px;font-size:14px;line-height:1.6;color:#C4CBE4;"><strong style="color:#ffffff;">${display}:</strong> ${escapeHtml(value)}</p>`);
+    }
+  }
+  const lesson = slotValue(s, 'Key lesson');
+  if (lesson) {
+    parts.push(
+      '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-left:4px solid #ef4444;background-color:#1A1F2E;border-radius:12px;margin-top:12px;">'
+      + '<tr><td style="padding:10px 14px;">'
+      + `<p style="margin:0;font-size:14px;line-height:1.6;color:#C4CBE4;"><strong style="color:#ffffff;">🔑 Key Lesson:</strong> ${escapeHtml(lesson)}</p>`
+      + '</td></tr></table>',
+    );
+  }
+  parts.push(sourceLine(story.sourceUrl, story.source));
+  return sectionShell(parts.join(''));
+}
+
+/** Pre-render the 🏛️ Regulatory Impact block from the fn 1 story. */
+function regulatorySectionHtml(story) {
+  if (!story) return '';
+  const body = slotValue(story.slots, 'What it means for organisations') || story.body;
+  const parts = [
+    sectionHeader(1),
+    `<p style="margin:16px 0 8px;font-size:16px;font-weight:bold;color:#ffffff;">${escapeHtml(story.headline)}</p>`,
+  ];
+  if (body) {
+    parts.push(
+      '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#0A0F1C;border-radius:14px;">'
+      + `<tr><td style="padding:12px 16px;"><p style="margin:0;font-size:14px;line-height:1.6;color:#C4CBE4;">${escapeHtml(body)}</p></td></tr></table>`,
+    );
+  }
+  return sectionShell(parts.join(''));
+}
+
+/**
+ * Pre-render the 🤝 Outreach Initiatives block from the fn 6 story. Renders
+ * nothing when the body is empty.
+ */
+function productSectionHtml(story) {
+  if (!story || !story.body) return '';
+  const parts = [
+    sectionHeader(6),
+    `<p style="margin:16px 0 6px;font-size:16px;font-weight:bold;color:#ffffff;">${escapeHtml(story.headline)}</p>`,
+    `<p style="margin:0 0 8px;font-size:14px;line-height:1.6;color:#C4CBE4;">${escapeHtml(story.body)}</p>`,
+  ];
+  if (story.sourceUrl) {
+    parts.push(`<p style="margin:0;font-size:13px;color:#6B76A3;">🔗 <a href="${escapeHtml(story.sourceUrl)}" style="color:#8E9AD3;text-decoration:none;">Learn more</a></p>`);
+  }
+  return sectionShell(parts.join(''));
+}
+
+/** Pre-render the 📅 Events block from the fn 5 stories (Nigeria / International). */
+function eventsSectionHtml(stories) {
+  if (!stories.length) return '';
+  const groups = { ng: [], intl: [] };
+  for (const story of stories) {
+    const event = story.event ?? {};
+    (isNigeria(event) ? groups.ng : groups.intl).push(story);
+  }
+
+  const groupHtml = (title, list) => {
+    const filled = list.slice(0, MAX_EVENTS_PER_REGION);
+    if (!filled.length) return '';
+    const items = filled.map((story) => {
+      const event = story.event ?? {};
+      const meta = [event.venue, event.startsAt ? formatBriefingDate(event.startsAt) : '']
+        .filter(Boolean)
+        .map(escapeHtml)
+        .join(' — ');
+      const focus = story.body
+        ? `<p style="margin:0 0 4px;font-size:13px;line-height:1.6;color:#9AA3C7;">Focus: ${escapeHtml(story.body)}</p>`
+        : '';
+      return `<p style="margin:0 0 4px;font-size:14px;color:#C4CBE4;"><strong style="color:#ffffff;">${escapeHtml(story.headline)}</strong>${meta ? ` — ${meta}` : ''}</p>${focus}${sourceLine(story.sourceUrl, story.source, '📌 Source:')}`;
+    });
+    return `<p style="margin:12px 0 6px;font-size:15px;font-weight:bold;color:#ffffff;">${title}</p>${items.join('')}`;
   };
+
+  const inner = sectionHeader(5)
+    + groupHtml('🇳🇬 Nigeria', groups.ng)
+    + groupHtml('🌍 International', groups.intl);
+  return sectionShell(inner);
+}
+
+/** Pre-render the 🎓 Public Education & Advocacy block from the fn 3 story. */
+function glossarySectionHtml(story) {
+  if (!story) return '';
+  const definition = slotValue(story.slots, 'Explain in plain terms') || story.body;
+  const term = slotValue(story.slots, 'Explain in plain terms') ? story.headline : '';
+  if (!definition) return '';
+  const head = term ? `<strong style="color:#ffffff;">${escapeHtml(term)}:</strong> ` : '';
+  return sectionShell(
+    sectionHeader(3)
+    + `<p style="margin:16px 0 0;font-size:14px;line-height:1.6;color:#C4CBE4;">${head}${escapeHtml(definition)}</p>`,
+  );
 }
 
 /** Whether an event's region string denotes Nigeria (default group). */
@@ -306,53 +479,10 @@ function isNigeria(event) {
 }
 
 /**
- * Build the 📅 Events tokens from the fn 5 items, split into Nigeria (default
- * for a missing/unknown region) and International, up to two each.
- *
- * Each `event` is a briefing section item whose linked record carries
- * title/description/venue/startsAt and — when available — a `region`.
- */
-function eventTokens(stories) {
-  const out = {};
-  const groups = { ng: [], intl: [] };
-  for (const story of stories) {
-    const event = story.event ?? {};
-    (isNigeria(event) ? groups.ng : groups.intl).push(story);
-  }
-
-  const emit = (prefix, list) => {
-    for (let i = 0; i < MAX_EVENTS_PER_REGION; i += 1) {
-      const n = i + 1;
-      const story = list[i];
-      const event = story?.event ?? {};
-      out[`${prefix}${n}.title`] = story ? story.headline : '';
-      out[`${prefix}${n}.location`] = collapseWhitespace(event.venue ?? '');
-      out[`${prefix}${n}.date`] = event.startsAt ? formatBriefingDate(event.startsAt) : '';
-      out[`${prefix}${n}.focus`] = story ? story.body : '';
-      out[`${prefix}${n}.sourceName`] = story ? story.source : '';
-      out[`${prefix}${n}.sourceUrl`] = story ? story.sourceUrl : '';
-    }
-  };
-  emit('ngEvent', groups.ng);
-  emit('intlEvent', groups.intl);
-  return out;
-}
-
-/** Build the 📖 Glossary tokens from the fn 3 story (or '' when absent). */
-function glossaryTokens(story) {
-  if (!story) return {};
-  const s = story.slots;
-  return {
-    'glossary.term': slotValue(s, 'Explain in plain terms') ? story.headline : '',
-    'glossary.definition': slotValue(s, 'Explain in plain terms') || story.body,
-  };
-}
-
-/**
  * Build the complete token→value map for the template from a briefing view
- * model. Values are RAW (unescaped); escaping happens at substitution time.
- * Every optional block is filled with a `CURATED_PLACEHOLDER` (or '') so no raw
- * `{{token}}` is ever left for the client.
+ * model. Text tokens are RAW (unescaped); escaping happens at substitution time.
+ * The section blocks are PRE-RENDERED HTML (escaped as they are built) and are
+ * injected raw; an empty section maps to '' so the block is omitted entirely.
  *
  * @param {object} vm
  * @returns {Map<string,string>}
@@ -371,81 +501,45 @@ export function buildTokenMap(vm) {
   const outreach = groups.get(6)?.[0] ?? null;
   const glossary = groups.get(3)?.[0] ?? null;
 
-  // Lead — the deep-dive. Kept even when absent so required tokens exist.
-  for (const [k, v] of Object.entries({
-    'lead.headline': '', 'lead.imageAlt': '', 'lead.summary': '', 'lead.impact': '',
-    'lead.affected': '', 'lead.mitigation': '', 'lead.whyItMatters': '',
-    'lead.sourceName': '', 'lead.sourceUrl': '',
-  })) tokens.set(k, v);
-  for (const [k, v] of Object.entries(leadTokens(lead))) tokens.set(k, v);
+  // Pre-rendered section blocks ('' → omitted).
+  const sections = {
+    leadSection: leadSectionHtml(lead),
+    newsSection: newsSectionHtml(news),
+    attackSection: attackSectionHtml(attack),
+    regulatorySection: regulatorySectionHtml(regulatory),
+    eventsSection: eventsSectionHtml(events),
+    productSection: productSectionHtml(outreach),
+    glossarySection: glossarySectionHtml(glossary),
+    // Curated blocks (manual in v1) have no source data yet → always omitted.
+    careerSection: '',
+    toolSection: '',
+    quizSection: '',
+  };
+  for (const key of RAWSECTIONS) tokens.set(key, sections[key] ?? '');
 
-  for (const [k, v] of Object.entries(newsTokens(news))) tokens.set(k, v);
-
-  for (const [k, v] of Object.entries({
-    'attack.headline': '', 'attack.incident': '', 'attack.entryPoint': '',
-    'attack.attackerDid': '', 'attack.finalImpact': '', 'attack.keyLesson': '',
-    'attack.sourceName': '', 'attack.sourceUrl': '',
-  })) tokens.set(k, v);
-  for (const [k, v] of Object.entries(attackTokens(attack))) tokens.set(k, v);
-
-  for (const [k, v] of Object.entries({ 'regulatory.headline': '', 'regulatory.body': '' })) {
-    tokens.set(k, v);
-  }
-  for (const [k, v] of Object.entries(regulatoryTokens(regulatory))) tokens.set(k, v);
-
-  for (const [k, v] of Object.entries(eventTokens(events))) tokens.set(k, v);
-  // Ensure every event token exists even with no events.
-  for (const prefix of ['ngEvent', 'intlEvent']) {
-    for (let n = 1; n <= MAX_EVENTS_PER_REGION; n += 1) {
-      for (const field of ['title', 'location', 'date', 'focus', 'sourceName', 'sourceUrl']) {
-        const key = `${prefix}${n}.${field}`;
-        if (!tokens.has(key)) tokens.set(key, '');
-      }
-    }
-  }
-
-  for (const [k, v] of Object.entries({
-    'product.headline': CURATED_PLACEHOLDER, 'product.body': CURATED_PLACEHOLDER, 'product.linkUrl': '',
-  })) tokens.set(k, v);
-  for (const [k, v] of Object.entries(productTokens(outreach))) tokens.set(k, v);
-
-  for (const [k, v] of Object.entries({
-    'glossary.term': '', 'glossary.definition': CURATED_PLACEHOLDER,
-  })) tokens.set(k, v);
-  for (const [k, v] of Object.entries(glossaryTokens(glossary))) tokens.set(k, v);
-
-  // Curated blocks (manual in v1) — placeholder text so the edition renders.
-  for (const [k, v] of Object.entries({
-    'career.role': CURATED_PLACEHOLDER,
-    'career.description': CURATED_PLACEHOLDER,
-    'career.salary': CURATED_PLACEHOLDER,
-    'career.certs': CURATED_PLACEHOLDER,
-    'tool.spotlight': CURATED_PLACEHOLDER,
-    'tool.whatItDoes': CURATED_PLACEHOLDER,
-    'tool.whoShouldUse': CURATED_PLACEHOLDER,
-    'tool.whyItMatters': CURATED_PLACEHOLDER,
-    'quiz.q1': CURATED_PLACEHOLDER,
-    'quiz.q2': CURATED_PLACEHOLDER,
-    'quiz.a1': CURATED_PLACEHOLDER,
-    'quiz.a2': CURATED_PLACEHOLDER,
-  })) tokens.set(k, v);
+  // {{newsItems}} is retained as an alias for the pre-rendered news roll body.
+  tokens.set('newsItems', sections.newsSection);
 
   tokens.set('unsubscribeUrl', vm.unsubscribeUrl);
   return tokens;
 }
 
 /**
- * Fill the template tokens with escaped values.
+ * Fill the template: RAW-HTML section tokens are injected verbatim, text tokens
+ * are escaped. Section tokens are processed FIRST so a section body that happens
+ * to contain a literal looked-like token cannot be re-escaped.
  *
  * @param {string} html
- * @param {Map<string,string>} tokens  RAW (unescaped) values.
+ * @param {Map<string,string>} tokens
+ * @param {Set<string>} [rawKeys]  keys whose values are pre-rendered HTML.
  * @returns {string}
  */
-export function fillTemplate(html, tokens) {
+export function fillTemplate(html, tokens, rawKeys = new Set(RAWSECTIONS.concat('newsItems'))) {
   let out = html;
   for (const [key, raw] of tokens) {
     const needle = `{{${key}}}`;
-    if (out.includes(needle)) out = out.split(needle).join(escapeHtml(raw));
+    if (!out.includes(needle)) continue;
+    out = out.split(needle).join(rawKeys.has(key) ? raw : escapeHtml(raw));
   }
   return out;
 }
@@ -493,6 +587,7 @@ export default {
   fillTemplate,
   renderBriefingPreview,
   CURATED_PLACEHOLDER,
-  MAX_NEWS,
+  PILLAR_HEADERS,
+  RAWSECTIONS,
   MAX_EVENTS_PER_REGION,
 };

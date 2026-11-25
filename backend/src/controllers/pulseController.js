@@ -4,8 +4,10 @@ import { prisma } from '../utils/prisma.js';
 import { BadRequest, NotFound, Unauthorized } from '../utils/AppError.js';
 import { deriveStatus } from './publishController.js';
 import { runCollection } from '../services/novrpulse/ingest.js';
+import { classifyEvents, isConfigured as isClassifyConfigured } from '../services/novrpulse/classify.js';
 import { timingSafeEqualString } from '../utils/timingSafe.js';
 import { config } from '../config/env.js';
+import logger from '../utils/logger.js';
 
 /**
  * NovrPulse internal feed read API.
@@ -72,10 +74,19 @@ const listSchema = Joi.object({
   reviewStatus: Joi.string().valid(...REVIEW_STATUSES),
   q: Joi.string().trim().max(200).allow(''),
   since: Joi.string().isoDate(),
-  // v1 deterministic cyber filter: `true` narrows to events whose source is a
-  // dedicated cybersecurity outlet (see CYBER_SOURCE_IDS). Sent as the query
-  // string `cyber=true`, so both the string and bare boolean forms are accepted.
+  // v1 deterministic cyber filter: `true` narrows to cybersecurity stories.
+  // Layered semantics (see the where-clause): a story is cyber when its AI flag
+  // `isCybersecurity = true`, OR — for events not yet classified — when its
+  // source is a dedicated cybersecurity outlet (CYBER_SOURCE_IDS). Sent as the
+  // query string `cyber=true`, so both the string and bare boolean forms are
+  // accepted.
   cyber: Joi.boolean().truthy('true').falsy('false'),
+  // AI classification flags (owner requirement). Same truthy/falsy pattern as
+  // `cyber`. `true` narrows to events the AI flagged; `false` is accepted but
+  // currently a no-op (the filter only narrows on `true`).
+  isCybersecurity: Joi.boolean().truthy('true').falsy('false'),
+  isThreatIntel: Joi.boolean().truthy('true').falsy('false'),
+  isNigeriaRelated: Joi.boolean().truthy('true').falsy('false'),
   region: Joi.string()
     .trim()
     .lowercase()
@@ -327,8 +338,10 @@ function sourceNameOf(event) {
  * Region, or Region + Review status).
  */
 export async function listPulseEvents(req, res) {
-  const { page, pageSize, function: functionId, reviewStatus, q, since, region, language, cyber } =
-    await validateQuery(req.query);
+  const {
+    page, pageSize, function: functionId, reviewStatus, q, since, region, language, cyber,
+    isCybersecurity, isThreatIntel, isNigeriaRelated,
+  } = await validateQuery(req.query);
 
   const where = {};
   if (functionId !== undefined) where.functions = { has: functionId };
@@ -345,15 +358,30 @@ export async function listPulseEvents(req, res) {
     // provenance chain: event → sources → rawDocument → source → region.
     where.sources = { some: { rawDocument: { source: { region: REGION_ALIASES[region] } } } };
   }
+  // AI classification filters: `true` narrows to the flag.
+  if (isCybersecurity === true) where.isCybersecurity = true;
+  if (isThreatIntel === true) where.isThreatIntel = true;
+  if (isNigeriaRelated === true) where.isNigeriaRelated = true;
   if (cyber === true) {
-    // A cyber story is one whose source is a dedicated cybersecurity outlet.
-    // Filter on the SOURCE (not functions/eventType, which are empty until the
-    // understanding stage runs). Kept as an independent `sources.some` clause via
-    // AND so it composes with the region filter (an event whose provenance
-    // includes a cyber source AND, when region is set, a region-matching source).
+    // LAYERED cyber filter. A cyber story is EITHER an event the AI classified
+    // `isCybersecurity = true`, OR — for events not yet classified (the flag is
+    // NULL) — one whose provenance source is a dedicated cybersecurity outlet
+    // (CYBER_SOURCE_IDS). The OR rides in the AND list so it composes with the
+    // region filter (an event whose provenance includes a cyber source AND, when
+    // region is set, a region-matching source).
     where.AND = [
       ...(where.AND ?? []),
-      { sources: { some: { rawDocument: { source: { id: { in: CYBER_SOURCE_IDS } } } } } },
+      {
+        OR: [
+          { isCybersecurity: true },
+          {
+            AND: [
+              { isCybersecurity: null },
+              { sources: { some: { rawDocument: { source: { id: { in: CYBER_SOURCE_IDS } } } } } },
+            ],
+          },
+        ],
+      },
     ];
   }
 
@@ -541,7 +569,25 @@ export async function runPulseCollection(req, res) {
   // `runCollection`.)
   const runner = req._runCollection ?? runCollection;
   const summary = await runner({ maxAgeDays: body.maxAgeDays });
-  return res.json(summary);
+
+  // Best-effort AI classification AFTER a successful collection: the daily cron
+  // now chains classification onto the pull, so freshly collected events get the
+  // accurate flags without a second schedule. A classification failure MUST NOT
+  // fail the collection response — it is caught and logged, and the run's summary
+  // is returned unchanged (the events are stored; classification retries next
+  // run). Skipped silently when no provider is configured.
+  let classified;
+  if (isClassifyConfigured()) {
+    const classifyRunner = req._classifyEvents ?? classifyEvents;
+    try {
+      const result = await classifyRunner();
+      classified = result.classified;
+    } catch (err) {
+      logger.warn({ message: err.message }, 'post-collection classification failed (collection unaffected)');
+    }
+  }
+
+  return res.json(classified === undefined ? summary : { ...summary, classified });
 }
 
 export { listSchema, reviewSchema, collectSchema, serializeCard, excerptOf, EXCERPT_LENGTH };

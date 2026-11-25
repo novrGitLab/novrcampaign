@@ -122,10 +122,10 @@ export async function collectSource(source, opts = {}) {
     return { ...base, ok: false, status: 'parse_failed', error: err.message };
   }
 
-  // Full-text upgrade for teaser-only feeds. Runs before canary/freshness so the
-  // longer content is what the consumer stores. Any failure keeps the teaser, and
-  // the shared budget bounds how many article fetches a whole run may make.
-  // A standalone collectSource (no injected budget) gets its own budget.
+  // Full-text upgrade for every item. Runs before canary/freshness so the
+  // full article body is what the consumer stores. Any failure keeps the feed
+  // content, and the shared budget bounds how many article fetches a whole run
+  // may make. A standalone collectSource (no injected budget) gets its own budget.
   const fullTextOptions = resolveFullTextOptions(fullTextFetch);
   const budget = fullTextBudget ?? createFetchBudget(fullTextOptions.maxPerRun);
   if (fullTextOptions.enabled && budget.remaining > 0) {
@@ -188,8 +188,8 @@ async function mapWithConcurrency(list, limit, fn) {
  * @param {object}   [params.logger]
  * @param {Record<string,Function>} [params.parsers]
  * @param {Function} [params.fetch]
- * @param {object}   [params.fullTextFetch]  `{ enabled, maxPerRun, minTeaserChars }`
- *   Full-text upgrade for teaser feeds. Defaults to enabled (see
+ * @param {object}   [params.fullTextFetch]  `{ enabled, maxPerRun, minFetchedChars }`
+ *   Full-text upgrade for every item. Defaults to enabled (see
  *   {@link DEFAULT_FULL_TEXT}); pass `{ enabled: false }` to disable.
  * @returns {Promise<{ ranAt:string, sources:Array<object>, items:Array<object>, ok:boolean }>}
  */

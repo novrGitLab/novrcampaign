@@ -1,12 +1,8 @@
 <!DOCTYPE html>
 <!--
   Pulse Daily Brief — NovrPulse (Cybernovr)
-  DAILY subscriber digest, rebuilt to the owner's ORIGINAL newsletter structure:
-  a deep-dive lead (📰 Cybersecurity News of the Day) with a 📌 Key Details box
-  and a ⚠️ Why It Matters callout, a compact news roll, an ⚔️ Attack Scenario
-  case study, 📅 Events (Nigeria & International), 💼 Career Spotlight,
-  🛠️ Tool of the Week, 📦 Product Corner, 📖 Glossary, and 🧠 Knowledge
-  Assessment.
+  DAILY subscriber digest. SECTION HEADERS are the F1–F8 PILLAR NAMES (emoji +
+  pillar label) — one header per pillar, injected by the renderer.
 
   BACKEND-OWNED COPY. This file is read by the briefing preview renderer
   (backend/src/services/novrpulse/briefingPreview.js) at request time. It is a
@@ -14,65 +10,28 @@
   source. KEEP THE TWO IN SYNC: when the frontend template changes, copy it here
   as well, or the Briefing Desk preview will drift from the sent email.
 
-  Placeholder token convention ({{namespace.field}}). EVERY token used below:
-    {{date}}                     Human-readable send date, e.g. "19 November 2026"
-    {{preheader}}                Short hidden preview line (optional)
+  TOKEN CONVENTION. Text tokens are escaped at substitution; the SECTION tokens
+  below are PRE-RENDERED HTML injected verbatim (and are '' when the section is
+  EMPTY, so the whole block — header included — is OMITTED):
 
-    === 📰 Lead (fn 8 deep-dive) ===
-    {{lead.headline}}            Lead headline
-    {{lead.imageAlt}}            Alt text for the lead image placeholder
-    {{lead.summary}}             4–6 sentence summary of the full story
-    {{lead.impact}}              📌 Key Details → Impact (3–5 sentences)
-    {{lead.affected}}            📌 Key Details → Affected (3–5 sentences)
-    {{lead.mitigation}}          📌 Key Details → Mitigation (3–5 sentences)
-    {{lead.whyItMatters}}        ⚠️ Why It Matters (3–5 sentences)
-    {{lead.sourceName}}          Lead source outlet name
-    {{lead.sourceUrl}}           Lead source link target
+    {{date}}             Human-readable send date, e.g. "19 November 2026"
+    {{preheader}}        Short hidden preview line (optional)
 
-    === More news today (fn 7 roll, up to 3) ===
-    {{news1.headline}}           Roll headline (1..3)
-    {{news1.summary}}            Roll 1–2 sentence summary (1..3)
-    {{news1.sourceName}}         Roll source outlet name (1..3)
-    {{news1.sourceUrl}}          Roll source link target (1..3)
+    {{leadSection}}      pillar 08 lead (📌 Key Details + ⚠️ Why It Matters)
+    {{newsSection}}      pillar 07 roll (ALL pieces; alias {{newsItems}})
+    {{attackSection}}    pillar 04 case study
+    {{regulatorySection}} pillar 01
+    {{eventsSection}}    pillar 05 (Nigeria & International)
+    {{careerSection}}    curated — omitted until filled
+    {{toolSection}}      curated — omitted until filled
+    {{productSection}}   pillar 06
+    {{glossarySection}}  pillar 03
+    {{quizSection}}      curated — omitted until filled
 
-    === ⚔️ Attack Scenario / Case Study (fn 4, optional) ===
-    {{attack.headline}}          Case-study incident title
-    {{attack.incident}}          Incident (2–4 sentences)
-    {{attack.entryPoint}}        Entry point (2–4 sentences)
-    {{attack.attackerDid}}       What the attacker did (2–4 sentences)
-    {{attack.finalImpact}}       Final impact (2–4 sentences)
-    {{attack.keyLesson}}         🔑 Key lesson (2–4 sentences)
-    {{attack.sourceName}}        Case-study source name
-    {{attack.sourceUrl}}         Case-study source link target
+    {{unsubscribeUrl}}   Provided by Plunk — do not edit
 
-    === 🏛️ Regulatory Impact (fn 1, optional) ===
-    {{regulatory.headline}}      Regulatory headline
-    {{regulatory.body}}          What this means for organisations
-
-    === 📅 Events (fn 5) — Nigeria & International, up to 2 each ===
-    {{ngEvent1.title}} {{ngEvent1.location}} {{ngEvent1.date}} {{ngEvent1.focus}} {{ngEvent1.sourceName}} {{ngEvent1.sourceUrl}}   (1..2)
-    {{intlEvent1.title}} {{intlEvent1.location}} {{intlEvent1.date}} {{intlEvent1.focus}} {{intlEvent1.sourceName}} {{intlEvent1.sourceUrl}}   (1..2)
-
-    === 💼 Career Spotlight ===
-    {{career.role}} {{career.description}} {{career.salary}} {{career.certs}}
-
-    === 🛠️ Tool of the Week ===
-    {{tool.spotlight}} {{tool.whatItDoes}} {{tool.whoShouldUse}} {{tool.whyItMatters}}
-
-    === 📦 Product Corner (NovrAcademy) ===
-    {{product.headline}} {{product.body}} {{product.linkUrl}}
-
-    === 📖 Cybersecurity Glossary (fn 3) ===
-    {{glossary.term}} {{glossary.definition}}
-
-    === 🧠 Knowledge Assessment ===
-    {{quiz.q1}} {{quiz.q2}} {{quiz.a1}} {{quiz.a2}}
-
-    {{unsubscribeUrl}}           Provided by Plunk — do not edit
-
-  The curated optional blocks (Career / Tool / Product / Glossary / Quiz) are
-  MANUAL in v1: the renderer fills them with clearly-marked placeholder text when
-  no content exists, so an unfilled edition still renders cleanly.
+  A section with no content renders NOTHING (no header, no placeholder rows);
+  a section with content renders ONLY its FILLED slots (no empty source links).
 -->
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="x-apple-disable-message-reformatting"><style>
@@ -104,147 +63,17 @@
 <p style="margin:6px 0 0;font-size:12px;color:#6B76A3;">Powered by Cybernovr Limited — African cyber resilience</p>
 </td></tr>
 
-<!-- 📰 Cybersecurity News of the Day (lead) -->
-<tr><td class="m-px" style="padding:24px;">
-<p style="margin:0 0 4px;font-size:20px;font-weight:bold;color:#ffffff;border-left:4px solid #662F8E;padding-left:12px;">📰 Cybersecurity News of the Day</p>
-<p style="margin:16px 0 6px;font-size:18px;font-weight:bold;color:#ffffff;">{{lead.headline}}</p>
-<p style="margin:0 0 6px;font-size:12px;color:#6B76A3;"><a href="{{lead.sourceUrl}}" style="color:#8E9AD3;text-decoration:none;">{{lead.sourceName}}</a></p>
-<p style="margin:0;font-size:14px;line-height:1.6;color:#C4CBE4;"><strong style="color:#ffffff;">Summary:</strong> {{lead.summary}}</p>
-<!-- lead image placeholder (images are not collected yet) -->
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:18px 0;">
-<tr><td align="center" style="background-color:#111827;border:1px dashed #334155;border-radius:12px;padding:28px 16px;">
-<p style="margin:0;font-size:12px;color:#6B76A3;">[ image: {{lead.imageAlt}} ]</p>
-</td></tr>
-</table>
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#0A0F1C;border-radius:14px;margin:16px 0;">
-<tr><td style="padding:12px 16px;">
-<p style="margin:0 0 8px;font-size:14px;color:#ffffff;"><strong>📌 Key Details:</strong></p>
-<p style="margin:0 0 8px;font-size:14px;line-height:1.6;color:#C4CBE4;"><strong style="color:#ffffff;">Impact:</strong> {{lead.impact}}</p>
-<p style="margin:0 0 8px;font-size:14px;line-height:1.6;color:#C4CBE4;"><strong style="color:#ffffff;">Affected:</strong> {{lead.affected}}</p>
-<p style="margin:0;font-size:14px;line-height:1.6;color:#C4CBE4;"><strong style="color:#ffffff;">Mitigation:</strong> {{lead.mitigation}}</p>
-</td></tr>
-</table>
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-left:3px solid #f97316;background-color:#0F172A;border-radius:12px;">
-<tr><td style="padding:10px 16px;">
-<p style="margin:0;font-size:14px;line-height:1.6;color:#C4CBE4;"><strong style="color:#ffffff;">⚠️ Why It Matters:</strong> {{lead.whyItMatters}}</p>
-<p style="margin:8px 0 0;font-size:12px;color:#6B76A3;">🔗 Source: <a href="{{lead.sourceUrl}}" style="color:#8E9AD3;text-decoration:none;">{{lead.sourceName}}</a></p>
-</td></tr>
-</table>
-</td></tr>
-
-<!-- More news today (fn 7 roll) -->
-<tr><td class="m-px" style="padding:24px;border-top:1px solid #1E2A45;">
-<p style="margin:0 0 4px;font-size:20px;font-weight:bold;color:#ffffff;border-left:4px solid #662F8E;padding-left:12px;">📋 More news today</p>
-<!-- News 1 -->
-<p style="margin:16px 0 4px;font-size:16px;font-weight:bold;color:#ffffff;">{{news1.headline}}</p>
-<p style="margin:0;font-size:14px;line-height:1.6;color:#C4CBE4;">{{news1.summary}}</p>
-<p style="margin:4px 0 0;font-size:12px;color:#6B76A3;">🔗 <a href="{{news1.sourceUrl}}" style="color:#8E9AD3;text-decoration:none;">{{news1.sourceName}}</a></p>
-<!-- News 2 -->
-<hr style="border:0;border-top:1px solid #1E2A45;margin:16px 0;">
-<p style="margin:0 0 4px;font-size:16px;font-weight:bold;color:#ffffff;">{{news2.headline}}</p>
-<p style="margin:0;font-size:14px;line-height:1.6;color:#C4CBE4;">{{news2.summary}}</p>
-<p style="margin:4px 0 0;font-size:12px;color:#6B76A3;">🔗 <a href="{{news2.sourceUrl}}" style="color:#8E9AD3;text-decoration:none;">{{news2.sourceName}}</a></p>
-<!-- News 3 (optional) -->
-<hr style="border:0;border-top:1px solid #1E2A45;margin:16px 0;">
-<p style="margin:0 0 4px;font-size:16px;font-weight:bold;color:#ffffff;">{{news3.headline}}</p>
-<p style="margin:0;font-size:14px;line-height:1.6;color:#C4CBE4;">{{news3.summary}}</p>
-<p style="margin:4px 0 0;font-size:12px;color:#6B76A3;">🔗 <a href="{{news3.sourceUrl}}" style="color:#8E9AD3;text-decoration:none;">{{news3.sourceName}}</a></p>
-</td></tr>
-
-<!-- ⚔️ Attack Scenario (Case Study) (fn 4, optional) -->
-<tr><td class="m-px" style="padding:24px;border-top:1px solid #1E2A45;">
-<p style="margin:0 0 4px;font-size:20px;font-weight:bold;color:#ffffff;border-left:4px solid #662F8E;padding-left:12px;">⚔️ Attack Scenario (Case Study)</p>
-<p style="margin:16px 0 8px;font-size:16px;font-weight:bold;color:#ffffff;">{{attack.headline}}</p>
-<p style="margin:0 0 8px;font-size:14px;line-height:1.6;color:#C4CBE4;"><strong style="color:#ffffff;">Incident:</strong> {{attack.incident}}</p>
-<p style="margin:0 0 8px;font-size:14px;line-height:1.6;color:#C4CBE4;"><strong style="color:#ffffff;">Entry Point:</strong> {{attack.entryPoint}}</p>
-<p style="margin:0 0 8px;font-size:14px;line-height:1.6;color:#C4CBE4;"><strong style="color:#ffffff;">What the attacker did:</strong> {{attack.attackerDid}}</p>
-<p style="margin:0 0 8px;font-size:14px;line-height:1.6;color:#C4CBE4;"><strong style="color:#ffffff;">Final Impact:</strong> {{attack.finalImpact}}</p>
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-left:4px solid #ef4444;background-color:#1A1F2E;border-radius:12px;margin-top:12px;">
-<tr><td style="padding:10px 14px;">
-<p style="margin:0;font-size:14px;line-height:1.6;color:#C4CBE4;"><strong style="color:#ffffff;">🔑 Key Lesson:</strong> {{attack.keyLesson}}</p>
-</td></tr>
-</table>
-<p style="margin:8px 0 0;font-size:12px;color:#6B76A3;">🔗 Source: <a href="{{attack.sourceUrl}}" style="color:#8E9AD3;text-decoration:none;">{{attack.sourceName}}</a></p>
-</td></tr>
-
-<!-- 🏛️ Regulatory Impact (fn 1, optional) -->
-<tr><td class="m-px" style="padding:24px;border-top:1px solid #1E2A45;">
-<p style="margin:0 0 4px;font-size:20px;font-weight:bold;color:#ffffff;border-left:4px solid #662F8E;padding-left:12px;">🏛️ Regulatory Impact</p>
-<p style="margin:16px 0 8px;font-size:16px;font-weight:bold;color:#ffffff;">{{regulatory.headline}}</p>
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#0A0F1C;border-radius:14px;">
-<tr><td style="padding:12px 16px;">
-<p style="margin:0;font-size:14px;line-height:1.6;color:#C4CBE4;">{{regulatory.body}}</p>
-</td></tr>
-</table>
-</td></tr>
-
-<!-- 📅 Events (fn 5) -->
-<tr><td class="m-px" style="padding:24px;border-top:1px solid #1E2A45;">
-<p style="margin:0 0 4px;font-size:20px;font-weight:bold;color:#ffffff;border-left:4px solid #662F8E;padding-left:12px;">📅 Events (🇳🇬 Nigeria &amp; 🌍 International)</p>
-<p style="margin:16px 0 6px;font-size:15px;font-weight:bold;color:#ffffff;">🇳🇬 Nigeria</p>
-<!-- Nigeria 1 -->
-<p style="margin:0 0 4px;font-size:14px;color:#C4CBE4;"><strong style="color:#ffffff;">{{ngEvent1.title}}</strong> — {{ngEvent1.location}} — {{ngEvent1.date}}</p>
-<p style="margin:0 0 4px;font-size:13px;line-height:1.6;color:#9AA3C7;">Focus: {{ngEvent1.focus}}</p>
-<p style="margin:0 0 10px;font-size:12px;color:#6B76A3;">📌 Source: <a href="{{ngEvent1.sourceUrl}}" style="color:#8E9AD3;text-decoration:none;">{{ngEvent1.sourceName}}</a></p>
-<!-- Nigeria 2 (optional) -->
-<p style="margin:0 0 4px;font-size:14px;color:#C4CBE4;"><strong style="color:#ffffff;">{{ngEvent2.title}}</strong> — {{ngEvent2.location}} — {{ngEvent2.date}}</p>
-<p style="margin:0 0 4px;font-size:13px;line-height:1.6;color:#9AA3C7;">Focus: {{ngEvent2.focus}}</p>
-<p style="margin:0 0 10px;font-size:12px;color:#6B76A3;">📌 Source: <a href="{{ngEvent2.sourceUrl}}" style="color:#8E9AD3;text-decoration:none;">{{ngEvent2.sourceName}}</a></p>
-<p style="margin:12px 0 6px;font-size:15px;font-weight:bold;color:#ffffff;">🌍 International</p>
-<!-- International 1 -->
-<p style="margin:0 0 4px;font-size:14px;color:#C4CBE4;"><strong style="color:#ffffff;">{{intlEvent1.title}}</strong> — {{intlEvent1.location}} — {{intlEvent1.date}}</p>
-<p style="margin:0 0 4px;font-size:13px;line-height:1.6;color:#9AA3C7;">Focus: {{intlEvent1.focus}}</p>
-<p style="margin:0 0 10px;font-size:12px;color:#6B76A3;">📌 Source: <a href="{{intlEvent1.sourceUrl}}" style="color:#8E9AD3;text-decoration:none;">{{intlEvent1.sourceName}}</a></p>
-<!-- International 2 (optional) -->
-<p style="margin:0 0 4px;font-size:14px;color:#C4CBE4;"><strong style="color:#ffffff;">{{intlEvent2.title}}</strong> — {{intlEvent2.location}} — {{intlEvent2.date}}</p>
-<p style="margin:0 0 4px;font-size:13px;line-height:1.6;color:#9AA3C7;">Focus: {{intlEvent2.focus}}</p>
-<p style="margin:0;font-size:12px;color:#6B76A3;">📌 Source: <a href="{{intlEvent2.sourceUrl}}" style="color:#8E9AD3;text-decoration:none;">{{intlEvent2.sourceName}}</a></p>
-</td></tr>
-
-<!-- 💼 Career Spotlight -->
-<tr><td class="m-px" style="padding:24px;border-top:1px solid #1E2A45;">
-<p style="margin:0 0 4px;font-size:20px;font-weight:bold;color:#ffffff;border-left:4px solid #662F8E;padding-left:12px;">💼 Career Spotlight</p>
-<p style="margin:16px 0 6px;font-size:16px;font-weight:bold;color:#ffffff;">{{career.role}}</p>
-<p style="margin:0 0 8px;font-size:14px;line-height:1.6;color:#C4CBE4;">{{career.description}}</p>
-<p style="margin:0 0 4px;font-size:13px;line-height:1.6;color:#C4CBE4;"><strong style="color:#ffffff;">Salary:</strong> {{career.salary}}</p>
-<p style="margin:0;font-size:13px;line-height:1.6;color:#C4CBE4;"><strong style="color:#ffffff;">Certs needed:</strong> {{career.certs}}</p>
-</td></tr>
-
-<!-- 🛠️ Tool of the Week -->
-<tr><td class="m-px" style="padding:24px;border-top:1px solid #1E2A45;">
-<p style="margin:0 0 4px;font-size:20px;font-weight:bold;color:#ffffff;border-left:4px solid #662F8E;padding-left:12px;">🛠️ Tool of the Week</p>
-<p style="margin:16px 0 6px;font-size:14px;color:#C4CBE4;"><strong style="color:#ffffff;">Spotlight:</strong> {{tool.spotlight}}</p>
-<p style="margin:0 0 8px;font-size:14px;line-height:1.6;color:#C4CBE4;"><strong style="color:#ffffff;">What it does:</strong> {{tool.whatItDoes}}</p>
-<p style="margin:0 0 8px;font-size:14px;line-height:1.6;color:#C4CBE4;"><strong style="color:#ffffff;">Who should use it:</strong> {{tool.whoShouldUse}}</p>
-<p style="margin:0;font-size:14px;line-height:1.6;color:#C4CBE4;"><strong style="color:#ffffff;">Why it matters:</strong> {{tool.whyItMatters}}</p>
-</td></tr>
-
-<!-- 📦 Product Corner -->
-<tr><td class="m-px" style="padding:24px;border-top:1px solid #1E2A45;">
-<p style="margin:0 0 4px;font-size:20px;font-weight:bold;color:#ffffff;border-left:4px solid #662F8E;padding-left:12px;">📦 Product Corner</p>
-<p style="margin:16px 0 6px;font-size:16px;font-weight:bold;color:#ffffff;">{{product.headline}}</p>
-<p style="margin:0 0 8px;font-size:14px;line-height:1.6;color:#C4CBE4;">{{product.body}}</p>
-<p style="margin:0;font-size:13px;color:#6B76A3;">🔗 <a href="{{product.linkUrl}}" style="color:#8E9AD3;text-decoration:none;">Learn more</a></p>
-</td></tr>
-
-<!-- 📖 Cybersecurity Glossary (fn 3) -->
-<tr><td class="m-px" style="padding:24px;border-top:1px solid #1E2A45;">
-<p style="margin:0 0 4px;font-size:20px;font-weight:bold;color:#ffffff;border-left:4px solid #662F8E;padding-left:12px;">📖 Cybersecurity Glossary</p>
-<p style="margin:16px 0 0;font-size:14px;line-height:1.6;color:#C4CBE4;"><strong style="color:#ffffff;">{{glossary.term}}:</strong> {{glossary.definition}}</p>
-</td></tr>
-
-<!-- 🧠 Knowledge Assessment -->
-<tr><td class="m-px" style="padding:24px;border-top:1px solid #1E2A45;">
-<p style="margin:0 0 4px;font-size:20px;font-weight:bold;color:#ffffff;border-left:4px solid #662F8E;padding-left:12px;">🧠 Knowledge Assessment</p>
-<p style="margin:16px 0 8px;font-size:14px;line-height:1.6;color:#C4CBE4;">1. {{quiz.q1}}</p>
-<p style="margin:0 0 12px;font-size:14px;line-height:1.6;color:#C4CBE4;">2. {{quiz.q2}}</p>
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#0A0F1C;border-radius:14px;">
-<tr><td style="padding:12px 16px;">
-<p style="margin:0 0 6px;font-size:14px;color:#ffffff;"><strong>✅ Check your answers:</strong></p>
-<p style="margin:0;font-size:14px;line-height:1.6;color:#C4CBE4;">1. {{quiz.a1}}<br>2. {{quiz.a2}}</p>
-</td></tr>
-</table>
-</td></tr>
+<!-- Pre-rendered sections (empty sections are omitted entirely) -->
+{{leadSection}}
+{{newsSection}}
+{{attackSection}}
+{{regulatorySection}}
+{{eventsSection}}
+{{careerSection}}
+{{toolSection}}
+{{productSection}}
+{{glossarySection}}
+{{quizSection}}
 
 <!-- Footer -->
 <tr><td align="center" style="padding:20px 24px 28px;border-top:1px solid #1E2A45;">

@@ -746,7 +746,7 @@ describe('aiDraft — AI_NOT_CONFIGURED', () => {
 describe('aiDraft — recommend', () => {
   test('records a recommendation judgement per pick with the right kind/subjectKey', async () => {
     // Distinct, recent timestamps so `publishedAt desc` ordering is
-    // deterministic (both inside the recommend 48h window) — candidates[0]
+    // deterministic (both inside the recommend 168h window) — candidates[0]
     // must be e1 for the pick index 1 in the stub below.
     const now = Date.now();
     const store = makeStore({

@@ -73,12 +73,12 @@ const SCENARIO_EXCERPT_CHARS = 500;
  */
 const REWRITE_MAX_TOKENS = 4096;
 
-/** How many of the day's events the recommend layer will consider. */
-const RECOMMEND_MAX_EVENTS = 100;
+/** How many of the recent events the recommend layer will consider. */
+const RECOMMEND_MAX_EVENTS = 200;
 /** Summary characters per candidate handed to the recommend model. */
 const RECOMMEND_SUMMARY_CHARS = 300;
 /** The window (hours back from now) the recommend layer scans. */
-const RECOMMEND_WINDOW_HOURS = 48;
+const RECOMMEND_WINDOW_HOURS = 168;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // LLM client (same construction as the understanding orchestrator / dedup)
@@ -541,18 +541,21 @@ export function buildRecommendPrompt(candidates) {
 }
 
 /**
- * The day's events eligible for recommendation: published in the last window,
- * capped, and EXCLUDING events that already have a live publish item (an event
- * already drafted needs no pick). Returns title + bounded summary + source name.
+ * The recent events eligible for recommendation: published in the last window,
+ * capped, and EXCLUDING only events with a publish item drafted in the last 24h
+ * (an event already "in play" for this edition needs no new pick).
+ *
+ * OWNER REQUIREMENT #7: intelligence events are REUSABLE across days. A draft
+ * from yesterday (or earlier) must NOT block reuse, so the exclusion is scoped
+ * to the last 24 hours (Lagos day ≈ UTC+1; `createdAt >= now - 24h`), NOT to the
+ * mere existence of a live item.
  *
  * @param {{since?:Date, now?:Date}} [opts]
  * @returns {Promise<Array<{id:string, title:string, summary:string, sourceName:string|null}>>}
  */
 export async function recommendCandidates({ now = new Date() } = {}) {
   const since = new Date(now.getTime() - RECOMMEND_WINDOW_HOURS * 3_600_000);
-  // Owner requirement: intelligence events are reusable across days — only
-  // stories drafted in the last 24h are "in play" for the current edition and
-  // excluded from recommendations. Older drafts never block reuse.
+  // Only drafts created in the last 24h are "in play" for the current edition.
   const inPlayCutoff = new Date(now.getTime() - 24 * 3_600_000);
   const events = await prisma.npEvent.findMany({
     where: { publishedAt: { gte: since } },

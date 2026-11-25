@@ -157,8 +157,9 @@ function RegionChips({ value, onSelect }) {
 }
 
 // ── Cyber chip — a single toggle that composes with region + search ───────────
-// "Cybersecurity only" narrows the news list to events whose source is a
-// dedicated cybersecurity outlet (backend `cyber=true`). Off by default.
+// "Cybersecurity only" narrows the news list to cybersecurity stories (backend
+// `cyber=true`, now AI-backed: the AI `isCybersecurity` flag, falling back to the
+// dedicated-cyber-source heuristic for not-yet-classified events). Off by default.
 function CyberChip({ active, onToggle }) {
   return (
     <button
@@ -166,7 +167,7 @@ function CyberChip({ active, onToggle }) {
       role="switch"
       aria-checked={active}
       onClick={() => onToggle(!active)}
-      title="Stories from dedicated cybersecurity sources"
+      title="Cybersecurity stories (AI-classified; falls back to dedicated cyber sources)"
       className={
         'rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.04em] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ' +
         (active
@@ -175,6 +176,28 @@ function CyberChip({ active, onToggle }) {
       }
     >
       Cybersecurity only
+    </button>
+  );
+}
+
+// ── Threat-intel chip — the AI `isThreatIntel` filter (backend `isThreatIntel`) ─
+// A second toggle alongside the cyber chip; composes with region + search.
+function ThreatIntelChip({ active, onToggle }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={active}
+      onClick={() => onToggle(!active)}
+      title="Threat-intelligence stories (AI-classified: actors, campaigns, IOCs, malware)"
+      className={
+        'rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.04em] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ' +
+        (active
+          ? 'bg-primary text-primary-foreground'
+          : 'bg-secondary text-secondary-foreground hover:text-foreground')
+      }
+    >
+      Threat intel
     </button>
   );
 }
@@ -548,6 +571,7 @@ export default function PulseToday() {
   const [query, setQuery] = useState('');
   const [region, setRegion] = useState('all');
   const [cyberOnly, setCyberOnly] = useState(false);
+  const [threatIntelOnly, setThreatIntelOnly] = useState(false);
   const [menuOpenId, setMenuOpenId] = useState(null);
   const [aiOpen, setAiOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -563,15 +587,16 @@ export default function PulseToday() {
   const [itemWarnings, setItemWarnings] = useState({});
 
   const regionParam = REGION_CHIPS.find((c) => c.key === region)?.param;
-  // The cyber chip is a boolean "dedicated cybersecurity sources only" filter.
-  // OFF → undefined, so the param is omitted entirely (the api client drops
-  // undefined) and the request is byte-identical to before the chip existed.
+  // The cyber chip is a boolean "cybersecurity only" filter (backend `cyber`).
+  // The threat-intel chip is the AI `isThreatIntel` flag filter. Both OFF →
+  // undefined, so the param is omitted entirely (the api client drops undefined).
   const cyberParam = cyberOnly ? true : undefined;
+  const threatIntelParam = threatIntelOnly ? true : undefined;
 
   // Today's wire events. The API has no date param, so fetch a wide page and
   // filter to the Lagos day client-side (as the old Inbox did).
   const { data: eventsData, isLoading: eventsLoading, isError: eventsError, error: eventsErr, refetch: refetchEvents, isFetching } =
-    usePulseEvents({ pageSize: 100, region: regionParam, cyber: cyberParam });
+    usePulseEvents({ pageSize: 100, region: regionParam, cyber: cyberParam, isThreatIntel: threatIntelParam });
   const events = useMemo(() => eventsData?.items ?? [], [eventsData]);
 
   const dayEvents = useMemo(
@@ -865,6 +890,7 @@ export default function PulseToday() {
             <div className="ml-auto flex items-center gap-3">
               <RegionChips value={region} onSelect={setRegion} />
               <CyberChip active={cyberOnly} onToggle={setCyberOnly} />
+              <ThreatIntelChip active={threatIntelOnly} onToggle={setThreatIntelOnly} />
               <input
                 type="search"
                 value={query}

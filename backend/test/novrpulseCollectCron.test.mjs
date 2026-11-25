@@ -323,3 +323,88 @@ describe('pulse collect: route wiring', () => {
     );
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 5. Post-collection classification — best-effort, chained onto the pull.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('pulse collect: post-collection classification (best effort)', () => {
+  function withApiKey(key, fn) {
+    const prev = config.novrpulse.llm.apiKey;
+    config.novrpulse.llm.apiKey = key;
+    return Promise.resolve()
+      .then(fn)
+      .finally(() => {
+        config.novrpulse.llm.apiKey = prev;
+      });
+  }
+
+  test('with AI configured, classification runs after a successful collection and reports `classified`', async () => {
+    const calls = [];
+    const classifyCalls = [];
+    await withSecret(SECRET, () =>
+      withApiKey('test-key', async () => {
+        const res = fakeRes();
+        await runPulseCollection(
+          {
+            ...makeReq({ authorization: `Bearer ${SECRET}`, body: {}, calls }),
+            _classifyEvents: async () => {
+              classifyCalls.push(true);
+              return { classified: 5 };
+            },
+          },
+          res,
+        );
+        assert.equal(res.statusCode, 200);
+        assert.equal(res.payload.path, 'in-app');
+        assert.equal(res.payload.events, 7, 'the collection summary is preserved');
+        assert.equal(res.payload.classified, 5, 'the classified count is included');
+        assert.equal(classifyCalls.length, 1);
+      }),
+    );
+  });
+
+  test('without AI configured, classification is skipped silently (no `classified` field)', async () => {
+    const calls = [];
+    const classifyCalls = [];
+    await withSecret(SECRET, () =>
+      withApiKey('', async () => {
+        const res = fakeRes();
+        await runPulseCollection(
+          {
+            ...makeReq({ authorization: `Bearer ${SECRET}`, body: {}, calls }),
+            _classifyEvents: async () => {
+              classifyCalls.push(true);
+              return { classified: 5 };
+            },
+          },
+          res,
+        );
+        assert.equal(res.statusCode, 200);
+        assert.equal(res.payload.classified, undefined, 'no classified field when not run');
+        assert.equal(classifyCalls.length, 0, 'classification must not run unconfigured');
+      }),
+    );
+  });
+
+  test('a classification failure does NOT fail the collection response', async () => {
+    const calls = [];
+    await withSecret(SECRET, () =>
+      withApiKey('test-key', async () => {
+        const res = fakeRes();
+        await runPulseCollection(
+          {
+            ...makeReq({ authorization: `Bearer ${SECRET}`, body: {}, calls }),
+            _classifyEvents: async () => {
+              throw new Error('classification exploded');
+            },
+          },
+          res,
+        );
+        assert.equal(res.statusCode, 200, 'collection still succeeds');
+        assert.equal(res.payload.events, 7, 'the collection summary is returned unchanged');
+        assert.equal(res.payload.classified, undefined, 'no classified field when it failed');
+      }),
+    );
+  });
+});

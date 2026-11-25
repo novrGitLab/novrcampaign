@@ -11,7 +11,7 @@ import {
   renderBriefingPreview,
   formatBriefingDate,
   CURATED_PLACEHOLDER,
-  MAX_NEWS,
+  PILLAR_HEADERS,
 } from '../src/services/novrpulse/briefingPreview.js';
 
 // Controller + renderer tests for the Briefing Desk rendered-email preview.
@@ -261,16 +261,19 @@ describe('briefing preview: token mapping', () => {
       !html.replace(/\{\{unsubscribeUrl\}\}/g, '').includes('{{'),
       'no raw tokens remain (except the unsubscribe passthrough)',
     );
-    assert.ok(html.includes('Cybersecurity News of the Day'), 'lead heading present');
+    assert.ok(html.includes(PILLAR_HEADERS[8]), 'the fn 8 pillar header is used');
     assert.ok(html.includes('Key Details'), 'key details box present');
     assert.ok(html.includes('Why It Matters'), 'why it matters callout present');
     assert.ok(html.includes('About four in five banks'), 'lead summary is present');
     assert.ok(html.includes('Network reliability is a pressure point'), 'lead impact is present');
     assert.ok(html.includes('Banks, insurers, payment firms'), 'lead affected is present');
+    // The old editorial headers are gone.
+    assert.ok(!html.includes('Cybersecurity News of the Day'), 'no editorial lead header');
   });
 
-  test('fn 7 → compact news-roll tokens (up to MAX_NEWS)', () => {
-    const items = Array.from({ length: MAX_NEWS + 1 }, (_, i) => ({
+  test('fn 7 → EVERY news piece renders, with the fn 7 pillar header', () => {
+    const count = 5; // more than the old 3-piece cap
+    const items = Array.from({ length: count }, (_, i) => ({
       position: i,
       publishItem: {
         functionId: 7,
@@ -284,27 +287,45 @@ describe('briefing preview: token mapping', () => {
       groups: groupStories([{ functionId: 7, items }]),
       unsubscribeUrl: '{{unsubscribeUrl}}',
     });
-    assert.ok(html.includes('More news today'));
+    assert.ok(html.includes(PILLAR_HEADERS[7]), 'the fn 7 pillar header is used');
+    assert.ok(!html.includes('More news today'), 'the old editorial roll header is gone');
     assert.ok(html.includes('Roll headline 1'));
-    assert.ok(html.includes(`Roll headline ${MAX_NEWS}`));
-    assert.ok(!html.includes(`Roll headline ${MAX_NEWS + 1}`), 'only MAX_NEWS blocks render');
+    assert.ok(html.includes(`Roll headline ${count}`), 'all news pieces render (no cap)');
   });
 
-  test('curated blocks render placeholder text when no content exists', () => {
+  test('empty sections render NOTHING — no headers, no placeholder rows', () => {
     const html = renderBriefingPreview({
       date: '19 November 2026',
       preheader: '',
       groups: new Map(),
       unsubscribeUrl: '{{unsubscribeUrl}}',
     });
-    assert.ok(html.includes('Career Spotlight'));
-    assert.ok(html.includes('Tool of the Week'));
-    assert.ok(html.includes('Knowledge Assessment'));
-    assert.ok(html.includes(CURATED_PLACEHOLDER), 'the placeholder text appears');
+    // No section headers at all when every section is empty.
+    for (const id of [1, 2, 3, 4, 5, 6, 7, 8]) {
+      assert.ok(!html.includes(PILLAR_HEADERS[id]), `no fn ${id} header when empty`);
+    }
+    assert.ok(!html.includes(CURATED_PLACEHOLDER), 'no placeholder text is rendered');
+    assert.ok(!html.includes('takes a break'), 'no "takes a break" placeholder rows');
     assert.ok(
       !html.replace(/\{\{unsubscribeUrl\}\}/g, '').includes('{{'),
       'no raw tokens (except unsubscribe)',
     );
+  });
+
+  test('an empty section slot does not render an empty source link', () => {
+    // A fn 7 piece with a body but NO event/source: no bare 🔗 link is emitted.
+    const html = renderBriefingPreview({
+      date: '19 November 2026',
+      preheader: '',
+      groups: groupStories([{
+        functionId: 7,
+        items: [{ position: 0, publishItem: { functionId: 7, body: 'Roll headline\n\nWHAT HAPPENED\nSummary.', event: null } }],
+      }]),
+      unsubscribeUrl: '{{unsubscribeUrl}}',
+    });
+    assert.ok(html.includes('Roll headline'));
+    assert.ok(!html.includes('🔗 <a href=""'), 'no empty source link is rendered');
+    assert.ok(!/🔗\s*<a href=""/.test(html), 'no empty href in the roll');
   });
 });
 

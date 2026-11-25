@@ -173,12 +173,12 @@ export function useCampaignFeedEntries(campaignId) {
  * `since` is still forwarded when given so the server can narrow the window.
  */
 export function usePulseEvents(params = {}) {
-  const { page, pageSize = 100, function: functionId, reviewStatus, q, since, region, language, cyber } = params;
+  const { page, pageSize = 100, function: functionId, reviewStatus, q, since, region, language, cyber, isCybersecurity, isThreatIntel, isNigeriaRelated } = params;
   return useQuery({
-    queryKey: ['pulse-events', { page, pageSize, functionId, reviewStatus, q, since, region, language, cyber }],
+    queryKey: ['pulse-events', { page, pageSize, functionId, reviewStatus, q, since, region, language, cyber, isCybersecurity, isThreatIntel, isNigeriaRelated }],
     queryFn: () =>
       api('/pulse/events', {
-        query: { page, pageSize, function: functionId, reviewStatus, q, since, region, language, cyber },
+        query: { page, pageSize, function: functionId, reviewStatus, q, since, region, language, cyber, isCybersecurity, isThreatIntel, isNigeriaRelated },
       }),
     placeholderData: keepPreviousData,
     staleTime: 15_000,

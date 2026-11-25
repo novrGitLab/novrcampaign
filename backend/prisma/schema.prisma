@@ -216,6 +216,15 @@ model NpEvent {
   // Reviewer triage state: "new" | "accepted" | "dismissed". Non-destructive —
   // dismiss only records the decision; raw evidence is never touched.
   reviewStatus  String   @default("new")
+  // AI filtering classification (owner requirement). Nullable = UNCLASSIFIED:
+  // the deterministic keyword pre-tag at store time sets a flag only when it
+  // TRUE (leaving null otherwise so the AI pass can still fill it); the batched
+  // LLM classification pass then sets all three per its judgment. There is no
+  // `aiClassifiedAt` column — the null booleans are the "not yet classified"
+  // signal the classification query keys on.
+  isCybersecurity   Boolean?
+  isThreatIntel     Boolean?
+  isNigeriaRelated  Boolean?
   createdAt     DateTime @default(now())
 
   sources NpEventSource[]

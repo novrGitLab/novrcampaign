@@ -92,9 +92,15 @@ function makeStore(seed) {
       );
       if (!anyMatch) return false;
     }
-    // AND clauses (used by the cyber filter): every clause must match.
+    // AND clauses: every clause must match.
     if (Array.isArray(where.AND)) {
       for (const clause of where.AND) {
+        // The layered cyber filter rides in the AND list as { OR: [...] }.
+        if (Array.isArray(clause.OR)) {
+          const anyOh = clause.OR.some((sub) => matchesLayered(sub, row));
+          if (!anyOh) return false;
+          continue;
+        }
         const ids = clause.sources?.some?.rawDocument?.source?.id?.in;
         if (Array.isArray(ids)) {
           const anyMatch = (row.sources ?? []).some(
@@ -103,6 +109,37 @@ function makeStore(seed) {
           if (!anyMatch) return false;
         }
       }
+    }
+    // AI classification flags (only narrow when true).
+    for (const key of ['isCybersecurity', 'isThreatIntel', 'isNigeriaRelated']) {
+      if (where[key] === true && row[key] !== true) return false;
+    }
+    return true;
+  }
+
+  // Matches a single layered-cyber OR branch:
+  //   { isCybersecurity: true }                          → the AI flag wins; OR
+  //   { AND: [{ isCybersecurity: null }, { sources: … }] } → unclassified AND a
+  //     dedicated cyber source. The controller emits the fallback as a nested
+  //     AND clause (so it composes with the region filter), so the fake must
+  //     evaluate that nested AND rather than a flat branch.
+  function matchesLayered(clause, row) {
+    if (clause.isCybersecurity === true) return row.isCybersecurity === true;
+    if (Array.isArray(clause.AND)) {
+      return clause.AND.every((sub) => matchesLayeredPart(sub, row));
+    }
+    return false;
+  }
+
+  // Evaluate one leg of the nested AND fallback: the NULL flag guard, or the
+  // dedicated-cyber-source membership check.
+  function matchesLayeredPart(sub, row) {
+    if (sub.isCybersecurity === null) {
+      return row.isCybersecurity === null || row.isCybersecurity === undefined;
+    }
+    const ids = sub.sources?.some?.rawDocument?.source?.id?.in;
+    if (Array.isArray(ids)) {
+      return (row.sources ?? []).some((s) => ids.includes(s.rawDocument?.source?.id));
     }
     return true;
   }
@@ -460,10 +497,11 @@ describe('pulse API: region filter', () => {
 
 describe('pulse API: cyber filter', () => {
   // An event whose provenance source carries an `id` (the filter key) and a region.
-  const cyberEvent = (id, sourceIds, region = 'GLOBAL') =>
+  const cyberEvent = (id, sourceIds, region = 'GLOBAL', extra = {}) =>
     event({
       id,
       sources: sourceIds.map((sid) => ({ rawDocument: { source: { id: sid, name: sid, region } } })),
+      ...extra,
     });
 
   test('cyber=true keeps only events whose source is in CYBER_SOURCE_IDS', async () => {
@@ -479,12 +517,33 @@ describe('pulse API: cyber filter', () => {
 
     assert.deepEqual(payload.items.map((i) => i.id).sort(), ['bleeping', 'scoop']);
     assert.equal(payload.total, 2);
-    // The filter is pushed as an AND clause on the source id set.
+    // The layered filter rides in AND as an OR: (isCybersecurity=true) OR
+    // (isCybersecurity IS NULL AND source ∈ CYBER_SOURCE_IDS).
     const andClause = store.calls.findMany.at(-1).where.AND[0];
+    assert.equal(andClause.OR[0].isCybersecurity, true);
+    assert.equal(andClause.OR[1].AND[0].isCybersecurity, null);
     assert.deepEqual(
-      andClause.sources.some.rawDocument.source.id.in,
+      andClause.OR[1].AND[1].sources.some.rawDocument.source.id.in,
       ['bleepingcomputer', 'hackernews', 'therecord', 'securityweek', 'darkreading', 'cyberscoop'],
     );
+  });
+
+  test('cyber=true matches an AI-classified event even when its source is not a cyber source', async () => {
+    const store = makeStore([
+      cyberEvent('classified-general', ['techcabal'], 'GLOBAL', { isCybersecurity: true }),
+      cyberEvent('unclassified-general', ['techcabal'], 'GLOBAL', { isCybersecurity: null }),
+      cyberEvent('unclassified-cyber', ['cyberscoop'], 'GLOBAL', { isCybersecurity: null }),
+      cyberEvent('classified-false', ['cyberscoop'], 'GLOBAL', { isCybersecurity: false }),
+    ]);
+
+    const { payload } = await withPrisma(store, () =>
+      callController(listPulseEvents, { query: { cyber: 'true' } }),
+    );
+
+    // The flag match wins; the unclassified cyber-source event still matches via
+    // the fallback; the unclassified general event and the flagged-false event do
+    // not.
+    assert.deepEqual(payload.items.map((i) => i.id).sort(), ['classified-general', 'unclassified-cyber']);
   });
 
   test('cyber omitted (or false) does not narrow — the param is off by default', async () => {
@@ -518,6 +577,79 @@ describe('pulse API: cyber filter', () => {
       some: { rawDocument: { source: { region: 'NG' } } },
     });
     assert.ok(Array.isArray(store.calls.findMany.at(-1).where.AND));
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 3c. AI classification flag filters — isCybersecurity / isThreatIntel /
+//     isNigeriaRelated.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('pulse API: AI classification flag filters', () => {
+  test('isThreatIntel=true keeps only events flagged threat-intel', async () => {
+    const store = makeStore([
+      event({ id: 'tint', isThreatIntel: true }),
+      event({ id: 'not-tint', isThreatIntel: false }),
+      event({ id: 'unclassified', isThreatIntel: null }),
+    ]);
+    const { payload } = await withPrisma(store, () =>
+      callController(listPulseEvents, { query: { isThreatIntel: 'true' } }),
+    );
+    assert.deepEqual(payload.items.map((i) => i.id), ['tint']);
+    assert.equal(store.calls.findMany.at(-1).where.isThreatIntel, true);
+  });
+
+  test('isCybersecurity=true and isNigeriaRelated=true narrow independently', async () => {
+    const store = makeStore([
+      event({ id: 'cyber', isCybersecurity: true, isNigeriaRelated: false }),
+      event({ id: 'ng', isCybersecurity: false, isNigeriaRelated: true }),
+      event({ id: 'both', isCybersecurity: true, isNigeriaRelated: true }),
+    ]);
+
+    const cyber = await withPrisma(store, () =>
+      callController(listPulseEvents, { query: { isCybersecurity: 'true' } }),
+    );
+    assert.deepEqual(cyber.payload.items.map((i) => i.id).sort(), ['both', 'cyber']);
+
+    const ng = await withPrisma(store, () =>
+      callController(listPulseEvents, { query: { isNigeriaRelated: 'true' } }),
+    );
+    assert.deepEqual(ng.payload.items.map((i) => i.id).sort(), ['both', 'ng']);
+  });
+
+  test('flag filters compose with region (AND)', async () => {
+    const src = (region) => [{ rawDocument: { source: { name: `${region} Src`, region } } }];
+    const store = makeStore([
+      event({ id: 'tint-ng', isThreatIntel: true, sources: src('NG') }),
+      event({ id: 'tint-global', isThreatIntel: true, sources: src('GLOBAL') }),
+      event({ id: 'other-ng', isThreatIntel: false, sources: src('NG') }),
+    ]);
+    const { payload } = await withPrisma(store, () =>
+      callController(listPulseEvents, { query: { isThreatIntel: 'true', region: 'NG' } }),
+    );
+    assert.deepEqual(payload.items.map((i) => i.id), ['tint-ng']);
+  });
+
+  test('flag omitted (or false) does not narrow — the param is off by default', async () => {
+    const store = makeStore([
+      event({ id: 'tint', isThreatIntel: true }),
+      event({ id: 'not-tint', isThreatIntel: false }),
+    ]);
+    const off = await withPrisma(store, () => callController(listPulseEvents, { query: {} }));
+    assert.deepEqual(off.payload.items.map((i) => i.id).sort(), ['not-tint', 'tint']);
+    assert.equal(store.calls.findMany.at(-1).where.isThreatIntel, undefined);
+
+    const explicitlyFalse = await withPrisma(store, () =>
+      callController(listPulseEvents, { query: { isThreatIntel: 'false' } }),
+    );
+    assert.deepEqual(explicitlyFalse.payload.items.map((i) => i.id).sort(), ['not-tint', 'tint']);
+  });
+
+  test('the schema accepts the three flags as truthy/falsy strings', async () => {
+    for (const key of ['isCybersecurity', 'isThreatIntel', 'isNigeriaRelated']) {
+      assert.equal(listSchema.validate({ [key]: 'true' }).value[key], true, key);
+      assert.equal(listSchema.validate({ [key]: 'false' }).value[key], false, key);
+    }
   });
 });
 

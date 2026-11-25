@@ -7,6 +7,7 @@ import { warningMessage } from '../components/pulse/AiDraftNote';
 import { PILLARS, pillarLabel } from '../lib/pillars';
 import { sectionNumber, parseSeedBody } from '../lib/canvasScaffolds';
 import { parseSlots, composeDraftBody } from '../lib/slots';
+import { formatDate } from '../lib/utils';
 import {
   usePulseEvent, usePulseEvents,
 } from '../hooks/queries';
@@ -289,7 +290,7 @@ function SectionBlock({ functionId, suggestions, loading, aiError, pickedIds, ..
  * inline. A card is keyed by its (event, section) pair so switching between
  * cards never mixes text.
  */
-function DraftCard({ eventId, functionId, sourceName, onDraftReady, initial }) {
+function DraftCard({ eventId, functionId, sourceName, onDraftReady, initial, otherSections }) {
   const ai = useAiDraft();
   const { data: eventDetail, isLoading: sourceLoading } = usePulseEvent(eventId);
 
@@ -302,6 +303,9 @@ function DraftCard({ eventId, functionId, sourceName, onDraftReady, initial }) {
   const [status, setStatus] = useState(initial?.status ?? 'draft');
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState(null);
+  // True while the initial draft (or a retry) is being generated, so the card
+  // shows an explicit "AI drafting…" state instead of a silent skeleton.
+  const [drafting, setDrafting] = useState(!initial?.itemId);
   // Guard warning codes returned by the AI draft (owner decision: warn, not
   // block). Captured from every draft/regenerate response and deduped; a card
   // with warnings requires the two-step "Approve anyway" confirmation.
@@ -327,15 +331,26 @@ function DraftCard({ eventId, functionId, sourceName, onDraftReady, initial }) {
 
   // Create the draft once for a fresh pair. A pair arriving with an itemId/body
   // is already drafted (e.g. the editor came back to step 2) — do not re-call.
-  const startedRef = useRef(false);
+  //
+  // StrictMode runs this effect twice (mount → cleanup → mount). The FIRST run
+  // starts the ai-draft call and stores its promise in `promiseRef`; BOTH runs
+  // await the SAME promise and apply the result. The endpoint is idempotent —
+  // the second call returns the same live item, so there is no duplicate LLM
+  // call and no duplicate item. Applying in both runs is safe (same values) and
+  // sidesteps the previous bug where the first run's cleanup DISCARDED the
+  // result and the second run early-returned, leaving the card permanently blank.
+  const promiseRef = useRef(null);
   useEffect(() => {
-    if (startedRef.current || initial?.itemId) return;
-    startedRef.current = true;
+    if (initial?.itemId) return;
+    if (!promiseRef.current) {
+      promiseRef.current = ai.mutateAsync({ eventId, functionId });
+    }
     let cancelled = false;
     (async () => {
       setError(null);
+      setDrafting(true);
       try {
-        const res = await ai.mutateAsync({ eventId, functionId });
+        const res = await promiseRef.current;
         if (cancelled) return;
         const parsed = parseSeedBody(res?.item?.body ?? '');
         const nextSlots = parseSlots(parsed.paragraph);
@@ -353,6 +368,8 @@ function DraftCard({ eventId, functionId, sourceName, onDraftReady, initial }) {
         });
       } catch (e) {
         if (!cancelled) setError(errorText(e));
+      } finally {
+        if (!cancelled) setDrafting(false);
       }
     })();
     return () => { cancelled = true; };
@@ -361,6 +378,7 @@ function DraftCard({ eventId, functionId, sourceName, onDraftReady, initial }) {
 
   const retry = async () => {
     setError(null);
+    setDrafting(true);
     try {
       const res = await ai.mutateAsync({ eventId, functionId, regenerate: true });
       const parsed = parseSeedBody(res?.item?.body ?? '');
@@ -383,6 +401,8 @@ function DraftCard({ eventId, functionId, sourceName, onDraftReady, initial }) {
       }, { regenerate: true });
     } catch (e) {
       setError(errorText(e));
+    } finally {
+      setDrafting(false);
     }
   };
 
@@ -419,6 +439,23 @@ function DraftCard({ eventId, functionId, sourceName, onDraftReady, initial }) {
       <header className="flex flex-wrap items-center gap-3 border-b border-border px-4 py-3">
         <SectionCaption functionId={functionId} />
         <span className="text-[12px] text-muted-foreground">← {sourceName || 'source'}</span>
+        {otherSections?.length > 0 && (
+          <span
+            className="inline-flex flex-wrap items-center gap-1.5 text-[11.5px] text-muted-foreground"
+            title="This same story is also drafted for other sections"
+          >
+            <span className="text-muted-foreground">also in:</span>
+            {otherSections.map((fn) => (
+              <span
+                key={fn}
+                className="inline-flex items-center gap-1 rounded-full bg-secondary px-2 py-0.5 font-semibold text-secondary-foreground"
+              >
+                <PillarIcon functionId={fn} className="h-3 w-3" />
+                {sectionNumber(fn)} {pillarLabel(fn)}
+              </span>
+            ))}
+          </span>
+        )}
         <span
           className={
             'ml-auto rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.04em] ' +
@@ -432,10 +469,16 @@ function DraftCard({ eventId, functionId, sourceName, onDraftReady, initial }) {
       <div className="grid gap-4 p-4 lg:grid-cols-2">
         {/* LEFT — the editable piece */}
         <div className="min-w-0">
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+          <p className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
             AI draft
+            {drafting && (
+              <span className="inline-flex items-center gap-1 font-normal normal-case tracking-normal text-primary">
+                <Sparkles className="h-3 w-3 animate-pulse" />
+                AI drafting…
+              </span>
+            )}
           </p>
-          {ai.isPending ? (
+          {drafting ? (
             <div className="space-y-2">
               <Skeleton className="h-6 w-3/4" />
               <Skeleton className="h-40 w-full" />
@@ -494,17 +537,17 @@ function DraftCard({ eventId, functionId, sourceName, onDraftReady, initial }) {
                 <Button
                   size="sm"
                   onClick={approve}
-                  disabled={ai.isPending || status === 'approved'}
+                  disabled={drafting || status === 'approved'}
                   className={confirmApprove ? 'bg-warning text-warning-foreground hover:bg-warning/90' : undefined}
                 >
                   {confirmApprove ? <AlertTriangle className="h-3.5 w-3.5" /> : <Check className="h-3.5 w-3.5" />}
                   {status === 'approved' ? 'Approved' : confirmApprove ? 'Approve anyway' : 'Approve'}
                 </Button>
-                <Button variant="secondary" size="sm" onClick={retry} disabled={ai.isPending}>
-                  <Sparkles className={'h-3.5 w-3.5' + (ai.isPending ? ' animate-pulse' : '')} />
-                  {ai.isPending ? 'Retrying…' : 'Retry'}
+                <Button variant="secondary" size="sm" onClick={retry} disabled={drafting}>
+                  <Sparkles className={'h-3.5 w-3.5' + (drafting ? ' animate-pulse' : '')} />
+                  {drafting ? 'Retrying…' : 'Retry'}
                 </Button>
-                <Button variant="ghost" size="sm" onClick={() => { setConfirmApprove(false); setEditing(true); }} disabled={ai.isPending}>
+                <Button variant="ghost" size="sm" onClick={() => { setConfirmApprove(false); setEditing(true); }} disabled={drafting}>
                   ✎ Edit
                 </Button>
               </>
@@ -529,14 +572,23 @@ function DraftCard({ eventId, functionId, sourceName, onDraftReady, initial }) {
           {sourceLoading ? (
             <Skeleton className="h-72 w-full" />
           ) : eventDetail?.sourceBody ? (
-            <>
-              <div className="max-h-[420px] overflow-y-auto whitespace-pre-wrap rounded-md border border-border bg-secondary/30 p-3 text-[12.5px] leading-[1.65] text-muted-foreground lg:sticky lg:top-4">
+            <div className="lg:sticky lg:top-4">
+              <p className="text-[13.5px] font-semibold leading-[1.35] text-foreground">
+                {eventDetail.title || 'Untitled source'}
+              </p>
+              <p className="mt-0.5 mb-2 text-[11.5px] text-muted-foreground">
+                {eventDetail.sourceName || 'Unknown source'}
+                {eventDetail.publishedAt && (
+                  <> · {formatDate(eventDetail.publishedAt)}</>
+                )}
+              </p>
+              <div className="max-h-[420px] overflow-y-auto whitespace-pre-wrap rounded-md border border-border bg-secondary/30 p-3 text-[12.5px] leading-[1.65] text-muted-foreground">
                 {eventDetail.sourceBody}
               </div>
               {eventDetail.sourceTruncated && (
                 <p className="mt-1.5 text-[11.5px] italic text-muted-foreground">(truncated)</p>
               )}
-            </>
+            </div>
           ) : (
             <p className="text-[12.5px] italic text-muted-foreground">No source text available.</p>
           )}
@@ -824,6 +876,18 @@ export default function PulseWizard() {
     [approvedPairs, drafts],
   );
 
+  // The other sections a story is ALSO drafted for — derived per event from the
+  // drafts state (keyed `eventId|fn`). Rendered as the "also in:" chips on a
+  // card whose event appears in more than one section.
+  const sectionsByEvent = useMemo(() => {
+    const out = {};
+    for (const p of approvedPairs) {
+      if (!out[p.eventId]) out[p.eventId] = [];
+      out[p.eventId].push(p.functionId);
+    }
+    return out;
+  }, [approvedPairs]);
+
   // ── Step 3 ──────────────────────────────────────────────────────────────────
   // Rows = manual sections not yet written + any AI section that ended empty.
   const writeRows = useMemo(() => {
@@ -1022,6 +1086,7 @@ export default function PulseWizard() {
                     sourceName={p.source}
                     initial={drafts[pairKey(p.eventId, p.functionId)]}
                     onDraftReady={onDraftReady}
+                    otherSections={(sectionsByEvent[p.eventId] ?? []).filter((fn) => fn !== p.functionId)}
                   />
                 ))}
               </div>

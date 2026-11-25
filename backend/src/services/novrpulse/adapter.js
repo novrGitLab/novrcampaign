@@ -1,5 +1,7 @@
 import { prisma } from '../../utils/prisma.js';
 import { detectLanguage } from '@novr/ingest';
+import { pretagEvent } from './eventKeywords.js';
+import { getSource } from './sources.js';
 
 /**
  * NovrPulse store adapter for the @novr/ingest engine.
@@ -60,6 +62,8 @@ async function createEvent(sourceId, item, raw) {
         // auto-disable; that is NOT done here.
         language: detectLanguage(`${item.title || ''} `),
         functions: [],
+        // Same deterministic pre-tag as `storeBatch` (see `pretagFlags`).
+        ...pretagFlags({ ...item, sourceId }),
         sources: { create: { rawDocumentId: raw.id } },
       },
     });
@@ -72,6 +76,25 @@ async function attachEventSource(eventId, rawDocumentId) {
     update: {},
     create: { eventId, rawDocumentId },
   });
+}
+
+/**
+ * Build the Prisma `data` fragment for the deterministic pre-tag: include a
+ * classification column ONLY when its keyword flag is true. A false flag is
+ * omitted so the column stays NULL (unclassified) and the batched AI pass can
+ * still fill it. Region is read from the source registry.
+ *
+ * @param {import('@novr/ingest').NormalisedItem & { sourceId:string }} item
+ * @returns {{ isCybersecurity?:boolean, isThreatIntel?:boolean, isNigeriaRelated?:boolean }}
+ */
+function pretagFlags(item) {
+  const region = getSource(item.sourceId)?.region;
+  const tag = pretagEvent({ title: item.title, summary: item.summary, region });
+  const flags = {};
+  if (tag.isCybersecurity) flags.isCybersecurity = true;
+  if (tag.isThreatIntel) flags.isThreatIntel = true;
+  if (tag.isNigeriaRelated) flags.isNigeriaRelated = true;
+  return flags;
 }
 
 /**
@@ -144,6 +167,11 @@ async function storeBatch(items) {
             // only FLAGS non-English events and never disables a source.
             language: detectLanguage(`${item.title || ''} `),
             functions: [],
+            // Deterministic AI-filtering pre-tag (free layer): set ONLY the flags
+            // that hit; a miss stays NULL (unclassified) so the accurate batched
+            // LLM classification pass can still fill it. Region comes from the
+            // source registry (the event's own `region` is unpopulated).
+            ...pretagFlags(item),
             sources: { create: { rawDocumentId: raw.id } },
           },
         });
