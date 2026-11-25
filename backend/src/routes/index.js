@@ -14,6 +14,7 @@ import pulseRoutes from './pulseRoutes.js';
 import pulseCollectRoutes from './pulseCollectRoutes.js';
 import briefingRoutes from './briefingRoutes.js';
 import aiJudgementRoutes from './aiJudgementRoutes.js';
+import aiRoutes from './aiRoutes.js';
 import dedupRoutes from './dedupRoutes.js';
 
 const router = Router();
@@ -41,6 +42,7 @@ router.use('/publish', requireAuth, publishRoutes);
 router.use('/pulse', requireAuth, pulseRoutes);
 router.use('/briefings', requireAuth, briefingRoutes);
 router.use('/ai-judgements', requireAuth, aiJudgementRoutes);
+router.use('/ai', requireAuth, aiRoutes);
 router.use('/dedup', requireAuth, dedupRoutes);
 
 export default router;

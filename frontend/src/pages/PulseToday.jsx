@@ -1,21 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { format, formatDistanceToNow } from 'date-fns';
-import { Check, CloudDownload, RefreshCw, X } from 'lucide-react';
+import { Check, ChevronDown, CloudDownload, RefreshCw, Sparkles, X } from 'lucide-react';
 import { Button, EmptyState, Skeleton } from '../components/ui';
 import { Modal } from '../components/ui/Modal';
 import AiJudgementCard from '../components/pulse/AiJudgementCard';
+import AiDraftNote from '../components/pulse/AiDraftNote';
 import { PulsePreviewModal } from '../components/pulse/PulsePanels';
 import PillarIcon from '../components/pulse/PillarIcon';
-import { PILLARS } from '../lib/pillars';
+import { PILLARS, pillarLabel } from '../lib/pillars';
 import { sectionNumber, parseSeedBody, scaffoldFor } from '../lib/canvasScaffolds';
 import { NEWS_DERIVED_PILLARS } from '../components/pulse/pulseNewsletter';
 import {
-  useAiJudgements, usePulseEvents,
+  useAiJudgements, usePulseEvent, usePulseEvents,
 } from '../hooks/queries';
 import {
-  useAcceptJudgement, useCreateItemFromEvent,
-  useEditPublish, useReviewPulseEvent, useRejectJudgement,
+  useAcceptJudgement, useAiDraft, useCreateItemFromEvent,
+  useEditPublish, useRecommendEvents, useReviewPulseEvent, useRejectJudgement,
   useRunPulseCollection,
 } from '../hooks/mutations';
 import { useAvailablePublishItems, useBriefing, useBriefings, useCreateBriefing } from '../hooks/briefingQueries';
@@ -225,11 +226,24 @@ function WriteOverlay({ open, onClose, mode, source, onSave, busy, error }) {
   // Editing an existing piece: the pillar cannot change (the PATCH endpoint
   // edits the body only), so the chips are locked to its pillar.
   const isEdit = Boolean(source?.itemId);
+  // The SOURCE event for the write overlay (story mode). Used for the
+  // collapsible "Source article" pane; the list card carries no full body.
+  const eventId = source?.eventId ?? null;
 
   const [functionId, setFunctionId] = useState(null);
   const [headline, setHeadline] = useState('');
   const [text, setText] = useState('');
   const [referenceLink, setReferenceLink] = useState('');
+  // When the AI has drafted, its item already exists server-side. We keep its id
+  // so "Add to email"/"Save draft" PATCHes this item instead of creating a
+  // second one (the existing edit-else-create branch in `addToEmail`).
+  const [aiItemId, setAiItemId] = useState(null);
+  const [aiDrafted, setAiDrafted] = useState(false);
+  const [aiFunctionId, setAiFunctionId] = useState(null);
+  const [aiError, setAiError] = useState(null);
+  const [sourceOpen, setSourceOpen] = useState(false);
+
+  const ai = useAiDraft();
 
   // Reset the form whenever the overlay (re)opens or its target changes.
   const resetKey = `${open}:${mode}:${source?.eventId ?? source?.id ?? source?.itemId ?? 'new'}`;
@@ -241,7 +255,17 @@ function WriteOverlay({ open, onClose, mode, source, onSave, busy, error }) {
     setHeadline(source?.headline ?? '');
     setText(source?.text ?? '');
     setReferenceLink(source?.referenceLink ?? '');
+    setAiItemId(null);
+    setAiDrafted(false);
+    setAiFunctionId(null);
+    setAiError(null);
+    setSourceOpen(false);
   }, [open, resetKey, source]);
+
+  // Full source text for the "Source article" pane. Only fetched once the pane
+  // is actually open (and only in story mode), so the overlay opening stays cheap.
+  const { data: eventDetail, isLoading: sourceLoading, isError: sourceError } =
+    usePulseEvent(sourceOpen && eventId ? eventId : null);
 
   const enabledIds = isFree
     ? PILLARS.map((p) => p.functionId)
@@ -250,13 +274,47 @@ function WriteOverlay({ open, onClose, mode, source, onSave, busy, error }) {
   const canAdd = Boolean(functionId) && headline.trim().length > 0 && text.trim().length > 0;
   const submit = (addToEmail) => {
     if (!canAdd || busy) return;
+    // PATCH the AI item only when the pillar still matches what it was drafted
+    // for. If the editor switched section after drafting, the draft no longer
+    // belongs to that pillar, so a fresh item is created for the new one.
+    const aiPatchId = aiItemId && aiFunctionId === functionId ? aiItemId : undefined;
     onSave({
       functionId,
       headline: headline.trim(),
       text: text.trim(),
       referenceLink: referenceLink.trim(),
+      itemId: aiPatchId,
       addToEmail,
     });
+  };
+
+  // AI draft: one click → server rewrites the source into the chosen pillar,
+  // runs its copyright + defamation guards, and returns the created item. We load
+  // its body into the form (headline = line 1, body = the rest) and remember its
+  // id. Errors are surfaced inline (422 too close / 503 not configured).
+  const onAiDraft = async () => {
+    if (isFree || !eventId || !functionId || ai.isPending) return;
+    setAiError(null);
+    try {
+      const res = await ai.mutateAsync({ eventId, functionId });
+      const item = res?.item;
+      if (!item) throw new Error('The AI returned no draft.');
+      const parsed = parseSeedBody(item.body ?? '');
+      setHeadline(parsed.headline);
+      setText(parsed.paragraph);
+      setFunctionId(item.functionId ?? functionId);
+      setAiItemId(item.id);
+      setAiFunctionId(item.functionId ?? functionId);
+      setAiDrafted(true);
+    } catch (err) {
+      if (err?.code === 'DRAFT_TOO_CLOSE_TO_SOURCE') {
+        setAiError('Too close to the source — edit manually or retry.');
+      } else if (err?.status === 503) {
+        setAiError('AI is not configured.');
+      } else {
+        setAiError(err?.message || 'Could not draft with AI.');
+      }
+    }
   };
 
   return (
@@ -281,6 +339,8 @@ function WriteOverlay({ open, onClose, mode, source, onSave, busy, error }) {
           </p>
         )}
 
+        {aiDrafted && <AiDraftNote />}
+
         {isFree && !isEdit && (
           <div>
             <label htmlFor="pulse-ref-link" className="label">Reference link (optional)</label>
@@ -296,11 +356,64 @@ function WriteOverlay({ open, onClose, mode, source, onSave, busy, error }) {
           </div>
         )}
 
+        {/* AI draft — STORY MODE ONLY: free mode has nothing to rewrite. */}
+        {!isFree && !isEdit && (
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={onAiDraft}
+              disabled={!functionId || ai.isPending}
+              title={functionId ? 'Rewrite the source into a draft for this section' : 'Pick a section first'}
+            >
+              <Sparkles className={'h-3.5 w-3.5' + (ai.isPending ? ' animate-pulse' : '')} />
+              {ai.isPending ? 'Drafting…' : 'AI draft'}
+            </Button>
+            {aiError && <span role="alert" className="text-[12.5px] text-destructive">{aiError}</span>}
+          </div>
+        )}
+
         <PillarChips
           value={functionId}
           onSelect={setFunctionId}
           enabledIds={isEdit && functionId ? [functionId] : enabledIds}
         />
+
+        {/* Source article — collapsible reader, collapsed by default. Story mode
+            only; this is the publisher text the writer rewrites from. */}
+        {!isFree && eventId && (
+          <div className="rounded-lg border border-border">
+            <button
+              type="button"
+              onClick={() => setSourceOpen((v) => !v)}
+              aria-expanded={sourceOpen}
+              className="flex w-full items-center gap-2 px-3.5 py-2.5 text-left text-[12.5px] font-semibold text-muted-foreground hover:text-foreground"
+            >
+              <ChevronDown className={'h-4 w-4 transition-transform' + (sourceOpen ? '' : ' -rotate-90')} />
+              Source article
+            </button>
+            {sourceOpen && (
+              <div className="border-t border-border px-3.5 py-3">
+                {sourceLoading ? (
+                  <Skeleton className="h-24 w-full" />
+                ) : sourceError ? (
+                  <p className="text-[12.5px] text-destructive">Could not load the source article.</p>
+                ) : eventDetail?.sourceBody ? (
+                  <>
+                    <div className="max-h-72 overflow-y-auto whitespace-pre-wrap rounded-md bg-secondary/40 p-3 text-[12.5px] leading-[1.6] text-muted-foreground">
+                      {eventDetail.sourceBody}
+                    </div>
+                    {eventDetail.sourceTruncated && (
+                      <p className="mt-1.5 text-[11.5px] italic text-muted-foreground">(truncated)</p>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-[12.5px] italic text-muted-foreground">No source text available.</p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         <div>
           <input
@@ -354,35 +467,238 @@ function WriteOverlay({ open, onClose, mode, source, onSave, busy, error }) {
 }
 
 // ── AI review modal ───────────────────────────────────────────────────────────
+// Two tabs over the same review queue:
+//   * Duplicates  — kind='dedup' pending (the existing AiJudgementCard row).
+//   * Suggestions — kind='recommend' pending: the event the AI picked, the
+//     section it was picked for, and the AI's reason + confidence.
+// Accept/Reject both go through the existing /api/ai-judgements endpoints and
+// refetch on settle. Keeping the Duplicates pane unchanged is deliberate.
+
+// ── Suggestion row (kind='recommend') ────────────────────────────────────────
+
+/** Confidence 0–1 → whole-number percent, or null when unknown. */
+function confidencePercent(value) {
+  if (typeof value !== 'number' || Number.isNaN(value)) return null;
+  return Math.round(Math.min(Math.max(value, 0), 1) * 100);
+}
+
+function SuggestionRow({ judgement, onAccept, onReject, acceptPending, rejectPending }) {
+  const [rejectOpen, setRejectOpen] = useState(false);
+  const [accepted, setAccepted] = useState(false);
+  const [actionError, setActionError] = useState(null);
+
+  const busy = acceptPending || rejectPending;
+  const functionId = judgement?.scenario?.functionId;
+  const title = judgement?.subject?.eventTitle || 'Untitled story';
+
+  const handleAccept = async () => {
+    setActionError(null);
+    try {
+      await onAccept(judgement.id);
+      setAccepted(true);
+    } catch (err) {
+      setActionError(err.message);
+    }
+  };
+
+  return (
+    <div className="rounded-lg border border-border bg-card p-3.5">
+      <div className="flex flex-wrap items-center gap-2">
+        {typeof functionId === 'number' && (
+          <span className="rounded-full bg-secondary px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.04em] text-secondary-foreground">
+            {sectionNumber(functionId)} {pillarLabel(functionId)}
+          </span>
+        )}
+        {confidencePercent(judgement.confidence) !== null && (
+          <span className="text-[12px] font-semibold text-muted-foreground">
+            {confidencePercent(judgement.confidence)}% confident
+          </span>
+        )}
+      </div>
+      <p className="mt-2 text-[14.5px] font-semibold text-foreground">{title}</p>
+      {judgement.rationale && (
+        <p className="mt-1 text-[13px] text-muted-foreground">{judgement.rationale}</p>
+      )}
+
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <Button variant="primary" size="sm" onClick={handleAccept} disabled={busy}>
+          <Check className="h-3.5 w-3.5" />
+          {acceptPending ? 'Accepting…' : 'Accept'}
+        </Button>
+        <Button variant="danger" size="sm" onClick={() => setRejectOpen(true)} disabled={busy}>
+          <X className="h-3.5 w-3.5" />
+          Reject
+        </Button>
+        {accepted && (
+          <span aria-live="polite" className="text-xs text-muted-foreground">
+            Accepted — use it from the list below.
+          </span>
+        )}
+      </div>
+
+      {actionError && <p role="alert" className="mt-2 text-xs text-destructive">{actionError}</p>}
+
+      <RejectReasonModal
+        open={rejectOpen}
+        onClose={() => setRejectOpen(false)}
+        onSubmit={onReject}
+        judgementId={judgement.id}
+        pending={rejectPending}
+      />
+    </div>
+  );
+}
+
+// ── Reject-with-reason modal (reason REQUIRED, min 3 chars) ───────────────────
+// Mirrored for the Suggestion rows; AiJudgementCard carries its own copy for the
+// Duplicates pane so that pane stays byte-for-byte as it is today.
+function RejectReasonModal({ open, onClose, onSubmit, judgementId, pending }) {
+  const [reason, setReason] = useState('');
+  const [serverError, setServerError] = useState(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setReason('');
+    setServerError(null);
+  }, [open, judgementId]);
+
+  const trimmed = reason.trim();
+  const canSubmit = trimmed.length >= 3 && !pending;
+
+  const handleSubmit = async () => {
+    if (!canSubmit) return;
+    setServerError(null);
+    try {
+      await onSubmit({ id: judgementId, reason: trimmed });
+      onClose();
+    } catch (err) {
+      setServerError(err.message);
+    }
+  };
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Reject this suggestion"
+      description="Why is the AI wrong? Your reason trains the model and is required."
+      className="max-w-xl"
+    >
+      <div className="space-y-4">
+        <textarea
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          rows={5}
+          aria-label="Reasoning"
+          placeholder="e.g. This event is already covered by another pick."
+          className="input min-h-[8rem] w-full text-sm"
+        />
+        {serverError && (
+          <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            {serverError}
+          </p>
+        )}
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onClose} disabled={pending}>Cancel</Button>
+          <Button variant="danger" onClick={handleSubmit} disabled={!canSubmit}>
+            {pending ? 'Rejecting…' : 'Reject'}
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/** One review pane's loading / error / empty shell around a list of rows. */
+function ReviewPane({ query, emptyTitle, emptyDescription, children }) {
+  const { data, isLoading, isError, error, refetch } = query;
+  const rows = data ?? [];
+  if (isLoading) {
+    return (
+      <div className="space-y-3">
+        {Array.from({ length: 2 }).map((_, i) => <Skeleton key={i} className="h-24 w-full" />)}
+      </div>
+    );
+  }
+  if (isError) {
+    return (
+      <div className="py-8 text-center">
+        <p className="mb-3 text-sm text-destructive">Could not load AI judgements: {error?.message}</p>
+        <Button variant="secondary" size="sm" onClick={() => refetch()}>
+          <RefreshCw className="h-4 w-4" />
+          Try again
+        </Button>
+      </div>
+    );
+  }
+  if (rows.length === 0) {
+    return <EmptyState icon={<Check className="h-10 w-10" />} title={emptyTitle} description={emptyDescription} />;
+  }
+  return <div className="space-y-3">{children(rows)}</div>;
+}
+
 function AiReviewModal({ open, onClose }) {
-  const { data, isLoading, isError, error, refetch } = useAiJudgements({ outcome: 'pending' });
+  const [tab, setTab] = useState('duplicates');
+
+  const dupQuery = useAiJudgements({ kind: 'dedup', outcome: 'pending' });
+  const recQuery = useAiJudgements({ kind: 'recommend', outcome: 'pending' });
   const accept = useAcceptJudgement();
   const reject = useRejectJudgement();
-  const judgements = useMemo(() => data ?? [], [data]);
+  const recommend = useRecommendEvents();
+  const [recError, setRecError] = useState(null);
+
+  const dupCount = dupQuery.data?.length ?? 0;
+  const recCount = recQuery.data?.length ?? 0;
+
+  // Ask the AI for the day's section picks. Each pick lands in the recommend
+  // judgement queue; the mutation invalidates that cache, so `recQuery` refetches.
+  const onFindSuggestions = async () => {
+    setRecError(null);
+    try {
+      await recommend.mutateAsync({});
+    } catch (err) {
+      if (err?.status === 503) setRecError('AI is not configured.');
+      else setRecError(err?.message || 'Could not fetch suggestions.');
+    }
+  };
+
+  const tabs = [
+    { key: 'duplicates', label: 'Duplicates', count: dupCount },
+    { key: 'suggestions', label: 'Suggestions', count: recCount },
+  ];
 
   return (
     <Modal open={open} onClose={onClose} title="AI review" description="Pending judgements." className="max-w-2xl">
-      {isLoading ? (
-        <div className="space-y-3">
-          {Array.from({ length: 2 }).map((_, i) => <Skeleton key={i} className="h-24 w-full" />)}
-        </div>
-      ) : isError ? (
-        <div className="py-8 text-center">
-          <p className="mb-3 text-sm text-destructive">Could not load AI judgements: {error?.message}</p>
-          <Button variant="secondary" size="sm" onClick={() => refetch()}>
-            <RefreshCw className="h-4 w-4" />
-            Try again
-          </Button>
-        </div>
-      ) : judgements.length === 0 ? (
-        <EmptyState
-          icon={<Check className="h-10 w-10" />}
-          title="Nothing to review"
-          description="The AI review queue is clear."
-        />
-      ) : (
-        <div className="space-y-3">
-          {judgements.map((j) => (
+      <div className="mb-4 flex items-center gap-1 border-b border-border">
+        {tabs.map((t) => {
+          const active = tab === t.key;
+          return (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => setTab(t.key)}
+              aria-current={active ? 'page' : undefined}
+              className={
+                '-mb-px border-b-2 px-3 py-2 text-[13px] font-semibold transition-colors ' +
+                (active
+                  ? 'border-primary text-foreground'
+                  : 'border-transparent text-muted-foreground hover:text-foreground')
+              }
+            >
+              {t.label}
+              {t.count > 0 && <span className="ml-1.5 text-muted-foreground">({t.count})</span>}
+            </button>
+          );
+        })}
+      </div>
+
+      {tab === 'duplicates' ? (
+        <ReviewPane
+          query={dupQuery}
+          emptyTitle="Nothing to review"
+          emptyDescription="No duplicate pairings await review."
+        >
+          {(rows) => rows.map((j) => (
             <AiJudgementCard
               key={j.id}
               judgement={j}
@@ -392,6 +708,37 @@ function AiReviewModal({ open, onClose }) {
               rejectPending={reject.isPending}
             />
           ))}
+        </ReviewPane>
+      ) : (
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={onFindSuggestions}
+              disabled={recommend.isPending}
+            >
+              <Sparkles className={'h-3.5 w-3.5' + (recommend.isPending ? ' animate-pulse' : '')} />
+              {recommend.isPending ? 'Finding…' : 'Find suggestions'}
+            </Button>
+            {recError && <span role="alert" className="text-[12.5px] text-destructive">{recError}</span>}
+          </div>
+          <ReviewPane
+            query={recQuery}
+            emptyTitle="No suggestions"
+            emptyDescription="The AI has not suggested any stories for today's sections."
+          >
+            {(rows) => rows.map((j) => (
+              <SuggestionRow
+                key={j.id}
+                judgement={j}
+                onAccept={accept.mutateAsync}
+                onReject={reject.mutateAsync}
+                acceptPending={accept.isPending}
+                rejectPending={reject.isPending}
+              />
+            ))}
+          </ReviewPane>
         </div>
       )}
     </Modal>
@@ -493,10 +840,11 @@ export default function PulseToday() {
     setWriteError(null);
     setActionError(null);
     try {
-      // (1) Create or update the piece.
+      // (1) Create or update the piece. An `itemId` (an edited piece, OR an item
+      // the AI already drafted server-side) means PATCH the body only — never
+      // create a second item. The AI draft's pillar is already persisted.
       let item;
       if (itemId) {
-        // Editing an existing piece: PATCH the body only (the pillar is fixed).
         const body = [headline, text].filter(Boolean).join('\n\n');
         item = await editPublish.mutateAsync({ id: itemId, body });
       } else if (eventId) {
@@ -862,7 +1210,7 @@ export default function PulseToday() {
         error={writeError}
         onClose={() => { setWrite(null); setWriteError(null); }}
         onSave={(payload) =>
-          addToEmail({ ...payload, eventId: write?.source?.eventId, itemId: write?.source?.itemId })
+          addToEmail({ ...payload, eventId: write?.source?.eventId, itemId: payload.itemId ?? write?.source?.itemId })
         }
       />
       <AiReviewModal open={aiOpen} onClose={() => setAiOpen(false)} />

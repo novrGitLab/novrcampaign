@@ -396,6 +396,69 @@ export async function projectF7Items(req, res) {
 }
 
 /**
+ * Find an existing LIVE working item for (eventId, functionId).
+ *
+ * "Live" is a draft/approved item — one that is neither withdrawn, published,
+ * nor rejected. Used by both the from-event path and the AI-draft path so a
+ * repeat call for the same (event, function) reuses the existing draft instead
+ * of creating a duplicate. A terminal outcome (withdrawn/published/rejected)
+ * does NOT block a fresh draft.
+ *
+ * @param {string} eventId
+ * @param {number} functionId
+ * @returns {Promise<object|null>}
+ */
+export function findLiveItem(eventId, functionId) {
+  return prisma.publishItem.findFirst({
+    where: { eventId, functionId, withdrawnAt: null, publishedAt: null, rejectedAt: null },
+    orderBy: { createdAt: 'desc' },
+  });
+}
+
+/**
+ * Create a draft publish item bound to an event, with its primary pivot link.
+ *
+ * The single creation path shared by the from-event endpoint and the AI-draft
+ * service: same fields (contentType 'briefing', tier 'public', eventId set,
+ * a DRAFT with `approvedAt: null`), the pivot row written in the same
+ * transaction, and `editorId` supplied by the CALLER from the session.
+ *
+ * The caller owns every gate (licence, defamation, copyright). This helper
+ * writes; it does not decide publishability.
+ *
+ * @param {object} input
+ * @param {string} input.eventId
+ * @param {number} input.functionId
+ * @param {string} input.body
+ * @param {string} input.editorId
+ * @param {string} input.templateVersion
+ * @returns {Promise<object>} the created PublishItem row.
+ */
+export async function createEventBoundDraft({ eventId, functionId, body, editorId, templateVersion }) {
+  return prisma.$transaction(async (tx) => {
+    const created = await tx.publishItem.create({
+      data: {
+        eventId,
+        functionId,
+        contentType: 'briefing',
+        tier: 'public',
+        body,
+        templateVersion,
+        editorId,
+        // Draft: the editor writes and signs off separately (never auto-approved).
+        approvedAt: null,
+      },
+    });
+    // The general many-to-many linkage. The schema key is `position` (there is
+    // no `role` column); the single primary event of an event-bound item is 0.
+    await tx.publishItemEvent.create({
+      data: { publishItemId: created.id, eventId, position: 0 },
+    });
+    return created;
+  });
+}
+
+/**
  * POST /api/publish/from-event — create a writable editorial item FROM an
  * accepted inbox event for a chosen pillar (the Editorial Canvas entry point).
  *
@@ -432,10 +495,7 @@ export async function createItemFromEvent(req, res) {
   // published, and rejected items are terminal outcomes, so they do not block a
   // new draft — only a live draft/approved item does. Checked before any gate
   // work, so a repeat call is cheap and side-effect-free.
-  const existing = await prisma.publishItem.findFirst({
-    where: { eventId, functionId, withdrawnAt: null, publishedAt: null, rejectedAt: null },
-    orderBy: { createdAt: 'desc' },
-  });
+  const existing = await findLiveItem(eventId, functionId);
   if (existing) {
     return res.status(200).json({ item: serializeItem(existing), existed: true });
   }
@@ -497,26 +557,12 @@ export async function createItemFromEvent(req, res) {
     throw err;
   }
 
-  const item = await prisma.$transaction(async (tx) => {
-    const created = await tx.publishItem.create({
-      data: {
-        eventId: row.id,
-        functionId,
-        contentType: 'briefing',
-        tier,
-        body,
-        templateVersion: CANVAS_TEMPLATE_VERSION,
-        editorId: req.user.id,
-        // Draft: the editor writes and signs off separately (never auto-approved).
-        approvedAt: null,
-      },
-    });
-    // The general many-to-many linkage. The schema key is `position` (there is
-    // no `role` column); the single primary event of a from-event item is 0.
-    await tx.publishItemEvent.create({
-      data: { publishItemId: created.id, eventId: row.id, position: 0 },
-    });
-    return created;
+  const item = await createEventBoundDraft({
+    eventId: row.id,
+    functionId,
+    body,
+    editorId: req.user.id,
+    templateVersion: CANVAS_TEMPLATE_VERSION,
   });
 
   return res.status(201).json({ item: serializeItem(item), existed: false });
@@ -694,4 +740,5 @@ export async function editPublishItem(req, res) {
 export {
   listSchema, projectSchema, editSchema, fromEventSchema, manualPublishSchema,
   deriveStatus, requireEditorRole, isEditor, seedCanvasBody, composeManualBody, assertManualNameless,
+  serializeItem, unprocessable, CANVAS_TEMPLATE_VERSION,
 };

@@ -181,6 +181,17 @@ const SOURCES_INCLUDE_DETAIL = {
 };
 
 /**
+ * Cap on the raw source text returned by the detail endpoint.
+ *
+ * The AI rewrite needs the publisher's full text to work from, so the event
+ * DETAIL response — which is already the authenticated, evidence-carrying
+ * surface — includes `sourceBody`. It is capped so a single pathological
+ * document cannot bloat the response; `sourceTruncated` tells the client the
+ * text was clipped. The card/list DTO stays body-free (see `rawBodyOf`).
+ */
+export const SOURCE_BODY_MAX_CHARS = 60_000;
+
+/**
  * Fields needed to identify the event's "best" publish draft and derive its
  * status. `body` is deliberately excluded from the list DTO (it can be long);
  * the Edit modal fetches the body via the dedicated publish endpoint. Selected
@@ -402,10 +413,16 @@ export async function getPulseEvent(req, res) {
 
   if (!event) throw NotFound('Pulse event not found');
 
+  const fullBody = rawBodyOf(event) ?? '';
+  const sourceTruncated = fullBody.length > SOURCE_BODY_MAX_CHARS;
+  const sourceBody = sourceTruncated ? fullBody.slice(0, SOURCE_BODY_MAX_CHARS) : fullBody;
+
   return res.json({
     event: {
       ...serializeCard(event),
       ...publishDraftOf(event),
+      sourceBody,
+      sourceTruncated,
       sources: event.sources.map((s) => ({
         sourceName: s.rawDocument?.source?.name ?? null,
         url: s.rawDocument?.url ?? null,

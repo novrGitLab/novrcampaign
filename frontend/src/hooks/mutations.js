@@ -319,6 +319,47 @@ export function useCreateItemFromEvent() {
   });
 }
 
+// ── AI editorial layer (rewrite + recommend) ─────────────────────────────────
+
+/**
+ * POST /api/publish/ai-draft — AI-rewrite one event into a pillar draft.
+ *
+ * Creates (or reuses, `existed: true`) a publish_item whose body is the
+ * AI-written `"<headline>\n\nUPPER_SLOT_LABEL\n<slot text>"` composition. The
+ * server runs the copyright-overlap guard and the F7 defamation gate BEFORE
+ * writing, so a refusal (422 `DRAFT_TOO_CLOSE_TO_SOURCE` /
+ * `named_individual_in_public_arrest`) or a missing provider (503
+ * `AI_NOT_CONFIGURED`) rejects the promise with a normalised error (the caller
+ * reads `err.status` / `err.code`). Existing item + judgement list caches are
+ * invalidated on success so the new draft appears in "In today's email".
+ */
+export function useAiDraft() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ eventId, functionId }) =>
+      api('/publish/ai-draft', { method: 'POST', body: { eventId, functionId } }),
+    onSuccess: () => invalidatePulse(qc),
+  });
+}
+
+/**
+ * POST /api/ai/recommend — ask the AI for per-section story picks.
+ *
+ * Returns `{ recommendations: [{ functionId, judgements: [...] }] }`. Each pick
+ * is also recorded as a `recommend` judgement (outcome 'pending') in the
+ * `ai_judgement` ledger, so the review queue is refetched on success.
+ */
+export function useRecommendEvents() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body = {}) => api('/ai/recommend', { method: 'POST', body }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ai-judgements'] });
+      invalidatePulse(qc);
+    },
+  });
+}
+
 // ── AI judgement review ────────────────────────────────────────────────────
 // Adjudication is a ONE-WAY transition out of `pending` server-side. The row
 // leaves the pending queue on success, so we optimistically remove it from the
