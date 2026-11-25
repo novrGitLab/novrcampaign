@@ -227,12 +227,21 @@ Use the slot labels EXACTLY as written above as the keys of "slots".`;
 }
 
 /** Render the untrusted source block for the user prompt. */
-export function buildRewritePrompt({ title, summary, sourceBody, sourceName }) {
+export function buildRewritePrompt({ title, summary, sourceBody, sourceName, variation = false }) {
   const parts = [
     `SOURCE: ${sourceName || 'unknown'}`,
     `TITLE: ${title || ''}`,
   ];
   if (summary) parts.push(`SUMMARY: ${summary}`);
+  // Regenerate nudge: ask for a genuinely fresh draft materially different from
+  // any previous attempt. The guard rules are unchanged — this only steers the
+  // model away from reusing its earlier phrasing.
+  if (variation) {
+    parts.push(
+      '',
+      'Produce a FRESH draft that is materially distinct from any previous attempt: change the headline, the sentence structures, and the word choices. Keep the same facts and the same slot labels.',
+    );
+  }
   parts.push('', '--- BEGIN SOURCE TEXT (untrusted data) ---', sourceBody || '', '--- END SOURCE TEXT ---');
   return parts.join('\n');
 }
@@ -283,19 +292,42 @@ function assertRewriteNameless(functionId, result) {
 }
 
 /**
+ * Update an existing draft publish item's body in place.
+ *
+ * Regenerate must NOT create a duplicate row: the SAME publish_item keeps its id,
+ * `eventId`, `functionId`, `templateVersion`, and lifecycle columns; only `body`
+ * is replaced. Prisma maintains `updatedAt` (@updatedAt) on the write.
+ *
+ * @param {string} id
+ * @param {string} body
+ * @returns {Promise<object>} the updated PublishItem row.
+ */
+function updateDraftBody(id, body) {
+  return prisma.publishItem.update({ where: { id }, data: { body } });
+}
+
+/**
  * AI rewrite one event into a pillar draft.
+ *
+ * IDEMPOTENT by default: a live draft for this (event, function) is returned
+ * unchanged. With `regenerate: true` and a live draft present, the LLM is asked
+ * for a FRESH draft, the SAME guards run, and on pass the EXISTING item's body
+ * is updated in place (no duplicate row) with a NEW `rewrite` judgement appended
+ * to the ledger (history preserved). A guard failure still throws 422 and
+ * appends a `refused_overlap` judgement with `{ regenerated: true }`.
  *
  * @param {object} input
  * @param {string} input.eventId
  * @param {number} input.functionId
  * @param {string} input.editorId
+ * @param {boolean} [input.regenerate=false] ask for a fresh draft over an existing one
  * @param {object} [input.llm]  inject a client (tests)
- * @returns {Promise<{ item:object, judgementId:string, existed:boolean, overlap:object }>}
+ * @returns {Promise<{ item:object, judgementId:string|null, existed:boolean, regenerated:boolean, overlap:object|null }>}
  * @throws {NotFound}            unknown event
  * @throws {BadRequest}          field-form pillar (AI_DRAFT_NOT_AVAILABLE)
  * @throws {AppError}            503 AI_NOT_CONFIGURED / 422 guards
  */
-export async function rewriteEventToDraft({ eventId, functionId, editorId, llm } = {}) {
+export async function rewriteEventToDraft({ eventId, functionId, editorId, regenerate = false, llm } = {}) {
   if (!isRewritePillar(functionId)) {
     throw new AppError(
       400,
@@ -323,11 +355,12 @@ export async function rewriteEventToDraft({ eventId, functionId, editorId, llm }
   });
   if (!row) throw NotFound('Pulse event not found');
 
-  // Idempotency FIRST (cheap, side-effect-free), before any LLM call: a live
-  // draft for this (event, function) is reused. Mirrors from-event exactly.
+  // Idempotency (default path): a live draft for this (event, function) is
+  // reused WITHOUT an LLM call. Mirrors from-event exactly. A regenerate request
+  // deliberately falls through so a fresh draft can replace the existing body.
   const existing = await findLiveItem(eventId, functionId);
-  if (existing) {
-    return { item: serializeItem(existing), judgementId: null, existed: true, overlap: null };
+  if (existing && !regenerate) {
+    return { item: serializeItem(existing), judgementId: null, existed: true, regenerated: false, overlap: null };
   }
 
   assertConfigured();
@@ -342,7 +375,15 @@ export async function rewriteEventToDraft({ eventId, functionId, editorId, llm }
   const result = await client.complete({
     tier: 'frontier',
     system: buildRewriteSystem(functionId),
-    prompt: buildRewritePrompt({ title: row.title, summary: row.summary, sourceBody, sourceName }),
+    // A regenerate asks the model for a materially different draft; a fresh
+    // create (no live draft) uses the normal prompt.
+    prompt: buildRewritePrompt({
+      title: row.title,
+      summary: row.summary,
+      sourceBody,
+      sourceName,
+      variation: Boolean(existing && regenerate),
+    }),
     schema: REWRITE_SCHEMA,
   });
 
@@ -364,7 +405,11 @@ export async function rewriteEventToDraft({ eventId, functionId, editorId, llm }
       rationale: null,
       model,
       promptVersion: REWRITE_PROMPT_VERSION,
-      detail: { overlapMaxRun: overlap.maxRun, overlapWindows: overlap.sharedWindows },
+      detail: {
+        overlapMaxRun: overlap.maxRun,
+        overlapWindows: overlap.sharedWindows,
+        ...(regenerate ? { regenerated: true } : {}),
+      },
     });
     throw new AppError(
       422,
@@ -378,13 +423,18 @@ export async function rewriteEventToDraft({ eventId, functionId, editorId, llm }
   assertRewriteNameless(functionId, result);
 
   const body = composeRewriteBody(functionId, result);
-  const item = await createEventBoundDraft({
-    eventId,
-    functionId,
-    body,
-    editorId,
-    templateVersion: 'ai@1.0.0',
-  });
+  const regenerated = Boolean(existing && regenerate);
+  // Regenerate UPDATES the existing row (same id, same templateVersion); a
+  // fresh create inserts a new one. Both share the same guards above.
+  const item = regenerated
+    ? await updateDraftBody(existing.id, body)
+    : await createEventBoundDraft({
+      eventId,
+      functionId,
+      body,
+      editorId,
+      templateVersion: 'ai@1.0.0',
+    });
 
   const judgement = await recordJudgement({
     kind: 'rewrite',
@@ -402,10 +452,22 @@ export async function rewriteEventToDraft({ eventId, functionId, editorId, llm }
     rationale: typeof result.summary === 'string' ? result.summary.slice(0, 300) : null,
     model,
     promptVersion: REWRITE_PROMPT_VERSION,
-    detail: { overlapMaxRun: overlap.maxRun, overlapWindows: overlap.sharedWindows },
+    // Regenerate appends a NEW judgement row; every prior attempt stays in the
+    // append-only ledger. `{ regenerated: true }` marks this attempt as a retry.
+    detail: {
+      overlapMaxRun: overlap.maxRun,
+      overlapWindows: overlap.sharedWindows,
+      ...(regenerated ? { regenerated: true } : {}),
+    },
   });
 
-  return { item: serializeItem(item), judgementId: judgement.id, existed: false, overlap };
+  return {
+    item: serializeItem(item),
+    judgementId: judgement.id,
+    existed: regenerated,
+    regenerated,
+    overlap,
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

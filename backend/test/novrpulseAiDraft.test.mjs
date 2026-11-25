@@ -77,12 +77,19 @@ function makeStore(seed = {}) {
   const publishItem = {
     async create({ data }) {
       itemSeq += 1;
-      const row = { id: `pi-${itemSeq}`, createdAt: new Date(), approvedAt: null, rejectedAt: null, publishedAt: null, withdrawnAt: null, ...data };
+      const row = { id: `pi-${itemSeq}`, createdAt: new Date(), updatedAt: new Date(), approvedAt: null, rejectedAt: null, publishedAt: null, withdrawnAt: null, ...data };
       items.push(row);
       return { ...row };
     },
     async findFirst({ where } = {}) {
       return items.find((row) => eq(row, where)) ?? null;
+    },
+    async update({ where, data }) {
+      const row = items.find((r) => r.id === where.id);
+      if (!row) throw new Error(`publishItem.update: no row ${where.id}`);
+      // Prisma maintains `updatedAt` (@updatedAt) on every write.
+      Object.assign(row, data, { updatedAt: new Date() });
+      return { ...row };
     },
   };
 
@@ -421,6 +428,146 @@ describe('aiDraft — rewrite guards', () => {
     );
     assert.equal(out.existed, false);
     assert.equal(store.items.length, 1);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Rewrite — regenerate (Retry)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('aiDraft — rewrite regenerate', () => {
+  const DRAFT_A = {
+    headline: 'Operators told to warn users about SIM-swap fraud',
+    slots: { Summary: 'Alert customers about fraud.', Impact: 'Customers are at risk.', Affected: 'Telecom users.', Mitigation: 'Enable SIM locks.', 'Why it matters': 'Fraud is rising.', Source: 'According to NCC.' },
+    summary: 'first attempt',
+  };
+  const DRAFT_B = {
+    headline: 'Regulator directs telcos to issue SIM-swap alerts',
+    slots: { Summary: 'Carriers must publish a warning.', Impact: 'Subscriber accounts face takeover.', Affected: 'Phone owners nationwide.', Mitigation: 'Lock the SIM and verify odd requests.', 'Why it matters': 'Identity theft is climbing.', Source: 'Per the commission.' },
+    summary: 'second attempt, distinct wording',
+  };
+
+  test('regenerate=true over a live draft updates it IN PLACE with a new judgement row', async () => {
+    const store = makeStore({ events: [event()] });
+    // First call: normal create. Second call returns a DIFFERENT valid draft.
+    const llm = stubLlm((req) => (req.prompt.includes('FRESH draft') ? DRAFT_B : DRAFT_A));
+
+    const first = await withPrisma(store, () =>
+      rewriteEventToDraft({ eventId: 'evt-1', functionId: 8, editorId: 'e', llm }),
+    );
+    const beforeBody = store.items[0].body;
+
+    const out = await withPrisma(store, () =>
+      rewriteEventToDraft({ eventId: 'evt-1', functionId: 8, editorId: 'e', regenerate: true, llm }),
+    );
+
+    // Same item id, no duplicate row (same item count and same pivot count).
+    assert.equal(out.item.id, first.item.id);
+    assert.equal(store.items.length, 1, 'no duplicate item');
+    assert.equal(store.pivot.length, 1, 'no duplicate pivot');
+    // Body was UPDATED in place to the fresh draft.
+    assert.notEqual(out.item.body, beforeBody);
+    assert.ok(out.item.body.startsWith('Regulator directs telcos to issue SIM-swap alerts\n\n'));
+    // templateVersion is preserved.
+    assert.equal(out.item.templateVersion, 'ai@1.0.0');
+
+    // Response shape: the item existed and was regenerated.
+    assert.equal(out.existed, true);
+    assert.equal(out.regenerated, true);
+
+    // Append-only ledger: 2 rewrite rows for the subject; the first is untouched.
+    const rows = store.judgements.filter((j) => j.subjectKey === 'rewrite:evt-1|8');
+    assert.equal(rows.length, 2, 'one ledger row per attempt');
+    assert.equal(rows[0].decision, 'drafted');
+    assert.equal(rows[0].detail.regenerated, undefined, 'the first row is untouched');
+    assert.equal(rows[0].publishItemId, first.item.id);
+    assert.equal(rows[1].decision, 'drafted');
+    assert.equal(rows[1].detail.regenerated, true);
+    assert.equal(rows[1].publishItemId, first.item.id, 'the new row points at the same item');
+    assert.equal(out.judgementId, rows[1].id);
+
+    // The regenerate call asked the model for a fresh draft.
+    assert.equal(llm.calls.length, 2);
+    assert.ok(llm.calls[1].prompt.includes('FRESH draft'));
+  });
+
+  test('regenerate=true with NO existing draft behaves as a normal create', async () => {
+    const store = makeStore({ events: [event()] });
+    const llm = stubLlm(DRAFT_A);
+
+    const out = await withPrisma(store, () =>
+      rewriteEventToDraft({ eventId: 'evt-1', functionId: 8, editorId: 'e', regenerate: true, llm }),
+    );
+
+    assert.equal(out.existed, false);
+    assert.equal(out.regenerated, false);
+    assert.equal(store.items.length, 1);
+    assert.equal(store.pivot.length, 1);
+    // No live draft → the normal prompt (no fresh-draft nudge).
+    assert.equal(llm.calls.length, 1);
+    assert.equal(llm.calls[0].prompt.includes('FRESH draft'), false);
+    assert.equal(store.judgements[0].detail.regenerated, undefined);
+  });
+
+  test('regenerate=true + overlap guard failure is 422 and leaves the old body UNCHANGED', async () => {
+    const store = makeStore({ events: [event()] });
+    const llm = stubLlm((req) =>
+      req.prompt.includes('FRESH draft')
+        ? {
+          // Reproduces an 8-word run from SOURCE_BODY → refused.
+          headline: 'The commission said telecom operators must warn subscribers about rising SIM-swap fraud',
+          slots: { Summary: 'S', Impact: 'I', Affected: 'A', Mitigation: 'M', 'Why it matters': 'W', Source: 'Src' },
+        }
+        : DRAFT_A,
+    );
+
+    const first = await withPrisma(store, () =>
+      rewriteEventToDraft({ eventId: 'evt-1', functionId: 8, editorId: 'e', llm }),
+    );
+    const beforeBody = store.items[0].body;
+
+    await assert.rejects(
+      withPrisma(store, () =>
+        rewriteEventToDraft({ eventId: 'evt-1', functionId: 8, editorId: 'e', regenerate: true, llm }),
+      ),
+      (err) => {
+        assert.equal(err.statusCode, 422);
+        assert.equal(err.code, 'DRAFT_TOO_CLOSE_TO_SOURCE');
+        return true;
+      },
+    );
+
+    // Item is unchanged and no duplicate was written.
+    assert.equal(store.items.length, 1);
+    assert.equal(store.items[0].body, beforeBody);
+    assert.equal(store.items[0].id, first.item.id);
+
+    // The failed attempt is appended with { regenerated: true }.
+    const rows = store.judgements.filter((j) => j.subjectKey === 'rewrite:evt-1|8');
+    assert.equal(rows.length, 2);
+    assert.equal(rows[1].decision, 'refused_overlap');
+    assert.equal(rows[1].detail.regenerated, true);
+    assert.equal(rows[1].publishItemId, null);
+  });
+
+  test('regenerate=false (default) over a live draft keeps the idempotent behaviour', async () => {
+    const store = makeStore({ events: [event()] });
+    const llm = stubLlm(DRAFT_A);
+
+    const first = await withPrisma(store, () =>
+      rewriteEventToDraft({ eventId: 'evt-1', functionId: 8, editorId: 'e', llm }),
+    );
+    const second = await withPrisma(store, () =>
+      rewriteEventToDraft({ eventId: 'evt-1', functionId: 8, editorId: 'e', regenerate: false, llm }),
+    );
+
+    assert.equal(second.existed, true);
+    assert.equal(second.regenerated, false);
+    assert.equal(second.judgementId, null);
+    assert.equal(second.item.id, first.item.id);
+    assert.equal(store.items.length, 1);
+    assert.equal(store.judgements.length, 1, 'no new ledger row on an idempotent return');
+    assert.equal(llm.calls.length, 1, 'the idempotent return short-circuits before the LLM');
   });
 });
 

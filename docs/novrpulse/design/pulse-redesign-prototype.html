@@ -6,32 +6,43 @@
 <title>NovrPulse — Today</title>
 <style>
 /* =====================================================================
-   NovrPulse prototype — "TODAY", ONE screen.
+   NovrPulse prototype — "TODAY" + the 3-STEP AI BUILD WIZARD.
    ---------------------------------------------------------------------
-   Concept: SHOW THE JOB. The owner's daily job is three moves:
-     1. Scan today's news (a short list).
-     2. "Use" a story -> a clean write overlay -> Add to email.
-     3. See what is in today's email -> Preview -> Send (send not built).
+   Concept: SHOW THE JOB. The owner's daily job is now framed as ONE
+   guided AI flow launched from a single button:
+
+       ✦ Build today's edition
+         1 Select  -> approve / reject / pick the news the AI recommends
+                      for each function
+         2 Drafts  -> the AI auto-writes a draft for each approved
+                      (story x function) pair; owner approve / retry / edit
+         3 Write   -> the sections the owner writes by hand (free mode)
+
+   THE THREE FIXES the owner demanded:
+     1. When using a source the FULL news shows SIDE-BY-SIDE with the
+        writing box (sticky source pane), in both step 2 and step 3.
+     2. Switching function NEVER carries text over: each (story, function)
+        pair is its own independent buffer.
+     3. ONE news story can serve MULTIPLE functions: approve it in each;
+        each approval gets its own drafted piece.
+
    Everything else the real product can do is deliberately ABSENT here.
    This prototype exists to show the SIMPLIFIED surface.
 
-   HIDDEN MACHINERY — present in the real app, intentionally NOT shown in
-   this prototype (there is no UI here for any of it):
+   HIDDEN MACHINERY — present in the real app, intentionally NOT shown:
      - region / language filters and a filter chip row
      - day navigation (this screen is fixed to "Today")
      - the production pipeline stepper (Wire -> Write -> Front Page)
-     - per-story Accept / Dismiss action bar and bulk selection checkboxes
      - pillar byline/guidance panels and key-takeaways widget
-     - "N of 8 ready" progress bar and per-section ready/empty state pills
-     - supporting-records / unassigned-drafts tray and section management
-     - lead designation, reorder buttons, per-section notes
+     - supporting-records / unassigned-drafts tray, section management
+     - lead designation, reorder, per-section notes
      - the final-review checklist and the real publish/send pipeline
-   These live in the application code; this file only demonstrates the
-   surface the owner sees.
+   The "AI review" header button is kept ONLY for the DUPLICATE-VERDICT
+   (dedup) queue, which is not part of the edition wizard.
 
-   Theme: dark navy (owner-approved for the prototype; the real build gets a
-   theme pass later). Self-contained: inline CSS + vanilla JS, no external
-   requests, no fonts fetched, no CDNs. Icons are inline SVG / unicode.
+   Theme: dark navy (owner-approved for the prototype). Self-contained:
+   inline CSS + vanilla JS, no external requests, no fonts, no CDNs.
+   Icons are inline unicode / SVG. No persistence beyond the session.
    ===================================================================== */
 
 :root {
@@ -48,6 +59,8 @@
   --faint:     #5C6683;
   --ready:     #34D399;
   --draft:     #F59E0B;
+  --warn:      #FBBF24;
+  --danger:    #F87171;
   --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --serif: Georgia, "Times New Roman", serif;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -73,7 +86,7 @@ button { font-family: inherit; cursor: pointer; }
 .wrap { max-width: 860px; margin: 0 auto; padding: 0 24px 120px; }
 
 /* ---------------------------------------------------------------------
-   HEADER — wordmark · date · the only two global actions
+   HEADER — wordmark · date · the global actions
    --------------------------------------------------------------------- */
 .topbar {
   position: sticky; top: 0; z-index: 40;
@@ -113,7 +126,7 @@ button { font-family: inherit; cursor: pointer; }
 .block-head .spacer { margin-left: auto; }
 
 /* ---------------------------------------------------------------------
-   TODAY'S NEWS — story list. ONE primary action per row: Use ->
+   TODAY'S NEWS — story list. ONE primary action per row.
    --------------------------------------------------------------------- */
 .news { margin-top: 4px; }
 .story {
@@ -162,8 +175,10 @@ button { font-family: inherit; cursor: pointer; }
   color: var(--faint); flex: 0 0 auto;
 }
 .emailitem .dotS { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; background: var(--draft); }
+.emailitem .dotS.ready { background: var(--ready); }
 .emailitem .etitle { flex: 1; min-width: 0; font-weight: 600; font-size: 14.5px; }
 .emailitem .estatus { flex: 0 0 auto; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--draft); }
+.emailitem .estatus.ready { color: var(--ready); }
 .email-empty { color: var(--faint); font-size: 13.5px; font-style: italic; padding: 16px 4px; }
 
 .send-row { display: flex; justify-content: flex-end; margin-top: 24px; }
@@ -193,8 +208,18 @@ button { font-family: inherit; cursor: pointer; }
 .btn.icon:hover { color: var(--text); background: var(--card); }
 .btn.ghost { background: transparent; border-color: transparent; color: var(--muted); }
 .btn.ghost:hover { color: var(--text); background: #141C31; }
+.btn.use { border-color: #2C5AA8; color: #AFC4EC; background: rgba(59,130,246,0.08); }
+.btn.use:hover { border-color: var(--accent); color: #fff; background: rgba(59,130,246,0.18); }
+.btn.good { border-color: #1F6E4D; color: #6EE7B7; background: rgba(52,211,153,0.08); }
+.btn.good:hover { border-color: var(--ready); color: #fff; }
+.btn.bad { border-color: #6E2F35; color: #FCA5A5; background: rgba(248,113,113,0.08); }
+.btn.bad:hover { border-color: var(--danger); color: #fff; }
 
-/* Header AI-review button, hidden while n = 0 */
+/* Wizard launcher button — the one prominent header action */
+#wizardBtn { border-color: #6D4AE0; background: linear-gradient(150deg,#5B3FE0,#3B82F6); color:#fff; font-weight:700; letter-spacing:0.01em; }
+#wizardBtn:hover { box-shadow: 0 0 22px rgba(109,74,224,0.5); border-color:#7C5BE8; }
+
+/* Header AI-review button (DEDUP queue), hidden while n = 0 */
 #aiReviewBtn { display: none; }
 #aiReviewBtn.show { display: inline-flex; }
 #aiReviewBtn .cnt {
@@ -260,8 +285,16 @@ button { font-family: inherit; cursor: pointer; }
 .close-x:hover { color: #fff; border-color: var(--accent); }
 
 /* ---------------------------------------------------------------------
-   WRITE OVERLAY — the single focused document
+   WRITE OVERLAY — side-by-side: document (left) + full source (right)
    --------------------------------------------------------------------- */
+.write-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 22px;
+}
+.write-grid.has-source { grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.9fr); }
+.write-main { min-width: 0; }
+
 .src-ref {
   font-size: 12.5px; color: var(--faint);
   padding-bottom: 16px; margin-bottom: 18px;
@@ -270,7 +303,6 @@ button { font-family: inherit; cursor: pointer; }
 .src-ref b { color: var(--muted); font-weight: 600; }
 .src-ref q { color: var(--muted); font-style: italic; }
 
-/* Optional reference link — free mode only (no source story to attribute) */
 .ref-link { padding-bottom: 16px; margin-bottom: 4px; }
 .ref-link label { display: block; font-size: 12px; color: var(--faint); font-weight: 600; letter-spacing: 0.04em; margin-bottom: 6px; text-transform: uppercase; }
 .ref-link input {
@@ -331,30 +363,56 @@ button { font-family: inherit; cursor: pointer; }
   font-family: var(--serif);
   font-size: 16.5px; line-height: 1.7; color: #D6DCEC;
   outline: none; min-height: 240px;
+  white-space: pre-wrap;
 }
 .doc-body:focus { box-shadow: -3px 0 0 var(--accent); padding-left: 12px; margin-left: -12px; }
 
-.rail-toggle {
-  display: inline-flex; align-items: center; gap: 7px;
-  margin-top: 22px;
-  padding: 7px 12px; border-radius: 8px;
-  border: 1px solid var(--border); background: var(--surface);
-  color: var(--muted); font-size: 12px; font-weight: 700;
-  letter-spacing: 0.06em; text-transform: uppercase;
+/* Slot-block editor (used by the wizard drafts) */
+.slot { margin: 14px 0; }
+.slot-label {
+  font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--accent); font-weight: 800; margin-bottom: 5px;
 }
-.rail-toggle:hover { color: var(--text); border-color: var(--border-hi); }
-.rail-body { margin-top: 12px; }
-.rail-body.hidden { display: none; }
-.srcitem {
-  padding: 11px 14px; border-radius: 9px;
-  border: 1px solid var(--border); background: var(--surface);
-  margin-bottom: 9px;
+.slot-body {
+  font-family: var(--serif); font-size: 15.5px; line-height: 1.6; color: #D6DCEC;
+  outline: none; border: 1px dashed transparent; border-radius: 6px;
+  padding: 2px 4px; margin: -2px -4px; white-space: pre-wrap;
 }
-.srcitem .st { font-weight: 600; font-size: 13px; margin-bottom: 3px; }
-.srcitem .sm { color: var(--faint); font-size: 11.5px; }
+.slot-body:empty::before { content: attr(data-placeholder); color: var(--faint); font-style: italic; }
+.slot.readonly .slot-body { border-color: transparent; }
+.slot.editable .slot-body { border-color: var(--border-hi); background: rgba(59,130,246,0.05); }
+.slot.editable .slot-body:focus { border-color: var(--accent); background: rgba(59,130,246,0.09); }
+
+/* Sticky SOURCE pane (fix #1) */
+.srcpane {
+  align-self: start;
+  position: sticky; top: 84px;
+  max-height: calc(100vh - 150px);
+  overflow-y: auto;
+  border: 1px solid var(--border-hi);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.srcpane-head {
+  position: sticky; top: 0;
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--border);
+  background: #121A2E;
+  font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--accent); font-weight: 800;
+  display: flex; align-items: center; gap: 8px;
+}
+.srcpane-head .sfull { margin-left: auto; color: var(--faint); font-weight: 600; letter-spacing: 0.02em; text-transform: none; }
+.srcpane-inner { padding: 15px 16px 20px; }
+.srcpane-title { font-family: var(--serif); font-size: 17px; font-weight: 700; line-height: 1.3; margin: 0 0 8px; }
+.srcpane-meta { display: flex; flex-wrap: wrap; gap: 8px; font-size: 12px; color: var(--faint); margin-bottom: 14px; }
+.srcpane-body { font-size: 13.5px; line-height: 1.62; color: #C4CCDF; }
+.srcpane-body p { margin: 0 0 11px; }
+.srcpane-src { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); font-size: 12px; color: var(--faint); }
+.srcpane-src a { color: var(--muted); }
 
 /* ---------------------------------------------------------------------
-   AI REVIEW — pending judgements
+   AI REVIEW MODAL — DUPLICATE VERDICTS only
    --------------------------------------------------------------------- */
 .ai-item {
   display: flex; align-items: center; gap: 14px;
@@ -403,8 +461,134 @@ button { font-family: inherit; cursor: pointer; }
 .email-story .et { font-family: var(--serif); font-weight: 700; font-size: 17px; margin-bottom: 5px; }
 .email-story .ee { color: var(--muted); font-size: 13.5px; }
 .email-group { color: var(--accent); font-size: 12px; letter-spacing: 0.06em; margin: 14px 0 8px; }
-.email-empty { color: var(--faint); font-size: 13px; font-style: italic; border-left: 2px dashed #24365C; padding-left: 14px; }
+.email-empty, .email-body .email-empty { color: var(--faint); font-size: 13px; font-style: italic; border-left: 2px dashed #24365C; padding-left: 14px; }
 .email-foot { padding: 22px 30px; border-top: 1px solid #1B2438; background: #0A0F1E; color: var(--faint); font-size: 12px; text-align: center; }
+
+/* ---------------------------------------------------------------------
+   WIZARD — full-screen, 3 steps, step indicator
+   --------------------------------------------------------------------- */
+.wiz-back {
+  position: fixed; inset: 0; z-index: 90;
+  background: rgba(4,7,15,0.86);
+  backdrop-filter: blur(5px);
+  display: none; align-items: stretch; justify-content: center;
+}
+.wiz-back.open { display: flex; }
+.wiz {
+  width: 100%; max-width: 1180px;
+  margin: 18px; display: flex; flex-direction: column;
+  border-radius: 16px; overflow: hidden;
+  border: 1px solid #2A3C64;
+  background: #0B1120;
+  box-shadow: 0 40px 110px rgba(0,0,0,0.7);
+  min-height: 0;
+}
+.wiz-head {
+  display: flex; align-items: center; gap: 18px;
+  padding: 16px 22px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(150deg,#0E1730,#0B1120);
+}
+.wiz-title { font-weight: 800; font-size: 14px; letter-spacing: 0.05em; display: flex; align-items: center; gap: 10px; }
+.wiz-title .spark { color: #8B6BF0; }
+.wiz-progress { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+.wiz-step {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 13px; border-radius: 999px;
+  font-size: 12px; font-weight: 700; letter-spacing: 0.03em;
+  color: var(--faint); border: 1px solid transparent;
+}
+.wiz-step .num {
+  width: 19px; height: 19px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 800;
+  background: #1A2338; color: var(--faint);
+}
+.wiz-step.active { color: #fff; background: var(--accent-dim); border-color: #2C5AA8; }
+.wiz-step.active .num { background: var(--accent); color: #fff; }
+.wiz-step.done { color: var(--ready); }
+.wiz-step.done .num { background: rgba(52,211,153,0.16); color: var(--ready); }
+.wiz-arrow { color: var(--border-hi); font-size: 12px; }
+
+.wiz-body { flex: 1; overflow-y: auto; padding: 22px 24px 30px; min-height: 0; }
+.wiz-foot {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 22px; border-top: 1px solid var(--border);
+  background: #0A1020;
+}
+.wiz-foot .spacer { margin-left: auto; }
+.wiz-foot .hint { color: var(--faint); font-size: 12.5px; }
+.wiz-section-title { font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); font-weight: 800; margin: 4px 0 16px; }
+.wiz-sub { color: var(--muted); font-size: 13.5px; margin: -8px 0 18px; }
+
+/* Step 1 — select */
+.sel-block { margin-bottom: 18px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); overflow: hidden; }
+.sel-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 13px 16px; border-bottom: 1px solid var(--border);
+  background: #101A2F;
+}
+.sel-head .nm { font-weight: 800; font-size: 14px; }
+.sel-head .nmo { font-family: var(--mono); color: var(--faint); font-size: 12px; margin-right: 2px; }
+.sel-head .tally { margin-left: auto; font-size: 12px; color: var(--muted); font-weight: 600; }
+.sel-head .tally b { color: var(--ready); }
+.reco-list { padding: 6px 10px 10px; }
+.reco {
+  display: flex; align-items: flex-start; gap: 14px;
+  padding: 13px 8px; border-bottom: 1px solid var(--border);
+}
+.reco:last-child { border-bottom: none; }
+.reco-main { flex: 1; min-width: 0; }
+.reco-top { display: flex; align-items: baseline; gap: 8px; }
+.reco-top .spark { color: #8B6BF0; font-size: 13px; }
+.reco-title { font-family: var(--serif); font-size: 16.5px; font-weight: 700; line-height: 1.3; margin: 0; }
+.reco-meta { display: flex; flex-wrap: wrap; gap: 8px; font-size: 12px; color: var(--faint); margin-top: 5px; }
+.reco-why { color: var(--muted); font-size: 13px; margin-top: 6px; }
+.reco-why::before { content: "Why: "; color: var(--accent); font-weight: 700; font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase; }
+.reco-acts { flex: 0 0 auto; display: flex; flex-direction: column; gap: 7px; align-items: stretch; min-width: 128px; }
+.chip-flag {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 9px; border-radius: 999px;
+  font-size: 11px; font-weight: 700;
+}
+.chip-flag.approved { background: rgba(52,211,153,0.14); color: var(--ready); border: 1px solid #1F6E4D; }
+.chip-flag.rejected { background: rgba(248,113,113,0.12); color: #FCA5A5; border: 1px solid #6E2F35; }
+.chip-flag.multi { background: rgba(139,107,240,0.14); color: #C4B5FD; border: 1px solid #5B3FE0; }
+.pickbtn-row { padding: 4px 8px 12px; }
+
+/* Step 2 — drafts */
+.draft-card { border: 1px solid var(--border); border-radius: 12px; background: var(--surface); margin-bottom: 18px; overflow: hidden; }
+.draft-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 13px 16px; border-bottom: 1px solid var(--border); background: #101A2F;
+}
+.draft-head .pill { font-family: var(--mono); font-size: 12px; color: var(--faint); font-weight: 700; }
+.draft-head .nm { font-weight: 800; font-size: 14px; }
+.draft-head .flag { margin-left: auto; font-size: 11px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; }
+.draft-head .flag.approved { color: var(--ready); }
+.draft-head .flag.pending { color: var(--draft); }
+.draft-grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.9fr); gap: 0; }
+.draft-left { padding: 18px 18px 20px; min-width: 0; border-right: 1px solid var(--border); }
+.draft-right { min-width: 0; }
+.draft-right .srcpane { position: sticky; top: 0; max-height: none; border: none; border-radius: 0; background: transparent; }
+.draft-right .srcpane-head { border-radius: 0; }
+.draft-title { font-family: var(--serif); font-size: 19px; font-weight: 700; line-height: 1.28; margin: 0 0 4px; }
+.draft-caption { font-size: 12px; color: var(--faint); margin-bottom: 12px; }
+.draft-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.draft-hint { color: var(--muted); font-size: 12.5px; align-self: center; }
+
+/* Step 3 — write */
+.write-row {
+  display: flex; align-items: center; gap: 14px;
+  padding: 15px 14px; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--surface); margin-bottom: 10px;
+}
+.write-row .pill { font-family: var(--mono); color: var(--faint); font-weight: 700; font-size: 13px; }
+.write-row .nm { font-weight: 700; font-size: 14.5px; }
+.write-row .tag { margin-left: auto; font-size: 11.5px; color: var(--faint); }
+.write-row .handled { font-size: 11px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ready); }
+.mini-list { color: var(--muted); font-size: 13px; padding: 4px 4px 8px; }
+.mini-list li { margin: 3px 0; }
 
 /* Tooltip helper */
 [data-tip] { position: relative; }
@@ -422,17 +606,19 @@ button { font-family: inherit; cursor: pointer; }
 <body>
 
 <!-- =====================================================================
-     HEADER — wordmark · today's date · [AI review (n)] · [Send]
-     The AI-review button is hidden while the queue is empty.
+     HEADER — wordmark · date · [AI review (dedup)] · [✦ Build edition] · [Send]
+     The dedup AI-review button is hidden while the queue is empty.
      ===================================================================== -->
 <header class="topbar">
   <div class="topbar-inner">
     <div class="wordmark"><span class="dot"></span> NOVRPULSE <span class="sub">/ edition desk</span></div>
     <span class="topbar-date">Tue 25 Nov</span>
     <div class="topbar-actions">
-      <button class="btn sm" id="aiReviewBtn" aria-label="AI review queue">
+      <button class="btn sm" id="aiReviewBtn" aria-label="AI duplicate-review queue"
+        data-tip="Duplicate verdicts only — not part of the build flow">
         AI review <span class="cnt" id="aiCount">0</span>
       </button>
+      <button class="btn primary sm" id="wizardBtn">✦ Build today's edition</button>
       <button class="btn primary sm" id="sendBtn" disabled
         data-tip="Connecting the email send is the next milestone">Send</button>
     </div>
@@ -443,8 +629,6 @@ button { font-family: inherit; cursor: pointer; }
 
   <!-- ===================================================================
        BLOCK 1 — TODAY'S NEWS   (the scan step)
-       One primary action per story: [ Use -> ]. Dismissing a story lives
-       behind the small ⋯ menu ("Not relevant"), never as a visible action.
        =================================================================== -->
   <section class="block" aria-labelledby="newsHead">
     <div class="block-head">
@@ -456,158 +640,12 @@ button { font-family: inherit; cursor: pointer; }
     </div>
 
     <div class="news" id="newsList">
-
-      <article class="story" data-search="zenith bank phishing alerts customers guardian">
-        <div class="story-main">
-          <h3 class="story-title">Zenith Bank customers targeted by phishing campaign impersonating alerts</h3>
-          <p class="story-excerpt">Fraudulent messages mimicking transaction alerts are pushing customers to credential-harvesting pages. The bank says no breach of its systems has been detected.</p>
-          <div class="story-meta">
-            <span class="src">The Guardian Nigeria</span><span class="meta-sep">·</span>
-            <span>1h ago</span><span class="meta-sep">·</span>
-            <span>SEV 4</span>
-          </div>
-        </div>
-        <div class="story-act">
-          <button class="btn sm use-btn" data-pillars="07,04,08"
-            data-src="The Guardian Nigeria"
-            data-headline="Zenith Bank customers targeted by phishing campaign impersonating alerts">Use →</button>
-          <button class="btn icon more-btn" aria-label="More options" aria-haspopup="true">⋯</button>
-        </div>
-      </article>
-
-      <article class="story" data-search="cbn capital directive banks cyber resilience businessday">
-        <div class="story-main">
-          <h3 class="story-title">CBN issues new capital directive for banks with cyber-resilience conditions</h3>
-          <p class="story-excerpt">A circular raises minimum capital requirements and ties part of the compliance window to demonstrable incident-response capability and board-level cyber oversight.</p>
-          <div class="story-meta">
-            <span class="src">BusinessDay</span><span class="meta-sep">·</span>
-            <span>4h ago</span><span class="meta-sep">·</span>
-            <span>SEV 4</span>
-          </div>
-        </div>
-        <div class="story-act">
-          <button class="btn sm use-btn" data-pillars="01,07"
-            data-src="BusinessDay"
-            data-headline="CBN issues new capital directive for banks with cyber-resilience conditions">Use →</button>
-          <button class="btn icon more-btn" aria-label="More options" aria-haspopup="true">⋯</button>
-        </div>
-      </article>
-
-      <article class="story" data-search="ngcert ransomware health education alert advisory">
-        <div class="story-main">
-          <h3 class="story-title">ngCERT raises alert level after ransomware wave hits health and education sectors</h3>
-          <p class="story-excerpt">The agency reports a coordinated spike in double-extortion intrusions, urging affected organisations to isolate backups and report incidents through its portal.</p>
-          <div class="story-meta">
-            <span class="src">ngCERT Advisory</span><span class="meta-sep">·</span>
-            <span>3h ago</span><span class="meta-sep">·</span>
-            <span>SEV 5</span>
-          </div>
-        </div>
-        <div class="story-act">
-          <button class="btn sm use-btn" data-pillars="08,07"
-            data-src="ngCERT Advisory"
-            data-headline="ngCERT raises alert level after ransomware wave hits health and education sectors">Use →</button>
-          <button class="btn icon more-btn" aria-label="More options" aria-haspopup="true">⋯</button>
-        </div>
-      </article>
-
-      <article class="story" data-search="ncc isps subscriber data protection ndpa techpoint regulatory">
-        <div class="story-main">
-          <h3 class="story-title">NCC directs ISPs on subscriber data protection ahead of NDPA deadline</h3>
-          <p class="story-excerpt">The Commission issued fresh directives requiring internet service providers to audit how subscriber records are stored, shared and retained, with compliance returns due within 30 days.</p>
-          <div class="story-meta">
-            <span class="src">Techpoint Africa</span><span class="meta-sep">·</span>
-            <span>2h ago</span><span class="meta-sep">·</span>
-            <span>SEV 3</span>
-          </div>
-        </div>
-        <div class="story-act">
-          <button class="btn sm use-btn" data-pillars="01"
-            data-src="Techpoint Africa"
-            data-headline="NCC directs ISPs on subscriber data protection ahead of NDPA deadline">Use →</button>
-          <button class="btn icon more-btn" aria-label="More options" aria-haspopup="true">⋯</button>
-        </div>
-      </article>
-
-      <article class="story" data-search="efcc arrests business email compromise lagos premium times">
-        <div class="story-main">
-          <h3 class="story-title">EFCC announces arrests over business email compromise ring in Lagos</h3>
-          <p class="story-excerpt">Three suspects were taken into custody over an alleged scheme that redirected corporate invoice payments. A charge is not a conviction.</p>
-          <div class="story-meta">
-            <span class="src">Premium Times</span><span class="meta-sep">·</span>
-            <span>5h ago</span><span class="meta-sep">·</span>
-            <span>SEV 3</span>
-          </div>
-        </div>
-        <div class="story-act">
-          <button class="btn sm use-btn" data-pillars="07,08"
-            data-src="Premium Times"
-            data-headline="EFCC announces arrests over business email compromise ring in Lagos">Use →</button>
-          <button class="btn icon more-btn" aria-label="More options" aria-haspopup="true">⋯</button>
-        </div>
-      </article>
-
-      <article class="story" data-search="ndpc fines fintech data breach nairametrics">
-        <div class="story-main">
-          <h3 class="story-title">NDPC fines a Lagos fintech over customer data breach</h3>
-          <p class="story-excerpt">The Commission says the firm failed to notify it within the statutory window after an unauthorised access incident exposed records of loan applicants.</p>
-          <div class="story-meta">
-            <span class="src">Nairametrics</span><span class="meta-sep">·</span>
-            <span>7h ago</span><span class="meta-sep">·</span>
-            <span>SEV 3</span>
-          </div>
-        </div>
-        <div class="story-act">
-          <button class="btn sm use-btn" data-pillars="01,04"
-            data-src="Nairametrics"
-            data-headline="NDPC fines a Lagos fintech over customer data breach">Use →</button>
-          <button class="btn icon more-btn" aria-label="More options" aria-haspopup="true">⋯</button>
-        </div>
-      </article>
-
-      <article class="story" data-search="nitda digital literacy programme states training">
-        <div class="story-main">
-          <h3 class="story-title">NITDA opens digital literacy programme across 12 states</h3>
-          <p class="story-excerpt">A free training roll-out targets artisans, teachers and small-business owners with modules on safe online payments and device hygiene.</p>
-          <div class="story-meta">
-            <span class="src">NITDA</span><span class="meta-sep">·</span>
-            <span>6h ago</span><span class="meta-sep">·</span>
-            <span>SEV 2</span>
-          </div>
-        </div>
-        <div class="story-act">
-          <button class="btn sm use-btn" data-pillars="03"
-            data-src="NITDA"
-            data-headline="NITDA opens digital literacy programme across 12 states">Use →</button>
-          <button class="btn icon more-btn" aria-label="More options" aria-haspopup="true">⋯</button>
-        </div>
-      </article>
-
-      <article class="story" data-search="cybersecurity forum annual summit abuja event">
-        <div class="story-main">
-          <h3 class="story-title">Cybersecurity forum to hold annual summit in Abuja</h3>
-          <p class="story-excerpt">Organisers confirm a two-day hybrid summit for practitioners, regulators and executives, with sessions on incident response and AI risk.</p>
-          <div class="story-meta">
-            <span class="src">Cybersec Nigeria</span><span class="meta-sep">·</span>
-            <span>8h ago</span><span class="meta-sep">·</span>
-            <span>SEV 1</span>
-          </div>
-        </div>
-        <div class="story-act">
-          <button class="btn sm use-btn" data-pillars="05"
-            data-src="Cybersec Nigeria"
-            data-headline="Cybersecurity forum to hold annual summit in Abuja">Use →</button>
-          <button class="btn icon more-btn" aria-label="More options" aria-haspopup="true">⋯</button>
-        </div>
-      </article>
-
+      <!-- story rows injected by JS from STORIES (single source of truth) -->
     </div>
   </section>
 
   <!-- ===================================================================
-       BLOCK 2 — IN TODAY'S EMAIL   (the pieces going out today)
-       Clicking a row reopens it in the write overlay. No reorder, no
-       state pills, no notes, no lead toggle, no section management.
+       BLOCK 2 — IN TODAY'S EMAIL
        =================================================================== -->
   <section class="block" aria-labelledby="emailHead">
     <div class="block-head">
@@ -618,7 +656,7 @@ button { font-family: inherit; cursor: pointer; }
     </div>
 
     <div class="email-list" id="emailList">
-      <div class="email-empty" id="emailEmpty">Nothing in today's email yet. Use a story above to start.</div>
+      <div class="email-empty" id="emailEmpty">Nothing in today's email yet. Build today's edition or use a story above to start.</div>
     </div>
 
     <div class="send-row">
@@ -630,36 +668,40 @@ button { font-family: inherit; cursor: pointer; }
 </main>
 
 <!-- =====================================================================
-     WRITE OVERLAY — one clean document. Pillar auto-picked (changeable,
-     only eligible pillars enabled). Big headline (empty), body with faint
-     scaffold placeholders inside the single field, collapsible sources.
-     ONE action row: [Save draft] [Add to email →] [✕].
+     WRITE OVERLAY — side-by-side document + full source (fix #1).
+     Used for the Today screen and for step 3 of the wizard.
      ===================================================================== -->
 <div class="modal-back" id="writeModal" role="dialog" aria-modal="true" aria-labelledby="writeTitle">
-  <div class="sheet" style="max-width:720px">
+  <div class="sheet" style="max-width:940px">
     <div class="sheet-head">
       <span class="h" id="writeTitle">Write <span class="ctx">for today's email</span></span>
       <div class="spacer"></div>
       <button class="close-x" data-close="writeModal" aria-label="Close">✕</button>
     </div>
     <div class="sheet-body">
-      <div class="src-ref" id="writeSrc"></div>
+      <div class="write-grid" id="writeGrid">
+        <div class="write-main">
+          <div class="src-ref" id="writeSrc"></div>
 
-      <div class="ref-link" id="refLinkWrap" hidden>
-        <label for="refLink">Reference link (optional)</label>
-        <input id="refLink" type="url" placeholder="Link to the thread, post or source" autocomplete="off" />
+          <div class="ref-link" id="refLinkWrap" hidden>
+            <label for="refLink">Reference link (optional)</label>
+            <input id="refLink" type="url" placeholder="Link to the thread, post or source" autocomplete="off" />
+          </div>
+
+          <button class="pillar-chip" id="pillarChip" aria-haspopup="true" aria-expanded="false"></button>
+          <div class="pillar-menu hidden" id="pillarMenu" role="menu"></div>
+
+          <h1 class="doc-headline" contenteditable="true" id="docHeadline"
+            data-placeholder="Write your headline — not the source's"></h1>
+
+          <div class="doc-body" contenteditable="true" id="docBody" data-placeholder=""></div>
+
+          <button class="rail-toggle" id="railToggle" aria-expanded="false">Sources <span id="railCaret">+</span></button>
+          <div class="rail-body hidden" id="railBody"></div>
+        </div>
+        <!-- full source article pane, injected when a story is attached -->
+        <aside class="srcpane" id="writeSrcPane" hidden></aside>
       </div>
-
-      <button class="pillar-chip" id="pillarChip" aria-haspopup="true" aria-expanded="false"></button>
-      <div class="pillar-menu hidden" id="pillarMenu" role="menu"></div>
-
-      <h1 class="doc-headline" contenteditable="true" id="docHeadline"
-        data-placeholder="Write your headline — not the source's"></h1>
-
-      <div class="doc-body" contenteditable="true" id="docBody" data-placeholder=""></div>
-
-      <button class="rail-toggle" id="railToggle" aria-expanded="false">Sources <span id="railCaret">+</span></button>
-      <div class="rail-body hidden" id="railBody"></div>
     </div>
     <div class="sheet-foot">
       <button class="btn ghost" id="saveDraftBtn">Save draft</button>
@@ -671,13 +713,12 @@ button { font-family: inherit; cursor: pointer; }
 </div>
 
 <!-- =====================================================================
-     AI REVIEW MODAL — pending judgements only. Pair titles +
-     same/different + Accept / Reject (with a one-line reason).
+     AI REVIEW MODAL — DUPLICATE VERDICTS only (dedup queue).
      ===================================================================== -->
 <div class="modal-back" id="aiModal" role="dialog" aria-modal="true" aria-labelledby="aiTitle">
   <div class="sheet">
     <div class="sheet-head">
-      <span class="h" id="aiTitle">AI review</span>
+      <span class="h" id="aiTitle">AI review <span class="ctx">duplicate verdicts</span></span>
       <div class="spacer"></div>
       <button class="close-x" data-close="aiModal" aria-label="Close">✕</button>
     </div>
@@ -687,7 +728,6 @@ button { font-family: inherit; cursor: pointer; }
 
 <!-- =====================================================================
      PREVIEW MODAL — the rendered dark daily-edition email.
-     Section order is the EDITION LAYOUT: 08 lead → 07 → 04 → 05 → 01 → 03.
      ===================================================================== -->
 <div class="modal-back" id="previewModal" role="dialog" aria-modal="true" aria-labelledby="previewTitle">
   <div style="max-width:600px;width:100%">
@@ -712,13 +752,48 @@ button { font-family: inherit; cursor: pointer; }
   </div>
 </div>
 
+<!-- =====================================================================
+     WIZARD — full-screen, 3 steps, step indicator.
+     ===================================================================== -->
+<div class="wiz-back" id="wizModal" role="dialog" aria-modal="true" aria-labelledby="wizTitle">
+  <div class="wiz">
+    <div class="wiz-head">
+      <span class="wiz-title" id="wizTitle"><span class="spark">✦</span> Build today's edition</span>
+      <div class="wiz-progress" id="wizProgress">
+        <span class="wiz-step" data-step="1"><span class="num">1</span> Select</span>
+        <span class="wiz-arrow">→</span>
+        <span class="wiz-step" data-step="2"><span class="num">2</span> Drafts</span>
+        <span class="wiz-arrow">→</span>
+        <span class="wiz-step" data-step="3"><span class="num">3</span> Write</span>
+      </div>
+      <button class="close-x" id="wizClose" aria-label="Close wizard">✕</button>
+    </div>
+    <div class="wiz-body" id="wizBody"></div>
+    <div class="wiz-foot" id="wizFoot"></div>
+  </div>
+</div>
+
+<!-- Confirm dialog for the wizard close (selections exist) -->
+<div class="modal-back" id="confirmModal" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+  <div class="sheet" style="max-width:440px">
+    <div class="sheet-head"><span class="h" id="confirmTitle">Discard this edition build?</span></div>
+    <div class="sheet-body" style="color:var(--muted)">
+      You have selections in progress. Closing the wizard will discard them. Nothing in “In today's email” changes.
+    </div>
+    <div class="sheet-foot">
+      <button class="btn ghost" id="confirmCancel">Keep building</button>
+      <div class="spacer"></div>
+      <button class="btn primary" id="confirmDiscard">Discard &amp; close</button>
+    </div>
+  </div>
+</div>
+
 <script>
 (function () {
   'use strict';
 
   /* ===================================================================
-     PILLARS — the eight sections of the edition. `n` is the number shown
-     in "In today's email"; `glyph` is the small mark in the pillar menu.
+     PILLARS — the eight sections of the edition.
      =================================================================== */
   var PILLARS = [
     { n: '01', name: 'Regulatory Impact',            glyph: '\u00A7' },
@@ -732,9 +807,192 @@ button { font-family: inherit; cursor: pointer; }
   ];
   function pillar(n) { return PILLARS.filter(function (p) { return p.n === n; })[0]; }
   function pillarLabel(n) { var p = pillar(n); return p ? p.n + ' ' + p.name : n; }
+  function pillarName(n) { var p = pillar(n); return p ? p.name : n; }
 
-  /* Faint scaffold hint shown ONLY as placeholder text inside the single
-     body field — never as separate visible blocks. */
+  /* The AI-section order for step 1 = EDITION LEAD ORDER. */
+  var AI_SECTIONS = ['08', '07', '01', '04'];
+  /* The sections the owner writes by hand in step 3. */
+  var MANUAL_SECTIONS = ['02', '03', '05', '06'];
+
+  /* Slot-block guides per pillar (label -> scaffold hint). Used to
+     auto-write the AI draft in step 2 and to guide free mode in step 3. */
+  var SLOT_BLOCKS = {
+    '01': [['Regulator', 'Which body issued it'], ['Applies to', 'Who is affected'], ['What it changes', 'In plain language'], ['Action', 'What the reader should do'], ['Source', 'Attribution to the notice']],
+    '02': [['Today\u2019s topic', 'A real question, not a headline'], ['Why it matters', 'One line of context'], ['Read', 'Link to the forum thread']],
+    '03': [['Pattern', 'Risk name, in plain terms'], ['What it looks like', 'A concrete example'], ['How to spot it', 'Two or three signs'], ['What to do', 'One or two actions']],
+    '04': [['Incident', 'What happened'], ['Entry point', 'How they got in'], ['What the attacker did', 'The mechanics'], ['Final impact', 'The damage'], ['Key lesson', 'What to change']],
+    '05': [['Event', 'Name and city'], ['Date', 'When it runs'], ['Format', 'In-person / virtual / hybrid'], ['For', 'Audience'], ['Register', 'Link']],
+    '06': [['What', 'The opportunity'], ['Who', 'Eligibility'], ['Benefit', 'What it provides'], ['Deadline', 'Apply by'], ['Apply', 'Link']],
+    '07': [['What happened', 'The event'], ['Who', 'Affected party, defamation-safe'], ['Where', 'Location'], ['Source', 'Attribution']],
+    '08': [['Summary', 'What is happening'], ['Impact', 'Whether it affects the reader'], ['Affected', 'Who is exposed'], ['Mitigation', 'What to do'], ['Why it matters', 'Context']]
+  };
+
+  /* ===================================================================
+     STORIES — the wire. One source of truth rendered into the news list
+     AND consumed by the wizard. `srcFull` is the full article body shown
+     in the side-by-side source pane (fix #1).
+     `reco` = the sections the AI recommends, with a confidence + reason.
+     =================================================================== */
+  var STORIES = [
+    {
+      id: 'zenith-phish',
+      title: 'Zenith Bank customers targeted by phishing campaign impersonating alerts',
+      excerpt: 'Fraudulent messages mimicking transaction alerts are pushing customers to credential-harvesting pages. The bank says no breach of its systems has been detected.',
+      search: 'zenith bank phishing alerts customers guardian',
+      source: 'The Guardian Nigeria',
+      ago: '1h ago', sev: 'SEV 4', confidence: 'Confirmed',
+      emblem: 'PHISHING',
+      srcFull: [
+        'Customers of Zenith Bank have reported a wave of fraudulent messages that closely mimic the bank\u2019s own transaction alerts, security researchers say.',
+        'The messages push recipients to a credential-harvesting page that copies the bank\u2019s login screen. Entered details, researchers warn, are relayed in real time to the attacker.',
+        'The bank said it has detected no breach of its own systems and urged customers to ignore unsolicited alerts and to confirm activity only through the official app.',
+        'The campaign is notable for its polish: the spoofed domain, the sender name, and the alert layout all imitate genuine notifications, making the lure hard to spot at a glance.'
+      ],
+      srcLink: 'theguardian.ng — local report',
+      reco: {
+        '08': { confidence: 'High', reason: 'A live, sector-relevant phishing campaign fits the intel slot and is independently corroborated.' },
+        '07': { confidence: 'High', reason: 'Customer-facing and current — a strong breaking item with a sourceable bank statement.' },
+        '04': { confidence: 'Medium', reason: 'A clean phishing case study that maps directly to the Cyber Hygiene attack-scenario template.' }
+      }
+    },
+    {
+      id: 'cbn-capital',
+      title: 'CBN issues new capital directive for banks with cyber-resilience conditions',
+      excerpt: 'A circular raises minimum capital requirements and ties part of the compliance window to demonstrable incident-response capability and board-level cyber oversight.',
+      search: 'cbn capital directive banks cyber resilience businessday',
+      source: 'BusinessDay',
+      ago: '4h ago', sev: 'SEV 4', confidence: 'Confirmed',
+      emblem: 'REGULATORY',
+      srcFull: [
+        'The Central Bank of Nigeria has issued a circular raising minimum capital requirements for commercial banks and, unusually, linking part of the compliance window to cyber-resilience conditions.',
+        'Under the directive, banks must demonstrate incident-response capability and board-level oversight of cyber risk to benefit from the extended transition period.',
+        'Analysts read the move as an attempt to harden operational resilience at the same time as balance sheets, and expect boards to escalate cyber reporting.',
+        'The circular sets out a timeline for compliance returns and names the evidence banks are expected to produce.'
+      ],
+      srcLink: 'businessday.ng — regulatory note',
+      reco: {
+        '01': { confidence: 'High', reason: 'A primary regulator notice with a clear “what it means for you” — the exact Regulatory Impact job.' },
+        '07': { confidence: 'Medium', reason: 'Market-moving and current, but better developed in Regulatory Impact than run as a bare headline.' }
+      }
+    },
+    {
+      id: 'ngcert-ransom',
+      title: 'ngCERT raises alert level after ransomware wave hits health and education sectors',
+      excerpt: 'The agency reports a coordinated spike in double-extortion intrusions, urging affected organisations to isolate backups and report incidents through its portal.',
+      search: 'ngcert ransomware health education alert advisory',
+      source: 'ngCERT Advisory',
+      ago: '3h ago', sev: 'SEV 5', confidence: 'Confirmed',
+      emblem: 'RANSOMWARE',
+      srcFull: [
+        'The National Information Technology Development Agency\u2019s ngCERT has raised its alert level after a wave of ransomware intrusions against Nigerian health and education organisations.',
+        'The agency describes a coordinated spike in double-extortion attacks: victims are encrypted and threatened with the release of exfiltrated data if they do not pay.',
+        'ngCERT urged affected organisations to isolate backups, rotate credentials, and report incidents through its portal so that shared indicators can be circulated.',
+        'It added that several intrusions begin with unpatched internet-facing services and stolen remote-access credentials.'
+      ],
+      srcLink: 'ngcert.gov.ng — advisory',
+      reco: {
+        '08': { confidence: 'High', reason: 'Authoritative threat intel on an active, named campaign with a clear mitigation ask.' },
+        '07': { confidence: 'High', reason: 'A national alert that is both fast and advisory-grade — a natural breaking lead.' }
+      }
+    },
+    {
+      id: 'ncc-isp',
+      title: 'NCC directs ISPs on subscriber data protection ahead of NDPA deadline',
+      excerpt: 'The Commission issued fresh directives requiring internet service providers to audit how subscriber records are stored, shared and retained, with compliance returns due within 30 days.',
+      search: 'ncc isps subscriber data protection ndpa techpoint regulatory',
+      source: 'Techpoint Africa',
+      ago: '2h ago', sev: 'SEV 3', confidence: 'Reported',
+      emblem: 'REGULATORY',
+      srcFull: [
+        'The Nigerian Communications Commission has directed internet service providers to audit how subscriber records are stored, shared and retained, ahead of the data-protection deadline.',
+        'The directive requires providers to file compliance returns within 30 days and to demonstrate lawful bases for processing subscriber data.',
+        'It follows heightened scrutiny of how telecommunications records are handled under the Nigeria Data Protection Act.',
+        'Providers that miss the window face the Commission\u2019s standard enforcement escalation.'
+      ],
+      srcLink: 'techpoint.africa — report',
+      reco: {
+        '01': { confidence: 'High', reason: 'A regulator directive with a concrete compliance deadline — squarely Regulatory Impact.' }
+      }
+    },
+    {
+      id: 'efcc-bec',
+      title: 'EFCC announces arrests over business email compromise ring in Lagos',
+      excerpt: 'Three suspects were taken into custody over an alleged scheme that redirected corporate invoice payments. A charge is not a conviction.',
+      search: 'efcc arrests business email compromise lagos premium times',
+      source: 'Premium Times',
+      ago: '5h ago', sev: 'SEV 3', confidence: 'Reported',
+      emblem: 'ENFORCEMENT',
+      srcFull: [
+        'The Economic and Financial Crimes Commission says it has arrested three suspects over an alleged business email compromise ring operating in Lagos.',
+        'The scheme is alleged to have redirected corporate invoice payments to accounts controlled by the group.',
+        'The Commission said investigations are continuing. A charge is not a conviction.',
+        'Defamation policy: the public tier omits named individuals in arrest items and attributes every allegation to the agency that made it.'
+      ],
+      srcLink: 'premiumtimesng.com — report',
+      reco: {
+        '07': { confidence: 'Medium', reason: 'Newsworthy enforcement action; requires editor sign-off and defamation-safe framing.' }
+      }
+    },
+    {
+      id: 'ndpc-fintech',
+      title: 'NDPC fines a Lagos fintech over customer data breach',
+      excerpt: 'The Commission says the firm failed to notify it within the statutory window after an unauthorised access incident exposed records of loan applicants.',
+      search: 'ndpc fines fintech data breach nairametrics',
+      source: 'Nairametrics',
+      ago: '7h ago', sev: 'SEV 3', confidence: 'Reported',
+      emblem: 'REGULATORY',
+      srcFull: [
+        'The Nigeria Data Protection Commission has fined a Lagos-based fintech over a customer data breach.',
+        'The Commission said the firm failed to notify it within the statutory window after an unauthorised access incident exposed records of loan applicants.',
+        'The penalty signals the Commission\u2019s growing appetite for enforcement under the data-protection regime.',
+        'The firm has not publicly commented on the decision.'
+      ],
+      srcLink: 'nairametrics.com — report',
+      reco: {
+        '01': { confidence: 'Medium', reason: 'Enforcement under data-protection law — a Regulatory Impact item with a compliance lesson.' }
+      }
+    },
+    {
+      id: 'nitda-literacy',
+      title: 'NITDA opens digital literacy programme across 12 states',
+      excerpt: 'A free training roll-out targets artisans, teachers and small-business owners with modules on safe online payments and device hygiene.',
+      search: 'nitda digital literacy programme states training',
+      source: 'NITDA',
+      ago: '6h ago', sev: 'SEV 2', confidence: 'Confirmed',
+      emblem: 'AWARENESS',
+      srcFull: [
+        'NITDA has opened a free digital-literacy programme across 12 states, targeting artisans, teachers and small-business owners.',
+        'The curriculum covers safe online payments, recognising scams, and basic device hygiene.',
+        'The agency said the programme is part of a broader push to raise baseline cyber awareness beyond the enterprise.',
+        'The roll-out starts with a pilot cohort and expands through the quarter.'
+      ],
+      srcLink: 'nitda.gov.ng — programme note',
+      reco: {
+        '03': { confidence: 'Low', reason: 'Warm for Public Education, but awareness content is evergreen — the owner may prefer to frame it themselves.' }
+      }
+    },
+    {
+      id: 'cyber-forum',
+      title: 'Cybersecurity forum to hold annual summit in Abuja',
+      excerpt: 'Organisers confirm a two-day hybrid summit for practitioners, regulators and executives, with sessions on incident response and AI risk.',
+      search: 'cybersecurity forum annual summit abuja event',
+      source: 'Cybersec Nigeria',
+      ago: '8h ago', sev: 'SEV 1', confidence: 'Confirmed',
+      emblem: 'EVENTS',
+      srcFull: [
+        'A cybersecurity forum has confirmed a two-day hybrid summit in Abuja for practitioners, regulators and executives.',
+        'Sessions will cover incident response, national resilience and the security implications of artificial intelligence roll-outs.',
+        'Organisers said registration is open to both in-person and virtual attendees.',
+        'The event is expected to draw delegations from several regulated sectors.'
+      ],
+      srcLink: 'cybersecnigeria.org — event page',
+      reco: {
+        '05': { confidence: 'Low', reason: 'An Events item — better listed directly than run as a draft.' }
+      }
+    }
+  ];
+  function storyById(id) { return STORIES.filter(function (s) { return s.id === id; })[0]; }
+
   var BODY_HINTS = {
     '01': 'Regulator · what was issued · who is affected · what it means for organisations · action to consider',
     '02': 'Discussion prompt · why it matters now · link to the forum thread',
@@ -756,20 +1014,49 @@ button { font-family: inherit; cursor: pointer; }
   function openModal(id) { q('#' + id).classList.add('open'); }
   function closeModal(id) { q('#' + id).classList.remove('open'); }
 
-  /* Close buttons + backdrop click + Escape for all modals. */
+  /* Close buttons + backdrop click + Escape for the ordinary modals.
+     The wizard is excluded: it closes through its own guarded path. */
   qa('[data-close]').forEach(function (b) {
     b.addEventListener('click', function () { closeModal(b.dataset.close); });
   });
   qa('.modal-back').forEach(function (m) {
+    if (m.id === 'wizModal') return;
     m.addEventListener('click', function (e) { if (e.target === m) m.classList.remove('open'); });
   });
   document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape') qa('.modal-back.open').forEach(function (m) { m.classList.remove('open'); });
+    if (e.key === 'Escape') qa('.modal-back.open').forEach(function (m) {
+      if (m.id === 'wizModal') return;
+      m.classList.remove('open');
+    });
   });
 
   /* ===================================================================
-     SEARCH — filters today's news live (single trivial input).
+     TODAY'S NEWS — rendered from STORIES.
      =================================================================== */
+  var newsListEl = q('#newsList');
+  STORIES.forEach(function (s) {
+    var recos = Object.keys(s.reco || {});
+    var art = document.createElement('article');
+    art.className = 'story';
+    art.dataset.storyId = s.id;
+    art.dataset.search = s.search;
+    art.innerHTML =
+      '<div class="story-main">' +
+        '<h3 class="story-title">' + escapeHtml(s.title) + '</h3>' +
+        '<p class="story-excerpt">' + escapeHtml(s.excerpt) + '</p>' +
+        '<div class="story-meta">' +
+          '<span class="src">' + escapeHtml(s.source) + '</span><span class="meta-sep">\u00B7</span>' +
+          '<span>' + escapeHtml(s.ago) + '</span><span class="meta-sep">\u00B7</span>' +
+          '<span>' + escapeHtml(s.sev) + '</span>' +
+        '</div>' +
+      '</div>' +
+      '<div class="story-act">' +
+        '<button class="btn sm use-btn" data-story="' + s.id + '" data-pillars="' + recos.join(',') + '">Use \u2192</button>' +
+        '<button class="btn icon more-btn" aria-label="More options" aria-haspopup="true">\u22EF</button>' +
+      '</div>';
+    newsListEl.appendChild(art);
+  });
+
   var searchEl = q('#newsSearch');
   var stories = qa('#newsList .story');
   function refreshNews() {
@@ -778,8 +1065,6 @@ button { font-family: inherit; cursor: pointer; }
     stories.forEach(function (s) {
       var hay = (s.dataset.search || '') + ' ' + s.textContent.toLowerCase();
       var matches = !term || hay.indexOf(term) !== -1;
-      // A dismissed story ("Not relevant" via the ⋯ menu) stays out of the
-      // list regardless of the search term.
       var show = matches && s.dataset.dismissed !== '1';
       s.classList.toggle('hidden', !show);
       if (show) shown++;
@@ -788,10 +1073,7 @@ button { font-family: inherit; cursor: pointer; }
   }
   searchEl.addEventListener('input', refreshNews);
 
-  /* ===================================================================
-     SEARCH / DISMISS — the ⋯ menu offers only "Not relevant"
-     (a story leaves the list). Dismiss is NOT a visible action.
-     =================================================================== */
+  /* ⋯ menu — "Not relevant" only. */
   var menuBack = null;
   function closeMenu() {
     if (menuBack && menuBack.parentNode) menuBack.parentNode.removeChild(menuBack);
@@ -822,15 +1104,40 @@ button { font-family: inherit; cursor: pointer; }
   document.addEventListener('click', function () { closeMenu(); });
 
   /* ===================================================================
-     WRITE OVERLAY — the single focused document.
-     state.current = { src, sourceHeadline, eligible:[nums], chosen, title, body }
-     A row in "In today's email" is stored as { key, section, title, status, body, src, sourceHeadline }.
+     SHARED SOURCE PANE — the full news, side-by-side (fix #1).
+     =================================================================== */
+  function renderSourcePane(container, story) {
+    if (!story) { container.hidden = true; container.innerHTML = ''; return; }
+    container.hidden = false;
+    container.innerHTML =
+      '<div class="srcpane-head">Source article <span class="sfull">full text</span></div>' +
+      '<div class="srcpane-inner">' +
+        '<h3 class="srcpane-title">' + escapeHtml(story.title) + '</h3>' +
+        '<div class="srcpane-meta">' +
+          '<span>' + escapeHtml(story.source) + '</span><span class="meta-sep">\u00B7</span>' +
+          '<span>' + escapeHtml(story.ago) + '</span><span class="meta-sep">\u00B7</span>' +
+          '<span>' + escapeHtml(story.sev) + '</span><span class="meta-sep">\u00B7</span>' +
+          '<span>' + escapeHtml(story.confidence || '') + '</span>' +
+        '</div>' +
+        '<div class="srcpane-body">' +
+          story.srcFull.map(function (p) { return '<p>' + escapeHtml(p) + '</p>'; }).join('') +
+        '</div>' +
+        '<div class="srcpane-src">Original source: ' + escapeHtml(story.srcLink || story.source) + '</div>' +
+      '</div>';
+  }
+
+  /* ===================================================================
+     WRITE OVERLAY — single focused document, side-by-side source.
+     state.current = { src, sourceHeadline, storyId, eligible:[nums],
+                       chosen, title, body, free, editKey }
+     A row in "In today's email" =
+       { key, section, title, body, status, src, sourceHeadline, eligible,
+         free, refLink }
      =================================================================== */
   var state = { current: null };
   var emailItems = [];
   var emailSeq = 0;
 
-  var writeModal = q('#writeModal');
   var writeTitleEl = q('#writeTitle');
   var srcRefEl = q('#writeSrc');
   var refLinkWrapEl = q('#refLinkWrap');
@@ -841,20 +1148,21 @@ button { font-family: inherit; cursor: pointer; }
   var bodyEl = q('#docBody');
   var railBodyEl = q('#railBody');
   var railCaretEl = q('#railCaret');
+  var writeGridEl = q('#writeGrid');
+  var writeSrcPaneEl = q('#writeSrcPane');
 
   function eligibleNums(raw) {
     return String(raw || '').split(',').map(function (s) { return s.replace(/\D/g, ''); })
       .filter(function (n) { return !!pillar(n); });
   }
+  function syncWriteGrid(story) {
+    writeGridEl.classList.toggle('has-source', !!story);
+    renderSourcePane(writeSrcPaneEl, story || null);
+  }
 
-  /* Render the "Write for <source> — source headline" line (attribution only).
-     Free mode has no source story, so the line is hidden entirely. */
   function renderSrcRef(m) {
     srcRefEl.innerHTML = '';
-    if (m.free) {
-      srcRefEl.hidden = true;
-      return;
-    }
+    if (m.free) { srcRefEl.hidden = true; return; }
     srcRefEl.hidden = false;
     var b = document.createElement('b');
     b.textContent = m.src || 'NovrPulse Editorial';
@@ -865,8 +1173,6 @@ button { font-family: inherit; cursor: pointer; }
     srcRefEl.appendChild(qq);
   }
 
-  /* Overlay header. Story/item mode keeps the standard title; free mode
-     reads "New piece" and names the chosen section once one is picked. */
   function renderWriteTitle(m) {
     writeTitleEl.textContent = '';
     if (!m.free) {
@@ -887,17 +1193,15 @@ button { font-family: inherit; cursor: pointer; }
     }
   }
 
-  /* Render the pillar chip + its dropdown (only eligible pillars enabled).
-     In free mode no pillar is preselected, so the chip invites a pick. */
   function renderPillarChip() {
     var m = state.current;
     if (m.chosen == null) {
-      chipEl.innerHTML = '<span>Select a section</span><span class="caret">▾ pick</span>';
+      chipEl.innerHTML = '<span>Select a section</span><span class="caret">\u25BE pick</span>';
       chipEl.classList.remove('locked');
       return;
     }
     chipEl.innerHTML = '<span>' + escapeHtml(pillarLabel(m.chosen)) + '</span>' +
-      (m.eligible.length > 1 ? '<span class="caret">▾ change</span>' : '<span class="pick">auto</span>');
+      (m.eligible.length > 1 ? '<span class="caret">\u25BE change</span>' : '<span class="pick">auto</span>');
     chipEl.classList.toggle('locked', m.eligible.length <= 1);
   }
   function renderPillarMenu() {
@@ -935,13 +1239,10 @@ button { font-family: inherit; cursor: pointer; }
     chipEl.setAttribute('aria-expanded', 'false');
   });
 
-  /* Render the collapsible sources list for the open write overlay. */
   function renderSources(m) {
     railBodyEl.innerHTML = '';
     var list = (m.sources || []).slice();
-    if (m.src) {
-      list.unshift({ t: m.src, m: (m.sourceHeadline ? '"' + m.sourceHeadline + '"' : 'Source') });
-    }
+    if (m.src) list.unshift({ t: m.src, m: (m.sourceHeadline ? '"' + m.sourceHeadline + '"' : 'Source') });
     if (!list.length) list = [{ t: 'NovrPulse Editorial', m: 'No external source attached' }];
     list.forEach(function (s) {
       var d = document.createElement('div');
@@ -952,31 +1253,35 @@ button { font-family: inherit; cursor: pointer; }
   }
   q('#railToggle').addEventListener('click', function () {
     var hidden = railBodyEl.classList.toggle('hidden');
-    railCaretEl.textContent = hidden ? '+' : '−';
+    railCaretEl.textContent = hidden ? '+' : '\u2212';
     q('#railToggle').setAttribute('aria-expanded', hidden ? 'false' : 'true');
   });
 
-  /* Open the overlay for a "Use ->" story. Pillar auto-picked from the
-     story's best fit = the first eligible pillar in its data-pillars list. */
+  /* Named section preselect — used by step 3 ("Write →" for a section). */
+  var pendingSection = null;
+
   function openWriteFromStory(data) {
+    var story = storyById(data.story);
     var eligible = eligibleNums(data.pillars);
+    var chosen = data.section || eligible[0] || '02';
     state.current = {
-      src: data.src,
-      sourceHeadline: data.headline,
+      storyId: data.story || null,
+      src: data.src || (story ? story.source : ''),
+      sourceHeadline: data.headline || (story ? story.title : ''),
       eligible: eligible,
-      chosen: eligible[0] || '02',
-      title: '',
-      body: ''
+      chosen: chosen,
+      title: '', body: '', free: false
     };
     renderSrcRef(state.current);
     renderWriteTitle(state.current);
     renderPillarChip();
     renderPillarMenu();
     renderSources(state.current);
+    syncWriteGrid(story);
     menuEl.classList.add('hidden');
     headlineEl.textContent = '';
     bodyEl.textContent = '';
-    bodyEl.setAttribute('data-placeholder', BODY_HINTS[state.current.chosen] || '');
+    bodyEl.setAttribute('data-placeholder', BODY_HINTS[chosen] || '');
     hideRefLink();
     railBodyEl.classList.add('hidden');
     railCaretEl.textContent = '+';
@@ -984,24 +1289,22 @@ button { font-family: inherit; cursor: pointer; }
     headlineEl.focus();
   }
 
-  /* Populate the overlay from an existing "In today's email" item (reopen). */
   function openWriteFromItem(item) {
     state.current = {
-      src: item.src,
-      sourceHeadline: item.sourceHeadline,
-      eligible: item.eligible.slice(),
-      chosen: item.section,
-      title: item.title,
-      body: item.body,
+      storyId: item.storyId || null,
+      src: item.src, sourceHeadline: item.sourceHeadline,
+      eligible: item.eligible.slice(), chosen: item.section,
+      title: item.title, body: item.body,
       sources: (item.sources || []).slice(),
-      free: !!item.free,
-      editKey: item.key
+      free: !!item.free, editKey: item.key,
+      wizardSection: item.wizardSection || null
     };
     renderSrcRef(state.current);
     renderWriteTitle(state.current);
     renderPillarChip();
     renderPillarMenu();
     renderSources(state.current);
+    syncWriteGrid(item.storyId ? storyById(item.storyId) : null);
     menuEl.classList.add('hidden');
     headlineEl.textContent = item.title || '';
     bodyEl.textContent = item.body || '';
@@ -1012,28 +1315,30 @@ button { font-family: inherit; cursor: pointer; }
     openModal('writeModal');
   }
 
-  /* Free mode: a manually written piece with no wire story behind it.
-     ALL eight pillars are eligible, no pillar is preselected, there is no
-     source attribution line, and one optional reference link replaces it. */
-  function openWriteNew() {
+  /* Free mode = a piece the owner writes with no attached wire story.
+     All pillars eligible; no pillar preselected (unless one was named);
+     no source pane. Fix #2: a brand-new empty buffer every time. */
+  function openWriteNew(opts) {
+    opts = opts || {};
+    var ownerStory = opts.storyId ? storyById(opts.storyId) : null;
     state.current = {
-      src: '',
-      sourceHeadline: '',
-      eligible: PILLARS.map(function (p) { return p.n; }),
-      chosen: null,
-      title: '',
-      body: '',
-      free: true
+      storyId: opts.storyId || null,
+      src: ownerStory ? ownerStory.source : '',
+      sourceHeadline: ownerStory ? ownerStory.title : '',
+      eligible: opts.eligible && opts.eligible.length ? opts.eligible.slice() : PILLARS.map(function (p) { return p.n; }),
+      chosen: opts.section || null,
+      title: '', body: '', free: true
     };
     renderSrcRef(state.current);
     renderWriteTitle(state.current);
     renderPillarChip();
     renderPillarMenu();
     renderSources(state.current);
+    syncWriteGrid(ownerStory);
     menuEl.classList.add('hidden');
     headlineEl.textContent = '';
     bodyEl.textContent = '';
-    bodyEl.setAttribute('data-placeholder', 'Pick a section to see its slot guide.');
+    bodyEl.setAttribute('data-placeholder', state.current.chosen ? (BODY_HINTS[state.current.chosen] || '') : 'Pick a section to see its slot guide.');
     showRefLink('');
     railBodyEl.classList.add('hidden');
     railCaretEl.textContent = '+';
@@ -1041,21 +1346,17 @@ button { font-family: inherit; cursor: pointer; }
     headlineEl.focus();
   }
 
-  /* Reference link (free mode only): show/hide + value. */
-  function showRefLink(value) {
-    refLinkWrapEl.hidden = false;
-    refLinkEl.value = value || '';
-  }
-  function hideRefLink() {
-    refLinkWrapEl.hidden = true;
-    refLinkEl.value = '';
-  }
+  function showRefLink(value) { refLinkWrapEl.hidden = false; refLinkEl.value = value || ''; }
+  function hideRefLink() { refLinkWrapEl.hidden = true; refLinkEl.value = ''; }
 
-  /* "Add to email ->" files the piece (or updates the row being edited). */
+  /* "Add to email →" files the piece (or updates the row being edited).
+     When the overlay was opened from step 3 of the wizard, the item is
+     tagged (wizardSection) and step 3 is marked handled; step 3 never
+     carries text between sections (fix #2) because every open creates a
+     fresh empty buffer. */
   q('#addEmailBtn').addEventListener('click', function () {
     var m = state.current;
     if (!m) return;
-    // Free mode preselects no pillar: a section must be chosen first.
     if (m.chosen == null) {
       menuEl.classList.remove('hidden');
       chipEl.setAttribute('aria-expanded', 'true');
@@ -1064,44 +1365,40 @@ button { font-family: inherit; cursor: pointer; }
     var title = (headlineEl.textContent || '').trim() || 'Untitled piece';
     var bodyText = (bodyEl.textContent || '').trim();
     var refLink = (refLinkEl.value || '').trim();
+    var filedKey = null;
     if (m.editKey) {
       emailItems.forEach(function (it) {
         if (it.key === m.editKey) {
-          it.section = m.chosen;
-          it.title = title;
-          it.body = bodyText;
+          it.section = m.chosen; it.title = title; it.body = bodyText;
           it.status = 'draft';
           if (m.free) it.refLink = refLink;
+          filedKey = it.key;
         }
       });
     } else {
       emailSeq += 1;
+      filedKey = 'item-' + emailSeq;
       emailItems.push({
-        key: 'item-' + emailSeq,
-        section: m.chosen,
-        title: title,
-        body: bodyText,
-        status: 'draft',
-        src: m.src,
-        sourceHeadline: m.sourceHeadline,
-        eligible: m.eligible.slice(),
-        free: !!m.free,
-        refLink: refLink
+        key: filedKey, section: m.chosen, title: title, body: bodyText,
+        status: 'draft', src: m.src, sourceHeadline: m.sourceHeadline,
+        storyId: m.storyId, eligible: m.eligible.slice(),
+        free: !!m.free, refLink: refLink, wizardSection: m.wizardSection || null
       });
+    }
+    if (m.wizardSection && filedKey) {
+      /* tag the row so reopening from step 3 updates the same piece */
+      emailItems.forEach(function (it) { if (it.key === filedKey) it.wizardSection = m.wizardSection; });
+      if (wizard) { wizard.writes[m.wizardSection] = { done: true, itemKey: filedKey }; }
     }
     renderEmail();
     closeModal('writeModal');
+    if (wizard && q('#wizModal').classList.contains('open')) renderWizard();
   });
 
-  /* "Save draft" keeps the piece out of the email for now (prototype: just
-     closes; the real app persists a draft record). */
-  q('#saveDraftBtn').addEventListener('click', function () {
-    closeModal('writeModal');
-  });
+  q('#saveDraftBtn').addEventListener('click', function () { closeModal('writeModal'); });
 
   /* ===================================================================
-     IN TODAY'S EMAIL — render the drafted pieces. Clicking a row reopens
-     it in the write overlay.
+     IN TODAY'S EMAIL
      =================================================================== */
   var emailListEl = q('#emailList');
   function renderEmail() {
@@ -1112,20 +1409,20 @@ button { font-family: inherit; cursor: pointer; }
       var b = document.createElement('button');
       b.type = 'button';
       b.className = 'emailitem';
+      var ready = item.status === 'ready';
       b.innerHTML =
         '<span class="secnum">' + escapeHtml(item.section) + '</span>' +
-        '<span class="dotS"></span>' +
+        '<span class="dotS' + (ready ? ' ready' : '') + '"></span>' +
         '<span class="etitle">' + escapeHtml(item.title) + '</span>' +
-        '<span class="estatus">' + escapeHtml(item.status) + '</span>';
+        '<span class="estatus' + (ready ? ' ready' : '') + '">' + escapeHtml(item.status) + '</span>';
       b.addEventListener('click', function () { openWriteFromItem(item); });
       emailListEl.appendChild(b);
     });
   }
 
   /* ===================================================================
-     AI REVIEW — pending judgements. Accept clears the pair (and, in the
-     real system, trains the recommender). Reject requires a reason, then
-     clears the pair too. The header button is hidden while n = 0.
+     AI REVIEW — DUPLICATE VERDICTS only (dedup queue). Absorbed out of
+     the wizard; recommendations now live in step 1.
      =================================================================== */
   var aiQueue = [
     { id: 'j1', a: 'CBN capital directive binds compliance to cyber-resilience', b: 'NDPC fines a Lagos fintech over a customer data breach' },
@@ -1141,7 +1438,7 @@ button { font-family: inherit; cursor: pointer; }
     refreshAiCount();
     aiBody.innerHTML = '';
     if (!aiQueue.length) {
-      aiBody.innerHTML = '<div class="ai-done">Nothing to review. The queue is clear.</div>';
+      aiBody.innerHTML = '<div class="ai-done">No duplicate pairs to review. The dedup queue is clear.</div>';
       return;
     }
     aiQueue.forEach(function (item) {
@@ -1165,29 +1462,22 @@ button { font-family: inherit; cursor: pointer; }
       q('[data-act="reject"]', row).addEventListener('click', function () {
         if (row.querySelector('.reason')) return;
         var ta = document.createElement('input');
-        ta.type = 'text';
-        ta.className = 'reason';
+        ta.type = 'text'; ta.className = 'reason';
         ta.placeholder = 'Reason (required) — e.g. different incident, different actor';
         var acts = row.querySelector('.ai-acts');
         var confirmBtn = document.createElement('button');
-        confirmBtn.type = 'button';
-        confirmBtn.className = 'btn primary sm';
-        confirmBtn.textContent = 'Confirm';
+        confirmBtn.type = 'button'; confirmBtn.className = 'btn primary sm'; confirmBtn.textContent = 'Confirm';
         confirmBtn.addEventListener('click', function () {
           if (!ta.value.trim()) { ta.focus(); return; }
           aiQueue = aiQueue.filter(function (x) { return x.id !== item.id; });
           renderAi();
         });
         var cancelBtn = document.createElement('button');
-        cancelBtn.type = 'button';
-        cancelBtn.className = 'btn ghost sm';
-        cancelBtn.textContent = 'Cancel';
+        cancelBtn.type = 'button'; cancelBtn.className = 'btn ghost sm'; cancelBtn.textContent = 'Cancel';
         cancelBtn.addEventListener('click', function () { ta.remove(); confirmBtn.remove(); cancelBtn.remove(); });
         acts.innerHTML = '';
-        acts.appendChild(cancelBtn);
-        acts.appendChild(confirmBtn);
-        row.appendChild(ta);
-        ta.focus();
+        acts.appendChild(cancelBtn); acts.appendChild(confirmBtn);
+        row.appendChild(ta); ta.focus();
       });
     });
   }
@@ -1195,8 +1485,8 @@ button { font-family: inherit; cursor: pointer; }
   renderAi();
 
   /* ===================================================================
-     PREVIEW — the rendered dark daily edition. Section order is the
-     EDITION LAYOUT (08 lead -> 07 -> 04 -> 05 -> 01 -> 03).
+     PREVIEW — the rendered dark daily edition, now driven by the real
+     email items so a completed wizard shows up.
      =================================================================== */
   function emailBlock(label, value) {
     return '<div class="email-block"><div class="bl">' + label + '</div><div class="bv">' + value + '</div></div>';
@@ -1205,64 +1495,45 @@ button { font-family: inherit; cursor: pointer; }
     return '<div class="email-sec"><h2><span class="n">' + n + '</span> ' + name +
       (leadTag ? ' <span style="color:#FBBF24">\u2605 lead</span>' : '') + '</h2>' + inner + '</div>';
   }
+  function previewOrder() {
+    /* Edition layout order; includes the manual sections when populated. */
+    return ['08', '07', '04', '05', '01', '03', '02', '06'];
+  }
+  function itemToEmailHtml(item) {
+    var body = item.body || '';
+    var paras = body.split(/\n{2,}/).map(function (p) { return p.trim(); }).filter(Boolean);
+    var inner = paras.map(function (p) { return '<div class="email-block"><div class="bv">' + escapeHtml(p) + '</div></div>'; }).join('');
+    if (!inner) inner = '<div class="email-empty">(empty)</div>';
+    var head = '<p class="email-lead">' + escapeHtml(item.title || 'Untitled piece') + '</p>';
+    return head + inner;
+  }
   function openPreview() {
-    var lead =
-      '<p class="email-lead">Ransomware crew pivots to mid-size Nigerian fintechs through a fake vendor invoice</p>' +
-      emailBlock('Summary', 'A ransomware group has spent the past three weeks targeting mid-size Nigerian financial-technology firms with a fake-invoice lure, encrypting internal file servers and demanding a crypto ransom.') +
-      emailBlock('Impact', 'Victims lose access to customer records and payment reconciliations for days, and face regulatory scrutiny if personal data was exfiltrated before encryption.') +
-      emailBlock('Affected', 'Mid-size fintechs, their customers, and partner banks that depend on timely settlement data.') +
-      emailBlock('Mitigation', 'Enforce MFA on every remote-access and email account, restrict vendor-payment changes to a second approver, and keep offline backups.') +
-      emailBlock('Why it matters', 'Ransomware here is less about the ransom than about disruption across the wider payment chain.') +
-      emailBlock('Source', '<span class="src">ngCERT advisory — published threat note</span>');
-
-    var breaking =
-      '<div class="email-story"><div class="et">EFCC announces arrests over business email compromise ring</div>' +
-      '<div class="ee">Who: a Lagos-based BEC network · Where: Lagos, Nigeria · Source: EFCC statement</div></div>' +
-      '<div class="email-story"><div class="et">NCC warns of SIM-swap fraud ahead of the holiday period</div>' +
-      '<div class="ee">Who: mobile subscribers · Where: nationwide · Source: NCC advisory</div></div>' +
-      '<div class="email-story"><div class="et">Zenith Bank customers targeted by a phishing campaign</div>' +
-      '<div class="ee">Who: retail banking customers · Where: online · Source: The Guardian Nigeria</div></div>';
-
-    var scenario =
-      '<p class="email-lead">How a "CEO" WhatsApp request emptied a small firm\u2019s account</p>' +
-      emailBlock('Incident', 'An accounts officer paid a fraudulent supplier invoice worth ₦4.2m.') +
-      emailBlock('Entry point', 'A WhatsApp message from a spoofed "CEO" profile asking for an urgent, discreet payment.') +
-      emailBlock('What the attacker did', 'Impersonated a supplier with a lookalike domain, sent revised bank details, then pressured the officer to bypass approval.') +
-      emailBlock('Final impact', 'The transfer was irreversible; funds moved through mule accounts within minutes.') +
-      emailBlock('Key lesson', 'Verify sender details out-of-band, never change bank details on email alone, and always require MFA on payments.') +
-      emailBlock('Source', '<span class="src">Premium Times — local report</span>');
-
-    var events =
-      '<div class="email-group">Nigeria</div>' +
-      '<div class="email-story"><div class="et">Cybersecurity Forum annual summit</div>' +
-      '<div class="ee">Organiser: Cybersec Nigeria · 14–15 Jan 2027 · Transcorp Hilton, Abuja</div></div>' +
-      '<div class="email-group">International</div>' +
-      '<div class="email-story"><div class="et">Global Threat Intelligence Conference</div>' +
-      '<div class="ee">Organiser: GTIC · 3–5 Feb 2027 · Online</div></div>';
-
-    var regulatory =
-      '<div class="email-story"><div class="et">NDPC issues guidance on breach-notification timelines</div>' +
-      '<div class="ee">Regulator: NDPC · What it means for you: personal-data breaches must be reported within the stated window.</div></div>';
-
-    var education =
-      '<div class="email-story"><div class="et">What is two-factor authentication (2FA)?</div>' +
-      '<div class="ee">A second, time-limited code on top of your password, so a stolen password alone cannot get an attacker into your account.</div></div>';
-
-    q('#emailBody').innerHTML = [
-      emailSection('08', 'CyberIntel', lead, true),
-      emailSection('07', 'Breaking News', breaking),
-      emailSection('04', 'Attack Scenario', scenario),
-      emailSection('05', 'Events', events),
-      emailSection('01', 'Regulatory Impact', regulatory),
-      emailSection('03', 'Public Education &amp; Advocacy', education)
-    ].join('');
+    var order = previewOrder();
+    var secs = [];
+    var used = {};
+    order.forEach(function (n) {
+      var items = emailItems.filter(function (it) { return it.section === n; });
+      if (!items.length) return;
+      used[n] = true;
+      secs.push(emailSection(n, escapeHtml(pillarName(n)),
+        items.map(itemToEmailHtml).join(''), n === '08'));
+    });
+    /* any section outside the standard order */
+    emailItems.forEach(function (it) {
+      if (used[it.section]) return;
+      used[it.section] = true;
+      secs.push(emailSection(it.section, escapeHtml(pillarName(it.section)), itemToEmailHtml(it), false));
+    });
+    if (!secs.length) {
+      secs.push('<div class="email-empty">Today\u2019s edition is empty. Build it from the Today screen.</div>');
+    }
+    q('#emailBody').innerHTML = secs.join('');
     openModal('previewModal');
   }
   q('#previewBtn').addEventListener('click', openPreview);
 
   /* ===================================================================
-     SEND — disabled in the prototype. When there is content and the real
-     send ships, this becomes enabled; here it always stays closed.
+     SEND — disabled in the prototype.
      =================================================================== */
   var sendBtn = q('#sendBtn');
   var sendIssueBtn = q('#sendIssueBtn');
@@ -1271,18 +1542,583 @@ button { font-family: inherit; cursor: pointer; }
   });
 
   /* ===================================================================
+     =======================  THE 3-STEP WIZARD  =======================
+     -------------------------------------------------------------------
+     State model (in-memory, session only — consistent with the
+     prototype's no-persistence rule):
+
+       wizard = {
+         step: 1 | 2 | 3,
+         selections: {                    // per AI section -> per story
+           '08': { 'zenith-phish': { status:'approved'|'rejected',
+                                     reason:'', manual:false } },
+           ...
+         },
+         manualPicks: { '02': storyId },  // "pick your own" in step 1
+         drafts: {                        // per (story x section) pair
+           'zenith-phish|08': { headline, blocks:[{label,text}],
+                                status:'draft'|'approved'|'editing',
+                                attempts:[] }   // rejected attempts recorded
+         },
+         writes: { '02' : { done:true } } // step-3 manual pieces recorded
+       }
+
+     KEY INVARIANTS (the owner's fixes):
+       - Every piece is keyed by (storyId, section). A story can be
+         approved for MANY sections; each gets its OWN draft buffer.
+       - Switching between cards/sections never mixes text: keys are
+         independent (fix #2).
+       - Step 2 reads the FULL source side-by-side (fix #1).
+     =================================================================== */
+  var wizard = null;
+
+  function newWizard() {
+    var sel = {};
+    AI_SECTIONS.forEach(function (n) { sel[n] = {}; });
+    return { step: 1, selections: sel, manualPicks: {}, drafts: {}, writes: {} };
+  }
+  function pairKey(storyId, section) { return storyId + '|' + section; }
+
+  /* ---- Draft generation ----------------------------------------------
+     "Auto-written" per pillar from the story. Deterministic template
+     fill (no model, no network): each slot block gets a short sentence
+     drawn from the story so the draft is coherent and editable. */
+  function autoDraft(story, section) {
+    var blocks = SLOT_BLOCKS[section] || [];
+    var t = story.title;
+    var src = story.source;
+    var bySection = {
+      '08': [
+        ['Summary', t + '.'],
+        ['Impact', 'Organisations in the affected sectors should treat this as an active threat: ' + story.excerpt],
+        ['Affected', 'Primarily customers and staff in the sectors named by ' + src + ', with knock-on exposure for partners.'],
+        ['Mitigation', 'Verify unsolicited contact out-of-band, enforce MFA on remote access, and report suspected incidents promptly.'],
+        ['Why it matters', 'The pattern is repeatable; what protects one organisation here generalises to the rest of the sector.']
+      ],
+      '07': [
+        ['What happened', t + '.'],
+        ['Who', 'Affected parties named by ' + src + '. Named individuals in enforcement items are omitted in the public tier — a charge is not a conviction.'],
+        ['Where', 'Nigeria — as reported by ' + src + '.'],
+        ['Source', src + '.']
+      ],
+      '01': [
+        ['Regulator', src + '.'],
+        ['Applies to', 'The regulated institutions named in the notice.'],
+        ['What it changes', story.excerpt],
+        ['Action', 'Review current controls against the notice, document the gap, and assign an owner before the reporting deadline.'],
+        ['Source', src + '.']
+      ],
+      '04': [
+        ['Incident', t + '.'],
+        ['Entry point', 'The initial lure or access vector described in the report.'],
+        ['What the attacker did', story.excerpt],
+        ['Final impact', 'Loss of confidentiality and/or availability for the affected parties.'],
+        ['Key lesson', 'Slow down on unsolicited contact, verify out-of-band, and never act on credential or payment changes sent by message alone.']
+      ]
+    };
+    var filled = bySection[section] || blocks.map(function (b) { return [b[0], b[1] + '.']; });
+    return { headline: t, blocks: filled.map(function (b) { return { label: b[0], text: b[1] }; }) };
+  }
+
+  /* ---- Selection helpers --------------------------------------------- */
+  function selectionFor(section) { return wizard.selections[section] || {}; }
+  function approvedStoriesIn(section) {
+    var sel = selectionFor(section);
+    return Object.keys(sel).filter(function (id) { return sel[id].status === 'approved'; });
+  }
+  function allApprovedPairs() {
+    var pairs = [];
+    AI_SECTIONS.forEach(function (n) {
+      approvedStoriesIn(n).forEach(function (id) { pairs.push({ section: n, storyId: id }); });
+    });
+    return pairs;
+  }
+  function sectionsUsing(storyId) {
+    var out = [];
+    AI_SECTIONS.forEach(function (n) {
+      if (selectionFor(n)[storyId] && selectionFor(n)[storyId].status === 'approved') out.push(n);
+    });
+    return out;
+  }
+  function approvedPairCount() { return allApprovedPairs().length; }
+  function selectionCount() {
+    var c = 0;
+    Object.keys(wizard.selections).forEach(function (n) {
+      c += Object.keys(wizard.selections[n]).length;
+    });
+    c += Object.keys(wizard.manualPicks).length;
+    return c;
+  }
+
+  /* ---- Render scaffolding -------------------------------------------- */
+  var wizBody = q('#wizBody');
+  var wizFoot = q('#wizFoot');
+
+  function setStepIndicator() {
+    qa('.wiz-step').forEach(function (el) {
+      var n = Number(el.dataset.step);
+      el.classList.toggle('active', n === wizard.step);
+      el.classList.toggle('done', n < wizard.step);
+    });
+  }
+  function renderWizard() {
+    setStepIndicator();
+    if (wizard.step === 1) renderStep1();
+    else if (wizard.step === 2) renderStep2();
+    else renderStep3();
+  }
+
+  /* ---- STEP 1 — SELECT ----------------------------------------------- */
+  function renderStep1() {
+    var drafts = allApprovedPairs().length;
+    wizBody.innerHTML =
+      '<div class="wiz-section-title">Step 1 — Select the news</div>' +
+      '<p class="wiz-sub">The AI recommends the news for each function. Approve, reject, or pick your own. One story can serve several functions — approve it in each; every approval becomes its own piece.</p>' +
+      '<div id="selWrap"></div>';
+    var wrap = q('#selWrap');
+    AI_SECTIONS.forEach(function (n) {
+      var recos = STORIES.filter(function (s) { return s.reco && s.reco[n]; });
+      var sel = selectionFor(n);
+      var approved = approvedStoriesIn(n).length;
+      var block = document.createElement('div');
+      block.className = 'sel-block';
+      var head = document.createElement('div');
+      head.className = 'sel-head';
+      head.innerHTML = '<span class="nmo">' + n + '</span><span class="nm">' + escapeHtml(pillarName(n)) + '</span>' +
+        '<span class="tally">' + (approved ? '<b>' + approved + '</b> approved' : 'none approved yet') + '</span>';
+      block.appendChild(head);
+
+      var list = document.createElement('div');
+      list.className = 'reco-list';
+      recos.forEach(function (s) {
+        list.appendChild(recoRow(s, n));
+      });
+      /* a manually picked story for this section, if any */
+      var manualId = wizard.manualPicks[n];
+      if (manualId) {
+        var s2 = storyById(manualId);
+        if (s2) list.appendChild(recoRow(s2, n, true));
+      }
+      block.appendChild(list);
+
+      var pick = document.createElement('div');
+      pick.className = 'pickbtn-row';
+      var pb = document.createElement('button');
+      pb.type = 'button';
+      pb.className = 'btn sm';
+      pb.textContent = '+ Pick your own';
+      pb.addEventListener('click', function () { openPickOwn(n); });
+      pick.appendChild(pb);
+      block.appendChild(pick);
+
+      wrap.appendChild(block);
+    });
+
+    wizFoot.innerHTML =
+      '<span class="hint">' + drafts + ' ' + (drafts === 1 ? 'piece' : 'pieces') + ' selected' +
+        (sectionsWithNothing() ? ' · ' + sectionsWithNothing() + ' section(s) will carry to step 3' : '') + '</span>' +
+      '<div class="spacer"></div>' +
+      '<button class="btn ghost" id="wizSkip">Skip step</button>' +
+      '<button class="btn primary" id="wizContinue">Continue to drafts \u2192</button>';
+    q('#wizSkip').addEventListener('click', function () { wizard.step = 3; renderWizard(); });
+    q('#wizContinue').addEventListener('click', function () { wizard.step = 2; renderWizard(); });
+  }
+
+  function sectionsWithNothing() {
+    /* AI sections that ended with no approval (they surface in step 3). */
+    return AI_SECTIONS.filter(function (n) { return approvedStoriesIn(n).length === 0; }).length;
+  }
+
+  function recoRow(story, section, isManual) {
+    var sel = selectionFor(section)[story.id] || { status: 'pending', reason: '', manual: false };
+    var row = document.createElement('div');
+    row.className = 'reco';
+    var alsoIn = sectionsUsing(story.id).filter(function (x) { return x !== section; });
+    var reco = story.reco[section] || { confidence: '\u2014', reason: 'Chosen by you.' };
+    row.innerHTML =
+      '<div class="reco-main">' +
+        '<div class="reco-top"><span class="spark">' + (isManual ? '\u270E' : '\u2726') + '</span>' +
+          '<h4 class="reco-title">' + escapeHtml(story.title) + '</h4></div>' +
+        '<div class="reco-meta">' +
+          '<span class="src">' + escapeHtml(story.source) + '</span><span class="meta-sep">\u00B7</span>' +
+          '<span>' + escapeHtml(reco.confidence) + ' confidence</span>' +
+          (alsoIn.length ? '<span class="meta-sep">\u00B7</span><span class="chip-flag multi">also in ' + alsoIn.join(', ') + '</span>' : '') +
+          (sel.status === 'approved' ? '<span class="chip-flag approved">\u2713 approved here</span>' : '') +
+          (sel.status === 'rejected' ? '<span class="chip-flag rejected">\u2715 rejected</span>' : '') +
+        '</div>' +
+        '<div class="reco-why">' + escapeHtml(reco.reason) + '</div>' +
+      '</div>' +
+      '<div class="reco-acts">' +
+        '<button class="btn sm good" data-act="approve">\u2713 Use</button>' +
+        '<button class="btn sm bad" data-act="reject">\u2715 Not this</button>' +
+      '</div>';
+    q('[data-act="approve"]', row).addEventListener('click', function () {
+      var cur = selectionFor(section)[story.id];
+      if (cur && cur.status === 'approved') { /* toggle off */ delete wizard.selections[section][story.id]; }
+      else wizard.selections[section][story.id] = { status: 'approved', reason: '', manual: !!isManual };
+      renderWizard();
+    });
+    q('[data-act="reject"]', row).addEventListener('click', function () {
+      wizard.selections[section][story.id] = { status: 'rejected', reason: sel.reason || '', manual: false };
+      renderWizard();
+    });
+    return row;
+  }
+
+  /* "+ Pick your own" — a compact picker over the day's stories. */
+  function openPickOwn(section) {
+    var wrap = q('#selWrap');
+    var existing = q('#pickOwn', wrap);
+    if (existing) existing.remove();
+    var box = document.createElement('div');
+    box.id = 'pickOwn';
+    box.className = 'sel-block';
+    box.style.marginTop = '14px';
+    var head = document.createElement('div');
+    head.className = 'sel-head';
+    head.innerHTML = '<span class="nm">Pick your own for ' + section + ' ' + escapeHtml(pillarName(section)) + '</span>' +
+      '<span class="tally">from today\u2019s stories</span>';
+    box.appendChild(head);
+    var list = document.createElement('div');
+    list.className = 'reco-list';
+    STORIES.forEach(function (s) {
+      var r = document.createElement('div');
+      r.className = 'reco';
+      r.innerHTML =
+        '<div class="reco-main"><div class="reco-top"><h4 class="reco-title">' + escapeHtml(s.title) + '</h4></div>' +
+        '<div class="reco-meta"><span class="src">' + escapeHtml(s.source) + '</span><span class="meta-sep">\u00B7</span><span>' + escapeHtml(s.sev) + '</span>' +
+        (s.reco[section] ? '<span class="meta-sep">\u00B7</span><span class="chip-flag">AI also suggested</span>' : '') +
+        '</div></div>' +
+        '<div class="reco-acts"><button class="btn sm use" data-pick="' + s.id + '">+ Add to ' + section + '</button></div>';
+      q('[data-pick]', r).addEventListener('click', function () {
+        wizard.selections[section][s.id] = { status: 'approved', reason: '', manual: true };
+        wizard.manualPicks[section] = s.id;
+        renderWizard();
+      });
+      list.appendChild(r);
+    });
+    var cancel = document.createElement('div');
+    cancel.className = 'pickbtn-row';
+    var cb = document.createElement('button');
+    cb.type = 'button'; cb.className = 'btn ghost sm'; cb.textContent = 'Cancel';
+    cb.addEventListener('click', function () { box.remove(); });
+    cancel.appendChild(cb);
+    box.appendChild(list);
+    box.appendChild(cancel);
+    wrap.appendChild(box);
+    if (box.scrollIntoView) box.scrollIntoView({ block: 'nearest' });
+  }
+
+  /* ---- STEP 2 — DRAFTS ----------------------------------------------- */
+  function ensureDrafts() {
+    /* Auto-write a draft for every approved pair that has none. */
+    allApprovedPairs().forEach(function (p) {
+      var k = pairKey(p.storyId, p.section);
+      if (!wizard.drafts[k]) {
+        var d = autoDraft(storyById(p.storyId), p.section);
+        wizard.drafts[k] = { headline: d.headline, blocks: d.blocks, status: 'draft', attempts: [] };
+      }
+    });
+  }
+  function renderStep2() {
+    ensureDrafts();
+    var pairs = allApprovedPairs();
+    if (!pairs.length) {
+      wizBody.innerHTML =
+        '<div class="wiz-section-title">Step 2 — Drafts</div>' +
+        '<div class="ai-done">No drafts to show — nothing was approved in step 1. Continue to step 3 to write your sections.</div>';
+      wizFoot.innerHTML = '<div class="spacer"></div><button class="btn ghost" id="wizBack">\u2190 Back</button>' +
+        '<button class="btn primary" id="wizContinue">Continue to write \u2192</button>';
+      q('#wizBack').addEventListener('click', function () { wizard.step = 1; renderWizard(); });
+      q('#wizContinue').addEventListener('click', function () { wizard.step = 3; renderWizard(); });
+      return;
+    }
+    var approvedCount = pairs.filter(function (p) {
+      return wizard.drafts[pairKey(p.storyId, p.section)].status === 'approved';
+    }).length;
+    wizBody.innerHTML =
+      '<div class="wiz-section-title">Step 2 — Drafts</div>' +
+      '<p class="wiz-sub">The AI has drafted each approved pair. Approve, retry (regenerate), or edit. The full source sits beside every draft.</p>' +
+      '<div id="draftWrap"></div>';
+    var wrap = q('#draftWrap');
+    pairs.forEach(function (p) { wrap.appendChild(draftCard(p.storyId, p.section)); });
+
+    wizFoot.innerHTML =
+      '<span class="hint">' + approvedCount + ' of ' + pairs.length + ' drafted &amp; approved</span>' +
+      '<div class="spacer"></div>' +
+      '<button class="btn ghost" id="wizBack">\u2190 Back</button>' +
+      '<button class="btn primary" id="wizContinue">Continue to write \u2192</button>';
+    q('#wizBack').addEventListener('click', function () { wizard.step = 1; renderWizard(); });
+    q('#wizContinue').addEventListener('click', function () { wizard.step = 3; renderWizard(); });
+  }
+
+  function draftCard(storyId, section) {
+    var story = storyById(storyId);
+    var d = wizard.drafts[pairKey(storyId, section)];
+    var card = document.createElement('div');
+    card.className = 'draft-card';
+    card.dataset.pair = pairKey(storyId, section);
+
+    var flagTxt = d.status === 'approved' ? '\u2713 approved' : (d.status === 'editing' ? '\u270E editing' : '\u25CF awaiting review');
+    var head = document.createElement('div');
+    head.className = 'draft-head';
+    head.innerHTML = '<span class="pill">' + section + '</span><span class="nm">' + escapeHtml(pillarName(section)) + '</span>' +
+      '<span class="flag ' + (d.status === 'approved' ? 'approved' : 'pending') + '">' + flagTxt + '</span>';
+    card.appendChild(head);
+
+    var grid = document.createElement('div');
+    grid.className = 'draft-grid';
+    var left = document.createElement('div');
+    left.className = 'draft-left';
+    var right = document.createElement('div');
+    right.className = 'draft-right';
+    var pane = document.createElement('div');
+    pane.className = 'srcpane';
+    renderSourcePane(pane, story);
+    right.appendChild(pane);
+    grid.appendChild(left); grid.appendChild(right);
+    card.appendChild(grid);
+
+    renderDraftLeft(left, storyId, section, d);
+    return card;
+  }
+
+  function renderDraftLeft(left, storyId, section, d) {
+    left.innerHTML =
+      '<div class="draft-caption">AI draft \u00B7 ' + escapeHtml(storyById(storyId).source) + ' \u2192 ' + section + ' ' + escapeHtml(pillarName(section)) + '</div>' +
+      '<h4 class="draft-title" contenteditable="' + (d.status === 'editing') + '" id="dh-' + cssEscapePair(pairKey(storyId, section)) + '">' + escapeHtml(d.headline) + '</h4>' +
+      '<div class="dblocks"></div>' +
+      '<div class="draft-acts dacts"></div>';
+    var blocksEl = q('.dblocks', left);
+    d.blocks.forEach(function (b, i) {
+      var slot = document.createElement('div');
+      slot.className = 'slot' + (d.status === 'editing' ? ' editable' : ' readonly');
+      slot.innerHTML = '<div class="slot-label">' + escapeHtml(b.label) + '</div>' +
+        '<div class="slot-body" contenteditable="' + (d.status === 'editing') + '" data-i="' + i + '">' + escapeHtml(b.text) + '</div>';
+      if (d.status === 'editing') {
+        q('.slot-body', slot).addEventListener('input', function (e) {
+          d.blocks[Number(e.target.dataset.i)].text = e.target.textContent;
+        });
+      }
+      blocksEl.appendChild(slot);
+    });
+    if (d.status === 'editing') {
+      q('#dh-' + cssEscapePair(pairKey(storyId, section)), left).addEventListener('input', function (e) {
+        d.headline = e.target.textContent;
+      });
+    }
+
+    var acts = q('.dacts', left);
+    if (d.status === 'editing') {
+      var done = document.createElement('button');
+      done.type = 'button'; done.className = 'btn primary sm'; done.textContent = '\u2713 Done editing';
+      done.addEventListener('click', function () { d.status = 'draft'; renderWizard(); });
+      acts.appendChild(done);
+      var cancel = document.createElement('button');
+      cancel.type = 'button'; cancel.className = 'btn ghost sm'; cancel.textContent = 'Cancel';
+      acts.appendChild(cancel);
+      /* Cancel restores the last approved/saved snapshot before this edit. */
+      cancel.addEventListener('click', function () {
+        if (d._beforeEdit) { d.headline = d._beforeEdit.headline; d.blocks = d._beforeEdit.blocks; }
+        d.status = 'draft'; renderWizard();
+      });
+    } else {
+      var approve = document.createElement('button');
+      approve.type = 'button'; approve.className = 'btn sm good';
+      approve.textContent = d.status === 'approved' ? '\u2713 Approved' : '\u2713 Approve';
+      approve.disabled = d.status === 'approved';
+      approve.addEventListener('click', function () { d.status = 'approved'; renderWizard(); });
+      var retry = document.createElement('button');
+      retry.type = 'button'; retry.className = 'btn sm';
+      retry.textContent = '\u21BB Retry';
+      retry.addEventListener('click', function () {
+        /* Retry replaces the drafted text and records the old attempt as rejected. */
+        d.attempts.push({ headline: d.headline, blocks: d.blocks.map(function (b) { return { label: b.label, text: b.text }; }), rejectedAt: Date.now() });
+        var nd = autoDraftVariant(storyById(storyId), section, d.attempts.length);
+        d.headline = nd.headline; d.blocks = nd.blocks; d.status = 'draft';
+        renderWizard();
+      });
+      var edit = document.createElement('button');
+      edit.type = 'button'; edit.className = 'btn sm';
+      edit.textContent = '\u270E Edit';
+      edit.addEventListener('click', function () {
+        d._beforeEdit = { headline: d.headline, blocks: d.blocks.map(function (b) { return { label: b.label, text: b.text }; }) };
+        d.status = 'editing'; renderWizard();
+      });
+      acts.appendChild(approve); acts.appendChild(retry); acts.appendChild(edit);
+      var note = document.createElement('span');
+      note.className = 'draft-hint';
+      note.textContent = d.attempts.length ? (d.attempts.length + ' earlier attempt(s) rejected') : '';
+      acts.appendChild(note);
+    }
+  }
+  function cssEscapePair(k) { return k.replace(/[^a-zA-Z0-9_-]/g, '_'); }
+
+  /* A retry produces a visibly different regeneration of the same craft. */
+  function autoDraftVariant(story, section, attempt) {
+    var base = autoDraft(story, section);
+    var prefix = ['', 'Update: ', 'Follow-up: ', 'Revised: '][attempt % 4];
+    base.headline = prefix + base.headline;
+    base.blocks = base.blocks.map(function (b) {
+      return { label: b.label, text: b.text };
+    });
+    if (base.blocks.length) {
+      base.blocks[0].text = base.blocks[0].text + ' (regenerated pass ' + (attempt + 1) + ')';
+    }
+    return base;
+  }
+
+  /* ---- STEP 3 — WRITE ------------------------------------------------ */
+  function renderStep3() {
+    /* Sections to write yourself: the four manual sections always, plus
+       any AI section that ended with no approved draft. */
+    var toWrite = MANUAL_SECTIONS.slice();
+    AI_SECTIONS.forEach(function (n) { if (approvedStoriesIn(n).length === 0) toWrite.push(n); });
+    /* de-duplicate + keep edition-ish order */
+    var seen = {};
+    var order = ['02', '03', '05', '06', '08', '07', '01', '04'];
+    var sectionsToWrite = order.filter(function (n) {
+      if (seen[n]) return false; seen[n] = true; return toWrite.indexOf(n) !== -1;
+    });
+
+    /* manual picks from step 1 */
+    var manualStories = [];
+    Object.keys(wizard.manualPicks).forEach(function (n) {
+      var sid = wizard.manualPicks[n];
+      var sel = selectionFor(n)[sid];
+      if (sel && sel.status === 'approved' && sel.manual) manualStories.push({ section: n, storyId: sid });
+    });
+
+    wizBody.innerHTML =
+      '<div class="wiz-section-title">Step 3 — Write</div>' +
+      '<p class="wiz-sub">These are the pieces you write yourself. Open one to write it side-by-side with its source; each is its own empty buffer.</p>' +
+      '<div id="writeWrap"></div>';
+    var wrap = q('#writeWrap');
+
+    sectionsToWrite.forEach(function (n) {
+      var isAiFallback = AI_SECTIONS.indexOf(n) !== -1;
+      var done = !!wizard.writes[n];
+      var row = document.createElement('div');
+      row.className = 'write-row';
+      row.innerHTML =
+        '<span class="pill">' + n + '</span>' +
+        '<span class="nm">' + escapeHtml(pillarName(n)) + '</span>' +
+        (done ? '<span class="handled">\u2713 in today\u2019s email</span>' :
+          '<span class="tag">' + (isAiFallback ? 'no AI draft — write it' : 'manual section') + '</span>');
+      var btn = document.createElement('button');
+      btn.type = 'button'; btn.className = 'btn sm primary';
+      btn.textContent = done ? 'Edit \u2192' : 'Write \u2192';
+      btn.addEventListener('click', function () { openWizardWrite(n); });
+      row.appendChild(btn);
+      wrap.appendChild(row);
+    });
+
+    if (manualStories.length) {
+      var h = document.createElement('div');
+      h.className = 'wiz-section-title';
+      h.style.marginTop = '22px';
+      h.textContent = 'Stories you picked yourself in step 1';
+      wrap.appendChild(h);
+      var ul = document.createElement('ul');
+      ul.className = 'mini-list';
+      manualStories.forEach(function (m) {
+        var st = storyById(m.storyId);
+        var li = document.createElement('li');
+        li.textContent = m.section + ' ' + pillarName(m.section) + ' — ' + st.title + ' (' + st.source + ')';
+        ul.appendChild(li);
+      });
+      wrap.appendChild(ul);
+    }
+
+    wizFoot.innerHTML =
+      '<span class="hint">' + Object.keys(wizard.writes).length + ' manual piece(s) filed</span>' +
+      '<div class="spacer"></div>' +
+      '<button class="btn ghost" id="wizBack">\u2190 Back</button>' +
+      '<button class="btn primary" id="wizFinish">Finish \u2192 Today</button>';
+    q('#wizBack').addEventListener('click', function () { wizard.step = 2; renderWizard(); });
+    q('#wizFinish').addEventListener('click', function () { finishWizard(); });
+  }
+
+  /* Step 3 write handler — reuses the SAME write overlay as the Today
+     screen, in free mode, with the section named, its slot guide shown,
+     and the source pane populated only when the section carries a story.
+     Fix #2: this opens a FRESH empty buffer every time for a new piece,
+     so nothing written for another section is ever carried over. */
+  function openWizardWrite(section) {
+    var existing = emailItems.filter(function (it) { return it.wizardSection === section; })[0];
+    if (existing) {
+      openWriteFromItem(existing);           /* carries wizardSection already */
+      state.current.wizardSection = section; /* belt-and-braces */
+      return;
+    }
+    /* Does this section carry a story the owner approved/picked? */
+    var carry = approvedStoriesIn(section);
+    var storyId = carry.length ? carry[0] : (wizard.manualPicks[section] || null);
+    openWriteNew({ section: section, eligible: PILLARS.map(function (p) { return p.n; }), storyId: storyId });
+    state.current.wizardSection = section;
+  }
+
+  /* ---- FINISH -------------------------------------------------------- */
+  function finishWizard() {
+    /* 1. Approved AI drafts become email items (one per pair). */
+    allApprovedPairs().forEach(function (p) {
+      var d = wizard.drafts[pairKey(p.storyId, p.section)];
+      if (!d) return;
+      var story = storyById(p.storyId);
+      var existing = emailItems.filter(function (it) {
+        return it.storyId === p.storyId && it.section === p.section && !it.free;
+      })[0];
+      var body = d.blocks.filter(function (b) { return b.text && b.text.trim(); })
+        .map(function (b) { return b.label + ': ' + b.text; }).join('\n\n');
+      if (existing) {
+        existing.title = d.headline; existing.body = body;
+        existing.status = d.status === 'approved' ? 'ready' : 'draft';
+      } else {
+        emailSeq += 1;
+        emailItems.push({
+          key: 'item-' + emailSeq, section: p.section, title: d.headline, body: body,
+          status: d.status === 'approved' ? 'ready' : 'draft',
+          src: story.source, sourceHeadline: story.title, storyId: p.storyId,
+          eligible: [p.section], free: false, refLink: ''
+        });
+      }
+    });
+    renderEmail();
+    wizard = null;
+    closeModal('wizModal');
+  }
+
+  /* ---- Wizard open/close --------------------------------------------- */
+  var wizModalEl = q('#wizModal');
+  function openWizard() {
+    wizard = newWizard();
+    renderWizard();
+    wizModalEl.classList.add('open');
+  }
+  function closeWizard(force) {
+    if (!force && wizard && selectionCount() > 0) { openModal('confirmModal'); return; }
+    wizard = null;
+    closeModal('wizModal');
+  }
+  q('#wizardBtn').addEventListener('click', openWizard);
+  q('#wizClose').addEventListener('click', function () { closeWizard(false); });
+  q('#confirmCancel').addEventListener('click', function () { closeModal('confirmModal'); });
+  q('#confirmDiscard').addEventListener('click', function () { closeModal('confirmModal'); closeWizard(true); });
+
+  /* ===================================================================
      INIT
      =================================================================== */
   qa('#newsList .use-btn').forEach(function (btn) {
     btn.addEventListener('click', function () {
       openWriteFromStory({
+        story: btn.dataset.story,
         pillars: btn.dataset.pillars,
-        src: btn.dataset.src,
-        headline: btn.dataset.headline
+        src: storyById(btn.dataset.story).source,
+        headline: storyById(btn.dataset.story).title
       });
     });
   });
-  q('#writeNewBtn').addEventListener('click', openWriteNew);
+  q('#writeNewBtn').addEventListener('click', function () { openWriteNew({}); });
   refreshNews();
   renderEmail();
 })();
