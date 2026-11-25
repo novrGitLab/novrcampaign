@@ -647,6 +647,33 @@ describe('aiDraft — recommend', () => {
     assert.equal(llm.calls[0].tier, 'bulk', 'recommend uses the bulk tier');
   });
 
+  test('recommend defaults to 4 picks per section when limit is omitted', async () => {
+    const store = makeStore({
+      events: [
+        event({ id: 'e1', title: 'Story one' }),
+        event({ id: 'e2', title: 'Story two' }),
+        event({ id: 'e3', title: 'Story three' }),
+        event({ id: 'e4', title: 'Story four' }),
+        event({ id: 'e5', title: 'Story five' }),
+      ],
+    });
+    const llm = stubLlm({
+      picks: [
+        { index: 1, reason: 'fits a', confidence: 0.9 },
+        { index: 2, reason: 'fits b', confidence: 0.85 },
+        { index: 3, reason: 'fits c', confidence: 0.8 },
+        { index: 4, reason: 'fits d', confidence: 0.75 },
+        { index: 5, reason: 'fits e', confidence: 0.7 },
+      ],
+    });
+
+    const out = await withPrisma(store, () => recommendEvents({ functionIds: [7], llm }));
+
+    // No limit passed → the new default (4) caps the model's 5 picks.
+    assert.equal(out.recommendations[0].judgements.length, 4);
+    assert.equal(store.judgements.length, 4);
+  });
+
   test('events that already have a live publish item are excluded from candidates', async () => {
     const store = makeStore({
       events: [

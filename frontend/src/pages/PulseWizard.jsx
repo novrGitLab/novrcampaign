@@ -115,7 +115,7 @@ function SectionCaption({ functionId }) {
  * reason, with ✓ Use / ✕ Not this. Reject reveals a small inline reason input
  * (encouraged, optional). The confirm hits the real reject endpoint.
  */
-function SuggestionRow({ row, onUse, onReject, busy }) {
+function SuggestionRow({ row, picked, onUse, onReject, busy }) {
   const [rejectOpen, setRejectOpen] = useState(false);
   const [reason, setReason] = useState('');
   const [err, setErr] = useState(null);
@@ -137,7 +137,7 @@ function SuggestionRow({ row, onUse, onReject, busy }) {
   };
 
   return (
-    <div className="rounded-lg border border-border bg-card p-3.5">
+    <div className={'rounded-lg border bg-card p-3.5 ' + (picked ? 'border-primary/50 ring-1 ring-primary/30' : 'border-border')}>
       <div className="flex items-start gap-3">
         <span aria-hidden="true" className="pt-0.5 text-primary"><Sparkles className="h-4 w-4" /></span>
         <div className="min-w-0 flex-1">
@@ -146,21 +146,30 @@ function SuggestionRow({ row, onUse, onReject, busy }) {
           </p>
           <div className="mt-1 flex flex-wrap items-center gap-2 text-[12px] text-muted-foreground">
             {pct !== null && <span className="font-semibold text-muted-foreground">{pct}% confident</span>}
+            {picked && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 font-semibold text-primary">
+                <Check className="h-3 w-3" /> Added — drafting next
+              </span>
+            )}
           </div>
           {row.rationale && <p className="mt-1.5 text-[13px] text-muted-foreground">{row.rationale}</p>}
         </div>
-        <div className="flex shrink-0 items-center gap-1.5">
-          <Button size="sm" onClick={() => onUse(row)} disabled={busy}>
-            <Check className="h-3.5 w-3.5" />
-            Use
-          </Button>
-          {!rejectOpen && (
-            <Button variant="secondary" size="sm" onClick={() => setRejectOpen(true)} disabled={busy}>
-              <X className="h-3.5 w-3.5" />
-              Not this
+        {picked ? (
+          <span className="shrink-0 text-[12px] italic text-muted-foreground">Picked</span>
+        ) : (
+          <div className="flex shrink-0 items-center gap-1.5">
+            <Button size="sm" onClick={() => onUse(row)} disabled={busy}>
+              <Check className="h-3.5 w-3.5" />
+              Use
             </Button>
-          )}
-        </div>
+            {!rejectOpen && (
+              <Button variant="secondary" size="sm" onClick={() => setRejectOpen(true)} disabled={busy}>
+                <X className="h-3.5 w-3.5" />
+                Not this
+              </Button>
+            )}
+          </div>
+        )}
       </div>
 
       {rejectOpen && (
@@ -220,7 +229,7 @@ function PickOwnPanel({ functionId, stories, takenIds, onPick, onCancel }) {
  * "+ Pick your own" affordance. A section with no suggestions shows the picker
  * only (or nothing but an empty note).
  */
-function SectionBlock({ functionId, suggestions, loading, aiError, ...rowProps }) {
+function SectionBlock({ functionId, suggestions, loading, aiError, pickedIds, ...rowProps }) {
   const [pickOpen, setPickOpen] = useState(false);
 
   return (
@@ -234,16 +243,18 @@ function SectionBlock({ functionId, suggestions, loading, aiError, ...rowProps }
 
       {loading ? (
         <div className="space-y-2">{[0, 1].map((i) => <Skeleton key={i} className="h-16 w-full" />)}</div>
-      ) : aiError ? (
+      ) : aiError === 'AI_NOT_CONFIGURED' ? (
         <p className="text-[13px] text-muted-foreground">
           The AI could not suggest a story for this section. Pick your own below.
         </p>
+      ) : aiError ? (
+        <p role="alert" className="text-[13px] text-destructive">{aiError}</p>
       ) : suggestions.length === 0 ? (
         <p className="text-[13px] italic text-muted-foreground">No suggestion for this section today.</p>
       ) : (
         <div className="space-y-2">
           {suggestions.map((row) => (
-            <SuggestionRow key={row.id} row={row} onUse={rowProps.onUse} onReject={rowProps.onReject} busy={rowProps.busy} />
+            <SuggestionRow key={row.id} row={row} picked={pickedIds?.has(row.id) ?? false} onUse={rowProps.onUse} onReject={rowProps.onReject} busy={rowProps.busy} />
           ))}
         </div>
       )}
@@ -635,6 +646,13 @@ export default function PulseWizard() {
     [picks],
   );
 
+  // Judgement ids already picked — drives the "Added — drafting next" state on
+  // the suggestion cards so a successful Use gives immediate visible feedback.
+  const pickedJudgementIds = useMemo(
+    () => new Set(Object.values(picks).map((p) => p.judgementId)),
+    [picks],
+  );
+
   // ── Step 1 actions ──────────────────────────────────────────────────────────
   const onUse = async (functionId, row) => {
     try {
@@ -864,7 +882,8 @@ export default function PulseWizard() {
                   functionId={functionId}
                   suggestions={recommendationsBySection[functionId] ?? []}
                   loading={recommend.isPending && !recommend.data}
-                  aiError={aiNotConfigured || (recError && !recommend.data) ? recError : null}
+                  aiError={aiNotConfigured ? 'AI_NOT_CONFIGURED' : (recError ? (recError.message ?? String(recError)) : null)}
+                  pickedIds={pickedJudgementIds}
                   onUse={(row) => onUse(functionId, row)}
                   onReject={onReject}
                   onPick={(fn, s) => onPickOwn(fn, s)}

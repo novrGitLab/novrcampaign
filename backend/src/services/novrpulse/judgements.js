@@ -293,6 +293,8 @@ export async function listJudgements({ kind, outcome, limit = 50 } = {}) {
     reason: row.reason,
     createdAt: row.createdAt,
     reviewedAt: row.reviewedAt,
+    eventId: row.eventId ?? null,
+    eventTitle: row.event?.title ?? null,
     scenario: row.scenario,
     detail: row.detail,
     subject: {

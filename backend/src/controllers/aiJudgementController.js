@@ -70,6 +70,10 @@ function serializeJudgement(row) {
     reason: row.reason,
     createdAt: toIso(row.createdAt),
     reviewedAt: toIso(row.reviewedAt),
+    // Top-level event link — the wizard builds its picks from these. The
+    // subject block keeps the same fields for older consumers.
+    eventId: row.eventId ?? null,
+    eventTitle: row.eventTitle ?? row.subject?.eventTitle ?? null,
     subject: row.subject ?? {
       eventTitle: null,
       counterpartTitle: null,

@@ -566,7 +566,7 @@ export async function recommendCandidates({ now = new Date() } = {}) {
  * @returns {Promise<{ recommendations: Array<{functionId:number, judgements:object[]}> }>}
  * @throws {AppError} 503 AI_NOT_CONFIGURED
  */
-export async function recommendEvents({ functionIds = NEWS_DERIVED_PILLARS, limit = 2, llm } = {}) {
+export async function recommendEvents({ functionIds = NEWS_DERIVED_PILLARS, limit = 4, llm } = {}) {
   assertConfigured();
 
   const candidates = await recommendCandidates();

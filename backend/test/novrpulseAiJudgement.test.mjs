@@ -295,6 +295,9 @@ describe('judgements service — list', () => {
 
       const j3 = rows.find((r) => r.id === 'j3');
       assert.equal(j3.subject.eventTitle, 'Primary event');
+      // Top-level event link — the wizard builds its picks from these.
+      assert.equal(j3.eventId, 'e1');
+      assert.equal(j3.eventTitle, 'Primary event');
       const j1 = rows.find((r) => r.id === 'j1');
       assert.equal(j1.subject.counterpartTitle, 'Counterpart event');
     });
