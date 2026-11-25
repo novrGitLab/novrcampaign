@@ -5,11 +5,13 @@ import { prisma } from '../src/utils/prisma.js';
 import { previewBriefing } from '../src/controllers/briefingController.js';
 import {
   escapeHtml,
-  selectStories,
+  parseComposedBody,
   buildStory,
-  collapseStoryBlocks,
+  groupStories,
   renderBriefingPreview,
   formatBriefingDate,
+  CURATED_PLACEHOLDER,
+  MAX_NEWS,
 } from '../src/services/novrpulse/briefingPreview.js';
 
 // Controller + renderer tests for the Briefing Desk rendered-email preview.
@@ -17,8 +19,8 @@ import {
 // The renderer is pure, so most of it is exercised directly. The endpoint is
 // exercised through the controller with the shared Prisma singleton's `briefing`
 // delegate shadowed by an in-memory fake (the same pattern used by
-// novrpulseBriefing.test.mjs). This covers story selection/priority, escaping,
-// unused-block collapsing, the empty-briefing path, and the 404.
+// novrpulseBriefing.test.mjs). This covers per-pillar token mapping, escaping,
+// curated placeholders, the empty-briefing path, and the 404.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // In-memory stand-in for the briefing preview query.
@@ -112,6 +114,29 @@ function sectionWithItem({ functionId, body, event }) {
   };
 }
 
+/** A composed fn 8 body with real depth in every slot. */
+const LEAD_BODY = [
+  'Banks face automated threat containment gap',
+  '',
+  'SUMMARY',
+  'About four in five banks cannot contain threats automatically. Only about one in five detect and quarantine in real time. The rest rely on manual intervention. The survey covered hundreds of security professionals.',
+  '',
+  'IMPACT',
+  'Network reliability is a pressure point for most respondents. Disruptions affect customer transactions and digital banking. Operational cost is rising too. Manual compliance work is significant.',
+  '',
+  'AFFECTED',
+  'Banks, insurers, payment firms and fintechs across the sector. Third-party access is weakly segmented at most firms. Nigerian payment operators face the same exposure.',
+  '',
+  'MITIGATION',
+  'Institutions should modernise legacy architecture carefully. Adopt automation where the effort can be reduced. Consider managed network services. Establish dual connectivity for payment routes.',
+  '',
+  'WHY IT MATTERS',
+  'Network maturity varies widely across the surveyed firms. Digital-payment fraud remains a serious risk. Regulators have flagged financial services as exposed. Phishing and ransomware persist.',
+  '',
+  'SOURCE',
+  'According to Punch.',
+].join('\n');
+
 after(() => {
   for (const key of DELEGATES) delete prisma[key];
 });
@@ -133,29 +158,24 @@ describe('briefing preview: escaping', () => {
   test('a script tag in an item body is escaped in the rendered html', () => {
     const sections = [
       {
-        functionId: 1,
-        position: 1,
+        functionId: 8,
+        position: 8,
         items: [
           {
             position: 0,
             publishItem: {
-              functionId: 1,
-              body: '<script>alert(1)</script> headline\nSummary text here.',
+              functionId: 8,
+              body: '<script>alert(1)</script> headline\n\nSUMMARY\nSummary text here.',
               event: null,
             },
           },
         ],
       },
     ];
-    const stories = selectStories(sections);
-    assert.equal(stories.length, 1);
     const html = renderBriefingPreview({
       date: '19 November 2026',
-      issueLine: 'Daily Intelligence Brief',
       preheader: '',
-      intro: '',
-      stories,
-      readMoreUrl: '',
+      groups: groupStories(sections),
       unsubscribeUrl: '{{unsubscribeUrl}}',
     });
     assert.ok(!html.includes('<script>alert(1)</script>'), 'no raw script tag');
@@ -164,46 +184,44 @@ describe('briefing preview: escaping', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 2. Story selection + priority (§07 → §08 → §01 → others).
+// 2. Composed-body parsing + grouping.
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('briefing preview: story selection', () => {
-  test('orders stories by section priority, not input order', () => {
-    const sections = [
-      { functionId: 1, position: 1, items: [{ position: 0, publishItem: { body: 'Regulatory story', event: null } }] },
-      { functionId: 8, position: 8, items: [{ position: 0, publishItem: { body: 'CyberIntel story', event: null } }] },
-      { functionId: 7, position: 7, items: [{ position: 0, publishItem: { body: 'Breaking story', event: null } }] },
-    ];
-    const stories = selectStories(sections);
-    assert.equal(stories.length, 3);
-    assert.equal(stories[0].headline, 'Breaking story');
-    assert.equal(stories[1].headline, 'CyberIntel story');
-    assert.equal(stories[2].headline, 'Regulatory story');
+describe('briefing preview: parsing', () => {
+  test('parseComposedBody splits headline and slots on pillar labels', () => {
+    const { headline, slots } = parseComposedBody(LEAD_BODY, 8);
+    assert.equal(headline, 'Banks face automated threat containment gap');
+    assert.ok(slots.SUMMARY.startsWith('About four in five banks'));
+    assert.equal(slots.IMPACT, 'Network reliability is a pressure point for most respondents. Disruptions affect customer transactions and digital banking. Operational cost is rising too. Manual compliance work is significant.');
+    assert.equal(slots.SOURCE, 'According to Punch.');
   });
 
-  test('takes at most 5 stories and skips empty bodies', () => {
+  test('a multi-line slot paragraph is joined into one value', () => {
+    const body = 'H\n\nSUMMARY\nFirst line\nsecond line\n\nIMPACT\nImpact line';
+    const { slots } = parseComposedBody(body, 8);
+    assert.equal(slots.SUMMARY, 'First line second line');
+    assert.equal(slots.IMPACT, 'Impact line');
+  });
+
+  test('groupStories groups items by functionId, ordered by position', () => {
     const sections = [
-      {
-        functionId: 7,
-        position: 7,
-        items: [
-          { position: 0, publishItem: { body: '   ', event: null } },
-          ...Array.from({ length: 7 }, (_, i) => ({
-            position: i + 1,
-            publishItem: { body: `Story ${i + 1}`, event: null },
-          })),
-        ],
-      },
+      { functionId: 7, items: [
+        { position: 1, publishItem: { functionId: 7, body: 'B\n', event: null } },
+        { position: 0, publishItem: { functionId: 7, body: 'A\n', event: null } },
+      ] },
+      { functionId: 8, items: [{ position: 0, publishItem: { functionId: 8, body: 'Lead\n', event: null } }] },
     ];
-    const stories = selectStories(sections);
-    assert.equal(stories.length, 5);
-    assert.deepEqual(stories.map((s) => s.headline), ['Story 1', 'Story 2', 'Story 3', 'Story 4', 'Story 5']);
+    const groups = groupStories(sections);
+    assert.equal(groups.get(7).length, 2);
+    assert.equal(groups.get(7)[0].headline, 'A');
+    assert.equal(groups.get(8).length, 1);
   });
 
   test('derives source/sourceUrl from the linked event, else NovrPulse', () => {
     const withEvent = buildStory({
       position: 0,
       publishItem: {
+        functionId: 8,
         body: 'Body text',
         event: {
           title: 'Event headline',
@@ -214,10 +232,10 @@ describe('briefing preview: story selection', () => {
       },
     });
     assert.equal(withEvent.headline, 'Event headline');
-    assert.equal(withEvent.source, 'EFCC · 18 November 2026');
+    assert.equal(withEvent.source, 'EFCC');
     assert.equal(withEvent.sourceUrl, 'https://example.gov/notice');
 
-    const manual = buildStory({ position: 0, publishItem: { body: 'Just a body\nwith a line', event: null } });
+    const manual = buildStory({ position: 0, publishItem: { functionId: 8, body: 'Just a body\nwith a line', event: null } });
     assert.equal(manual.source, 'NovrPulse');
     assert.equal(manual.sourceUrl, '');
     assert.equal(manual.headline, 'Just a body');
@@ -225,41 +243,68 @@ describe('briefing preview: story selection', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 3. Unused story blocks collapse (no leftover {{story tokens).
+// 3. Token mapping + no leftover tokens.
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('briefing preview: block collapsing', () => {
-  test('fewer than 5 stories leaves no {{story tokens', () => {
+describe('briefing preview: token mapping', () => {
+  test('fn 8 → the lead block tokens carry the deep slots', () => {
     const sections = [
-      {
-        functionId: 7,
-        position: 7,
-        items: [
-          { position: 0, publishItem: { body: 'Only story', event: null } },
-        ],
-      },
+      { functionId: 8, position: 8, items: [{ position: 0, publishItem: { functionId: 8, body: LEAD_BODY, event: null } }] },
     ];
-    const stories = selectStories(sections);
-    assert.equal(stories.length, 1);
     const html = renderBriefingPreview({
       date: '19 November 2026',
-      issueLine: 'Daily Intelligence Brief',
       preheader: '',
-      intro: '',
-      stories,
-      readMoreUrl: '',
+      groups: groupStories(sections),
       unsubscribeUrl: '{{unsubscribeUrl}}',
     });
-    assert.ok(!html.includes('{{story'), 'no leftover story tokens');
-    assert.ok(html.includes('Only story'), 'the single story is present');
-    // The unused story blocks are gone, so the "Story 2" marker comment is too.
-    assert.ok(!html.includes('<!-- Story 2'));
+    assert.ok(
+      !html.replace(/\{\{unsubscribeUrl\}\}/g, '').includes('{{'),
+      'no raw tokens remain (except the unsubscribe passthrough)',
+    );
+    assert.ok(html.includes('Cybersecurity News of the Day'), 'lead heading present');
+    assert.ok(html.includes('Key Details'), 'key details box present');
+    assert.ok(html.includes('Why It Matters'), 'why it matters callout present');
+    assert.ok(html.includes('About four in five banks'), 'lead summary is present');
+    assert.ok(html.includes('Network reliability is a pressure point'), 'lead impact is present');
+    assert.ok(html.includes('Banks, insurers, payment firms'), 'lead affected is present');
   });
 
-  test('collapseStoryBlocks removes optional blocks and keeps the container balanced', () => {
-    const template = '<div><!-- Story 1 -->A<!-- Story 2 -->B<!-- CTA -->C</div>';
-    const out = collapseStoryBlocks(template, 1);
-    assert.equal(out, '<div><!-- Story 1 -->A<!-- CTA -->C</div>');
+  test('fn 7 → compact news-roll tokens (up to MAX_NEWS)', () => {
+    const items = Array.from({ length: MAX_NEWS + 1 }, (_, i) => ({
+      position: i,
+      publishItem: {
+        functionId: 7,
+        body: `Roll headline ${i + 1}\n\nWHAT HAPPENED\nRoll summary ${i + 1}.`,
+        event: null,
+      },
+    }));
+    const html = renderBriefingPreview({
+      date: '19 November 2026',
+      preheader: '',
+      groups: groupStories([{ functionId: 7, items }]),
+      unsubscribeUrl: '{{unsubscribeUrl}}',
+    });
+    assert.ok(html.includes('More news today'));
+    assert.ok(html.includes('Roll headline 1'));
+    assert.ok(html.includes(`Roll headline ${MAX_NEWS}`));
+    assert.ok(!html.includes(`Roll headline ${MAX_NEWS + 1}`), 'only MAX_NEWS blocks render');
+  });
+
+  test('curated blocks render placeholder text when no content exists', () => {
+    const html = renderBriefingPreview({
+      date: '19 November 2026',
+      preheader: '',
+      groups: new Map(),
+      unsubscribeUrl: '{{unsubscribeUrl}}',
+    });
+    assert.ok(html.includes('Career Spotlight'));
+    assert.ok(html.includes('Tool of the Week'));
+    assert.ok(html.includes('Knowledge Assessment'));
+    assert.ok(html.includes(CURATED_PLACEHOLDER), 'the placeholder text appears');
+    assert.ok(
+      !html.replace(/\{\{unsubscribeUrl\}\}/g, '').includes('{{'),
+      'no raw tokens (except unsubscribe)',
+    );
   });
 });
 
@@ -268,11 +313,11 @@ describe('briefing preview: block collapsing', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('briefing preview: endpoint', () => {
-  test('builds a preview from briefing sections in priority order', async () => {
-    const s1 = sectionWithItem({ functionId: 1, body: 'Regulatory item body', event: null });
+  test('builds a preview mapping each section to its block', async () => {
+    const s8 = sectionWithItem({ functionId: 8, body: LEAD_BODY, event: null });
     const s7 = sectionWithItem({
       functionId: 7,
-      body: 'Breaking item body',
+      body: 'Breaking item body\n\nWHAT HAPPENED\nSomething happened fast.',
       event: {
         title: 'Breaking headline',
         publishedAt: new Date('2026-11-18T00:00:00Z'),
@@ -282,21 +327,23 @@ describe('briefing preview: endpoint', () => {
     });
     const store = makeStore({
       briefings: [{ id: 'br-1', briefingDate: new Date('2026-11-19T00:00:00Z'), title: null }],
-      sections: [s1.section, s7.section],
-      sectionItems: [s1.item, s7.item],
-      publishItems: [s1.publish, s7.publish],
+      sections: [s7.section, s8.section],
+      sectionItems: [s7.item, s8.item],
+      publishItems: [s7.publish, s8.publish],
     });
 
     const { statusCode, payload } = await callPreview({ params: { id: 'br-1' } }, store);
     assert.equal(statusCode, 200);
     assert.equal(typeof payload.html, 'string');
     assert.ok(payload.html.includes('19 November 2026'), 'briefing date is rendered');
-    assert.ok(payload.html.includes('Breaking headline'), 'breaking story is rendered');
-    assert.ok(!payload.html.includes('{{story'), 'no leftover story tokens');
+    assert.ok(payload.html.includes('Breaking headline'), 'the roll story is rendered');
+    assert.ok(payload.html.includes('Banks face automated threat containment gap'), 'the lead is rendered');
     assert.ok(payload.html.includes('{{unsubscribeUrl}}'), 'unsubscribe passthrough survives');
+    // No raw tokens other than the deliberate unsubscribe passthrough.
+    assert.equal(payload.html.replace(/\{\{unsubscribeUrl\}\}/g, '').includes('{{'), false);
   });
 
-  test('an empty briefing renders valid html with 0 stories and no {{ tokens', async () => {
+  test('an empty briefing renders valid html and no {{ tokens (but the passthrough)', async () => {
     const store = makeStore({
       briefings: [{ id: 'br-1', briefingDate: new Date('2026-11-19T00:00:00Z'), title: null }],
       sections: [{ id: 'sec-1', briefingId: 'br-1', functionId: 1, position: 1, state: 'empty', note: null }],
@@ -307,9 +354,8 @@ describe('briefing preview: endpoint', () => {
     const { statusCode, payload } = await callPreview({ params: { id: 'br-1' } }, store);
     assert.equal(statusCode, 200);
     assert.ok(payload.html.includes('<!DOCTYPE html>'));
-    // No story tokens except the deliberate unsubscribe passthrough.
-    assert.ok(!/\{\{story/.test(payload.html));
     assert.ok(!/\{\{date\}\}/.test(payload.html), 'tokens are filled');
+    assert.equal(payload.html.replace(/\{\{unsubscribeUrl\}\}/g, '').includes('{{'), false);
   });
 
   test('unknown briefing is a 404', async () => {

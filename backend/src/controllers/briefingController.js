@@ -3,7 +3,7 @@ import { prisma } from '../utils/prisma.js';
 import { BadRequest, Conflict, Gone, NotFound } from '../utils/AppError.js';
 import { deriveStatus } from './publishController.js';
 import { PILLARS, pillarLabel } from '../services/novrpulse/pillars.js';
-import { renderBriefingPreview, selectStories, formatBriefingDate } from '../services/novrpulse/briefingPreview.js';
+import { renderBriefingPreview, groupStories, formatBriefingDate } from '../services/novrpulse/briefingPreview.js';
 
 /**
  * Daily Briefing Desk.
@@ -234,6 +234,8 @@ const PREVIEW_ITEM_INCLUDE = {
           title: true,
           publishedAt: true,
           canonicalUrl: true,
+          region: true,
+          eventType: true,
           sources: {
             orderBy: { extractedAt: 'asc' },
             take: 1,
@@ -355,13 +357,13 @@ export async function getBriefing(req, res) {
  * Briefing Desk's sandboxed-iframe preview.
  *
  * The view model is built server-side from the briefing's sections (ordered by
- * position) and their ordered items:
- *  - Stories are flattened from the sections in priority order (§07 Breaking →
- *    §08 CyberIntel → §01 Regulatory → others), taking the first five items with
- *    a non-empty body.
- *  - `source`/`sourceUrl` come from the item's linked event (source name + date,
- *    event canonical URL); a manually-authored item with no event is attributed
- *    to 'NovrPulse'.
+ * position) and their ordered items. Items are grouped by their section's
+ * functionId and the renderer maps each group into the matching template block
+ * (§08 → the deep-dive lead, §07 → the news roll, §04 → the case study, §01 →
+ * Regulatory Impact, §05 → Events, §06 → Product Corner, §03 → Glossary).
+ *  - `source`/`sourceUrl` come from the item's linked event (source name, event
+ *    canonical URL); a manually-authored item with no event is attributed to
+ *    'NovrPulse'.
  * `unsubscribeUrl` is left as the literal `{{unsubscribeUrl}}` pass-through that
  * Plunk fills at send time.
  *
@@ -382,15 +384,12 @@ export async function previewBriefing(req, res) {
   });
   if (!briefing) throw NotFound('Briefing not found');
 
-  const stories = selectStories(briefing.sections);
+  const groups = groupStories(briefing.sections);
 
   const html = renderBriefingPreview({
     date: formatBriefingDate(briefing.briefingDate),
-    issueLine: 'Daily Intelligence Brief',
     preheader: briefing.title ?? '',
-    intro: '',
-    stories,
-    readMoreUrl: '',
+    groups,
     unsubscribeUrl: '{{unsubscribeUrl}}',
   });
 

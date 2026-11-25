@@ -8,11 +8,12 @@ import {
   recommendEvents,
   assessOverlap,
   overlapTokens,
+  buildRewriteSystem,
   RECOMMEND_PROMPT_VERSION,
   REWRITE_PROMPT_VERSION,
 } from '../src/services/novrpulse/aiDraft.js';
 import { getPulseEvent, SOURCE_BODY_MAX_CHARS } from '../src/controllers/pulseController.js';
-import { pillarSlots, pillarPurpose, isRewritePillar } from '../src/services/novrpulse/pillarShapes.js';
+import { pillarSlots, pillarPurpose, pillarDepthNote, isRewritePillar } from '../src/services/novrpulse/pillarShapes.js';
 
 // Tests for the NovrPulse AI editorial layer: rewrite + recommend.
 //
@@ -211,6 +212,73 @@ describe('pillarShapes — contracts', () => {
       assert.ok(pillarPurpose(fn).length > 0);
     }
   });
+
+  test('field-form pillars carry no depth note; prose pillars do', () => {
+    assert.equal(pillarDepthNote(5), null, 'fn5 is a field form');
+    assert.equal(pillarDepthNote(6), null, 'fn6 is a field form');
+    for (const fn of [1, 2, 3, 4, 7, 8]) {
+      assert.equal(typeof pillarDepthNote(fn), 'string', `fn${fn}`);
+      assert.ok(pillarDepthNote(fn).length > 0, `fn${fn}`);
+    }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Rewrite prompt DEPTH (owner requirement: drafts must be substantially richer)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('buildRewriteSystem — depth requirements', () => {
+  test('fn 8 (deep-dive lead) requires 4–6 sentence Summary and 3–5 sentence slots', () => {
+    const system = buildRewriteSystem(8);
+    assert.ok(system.includes('Summary as 4\u20136 full sentences'), 'Summary depth instruction present');
+    assert.ok(system.includes('3\u20135 full sentences'), 'assessment depth instruction present');
+    assert.ok(system.includes('DEEP-DIVE LEAD'), 'named as the deep-dive lead');
+    assert.ok(system.includes('ENTIRE source article'), 'tells the model to use the full source');
+    assert.ok(system.includes('never one-liners') || system.includes('never return a one-liner'),
+      'forbids one-liners for the lead');
+  });
+
+  test('fn 4 (case study) requires 2–4 sentences per slot', () => {
+    const system = buildRewriteSystem(4);
+    assert.ok(system.includes('2\u20134 full sentences'));
+    assert.ok(system.includes('case study') || system.includes('Case Study'));
+  });
+
+  test('fn 7 (news roll) instructs SHORT — do not pad', () => {
+    const system = buildRewriteSystem(7);
+    assert.ok(system.includes('SHORT IS CORRECT'));
+    assert.ok(system.includes('do NOT pad'));
+  });
+
+  test('fn 1/2/3 require 2–4 sentences per slot', () => {
+    for (const fn of [1, 2, 3]) {
+      const system = buildRewriteSystem(fn);
+      assert.ok(system.includes('2\u20134 full sentences'), `fn${fn} depth`);
+    }
+  });
+
+  test('buildRewriteSystem stays backwards-compatible with no opts', () => {
+    // Existing callers pass only the functionId; the depth note defaults in.
+    const system = buildRewriteSystem(8);
+    assert.ok(system.includes('Fill EXACTLY these slots'));
+    assert.ok(system.includes('UNTRUSTED'));
+    assert.ok(system.includes('Mitigation'));
+  });
+
+  test('an explicit opts.depthNote overrides the pillar default (tuning hook)', () => {
+    const system = buildRewriteSystem(8, { depthNote: 'CUSTOM_DEPTH_MARKER' });
+    assert.ok(system.includes('CUSTOM_DEPTH_MARKER'));
+  });
+
+  test('the rewrite requests a larger maxTokens budget than the client default', async () => {
+    const store = makeStore({ events: [event()] });
+    const llm = stubLlm({ headline: 'H', slots: { Summary: 'S' } });
+    await withPrisma(store, () =>
+      rewriteEventToDraft({ eventId: 'evt-1', functionId: 8, editorId: 'e', llm }),
+    );
+    assert.equal(typeof llm.calls[0].maxTokens, 'number');
+    assert.ok(llm.calls[0].maxTokens > 1024, 'rewrite asks for more than the terse default');
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -303,6 +371,39 @@ describe('aiDraft — rewrite', () => {
     assert.ok(llm.calls[0].system.includes('Mitigation'));
     assert.ok(llm.calls[0].system.includes('UNTRUSTED'));
     assert.equal(out.judgementId, j.id);
+  });
+
+  test('a LONG, multi-sentence draft composes and persists without truncation', async () => {
+    const store = makeStore({ events: [event()] });
+    const longSlot = 'This is a full sentence describing the source in detail. '
+      + 'A second sentence adds more context and the numbers involved. '
+      + 'A third sentence covers the affected parties. '
+      + 'A fourth sentence sets out the mitigation. '
+      + 'A fifth sentence closes with the assessment.';
+    const llm = stubLlm({
+      headline: 'A long, deep-dive lead headline',
+      slots: {
+        Summary: longSlot,
+        Impact: longSlot,
+        Affected: longSlot,
+        Mitigation: longSlot,
+        'Why it matters': longSlot,
+        Source: 'According to NCC.',
+      },
+    });
+
+    const out = await withPrisma(store, () =>
+      rewriteEventToDraft({ eventId: 'evt-1', functionId: 8, editorId: 'e', llm }),
+    );
+
+    assert.equal(store.items.length, 1, 'the draft persists');
+    const body = store.items[0].body;
+    assert.ok(body.includes('SUMMARY\n'), 'summary block present');
+    assert.ok(body.includes('This is a full sentence describing the source in detail.'));
+    assert.ok(body.includes('A fifth sentence closes with the assessment.'));
+    // The full long slot survives the compose unchanged (no truncation).
+    assert.ok(body.includes(longSlot), 'the entire long slot is preserved');
+    assert.equal(out.item.id, store.items[0].id);
   });
 
   test('the rewrite scenario carries only a bounded excerpt, never the full body (copyright)', async () => {
