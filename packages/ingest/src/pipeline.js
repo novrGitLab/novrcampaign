@@ -1,5 +1,6 @@
 import { fetchText } from './fetch/index.js';
 import { parsers } from './parse/index.js';
+import { enrichItemsFullText, resolveFullTextOptions, createFetchBudget } from './enrich/fullText.js';
 
 /**
  * The generic ingestion pipeline.
@@ -75,6 +76,8 @@ export function evaluateCanary(parsed) {
  * @param {object}   [opts.logger]
  * @param {number}   [opts.maxAgeDays]
  * @param {number}   [opts.now]
+ * @param {object}   [opts.fullTextFetch]  full-text option overrides
+ * @param {{ remaining:number }} [opts.fullTextBudget]  shared per-run fetch budget
  * @returns {Promise<CollectResult>}
  */
 export async function collectSource(source, opts = {}) {
@@ -84,6 +87,8 @@ export async function collectSource(source, opts = {}) {
     logger,
     maxAgeDays = DEFAULT_MAX_AGE_DAYS,
     now = Date.now(),
+    fullTextFetch,
+    fullTextBudget,
   } = opts;
 
   const base = {
@@ -115,6 +120,24 @@ export async function collectSource(source, opts = {}) {
     parsed = parser(body, source);
   } catch (err) {
     return { ...base, ok: false, status: 'parse_failed', error: err.message };
+  }
+
+  // Full-text upgrade for teaser-only feeds. Runs before canary/freshness so the
+  // longer content is what the consumer stores. Any failure keeps the teaser, and
+  // the shared budget bounds how many article fetches a whole run may make.
+  // A standalone collectSource (no injected budget) gets its own budget.
+  const fullTextOptions = resolveFullTextOptions(fullTextFetch);
+  const budget = fullTextBudget ?? createFetchBudget(fullTextOptions.maxPerRun);
+  if (fullTextOptions.enabled && budget.remaining > 0) {
+    parsed = {
+      ...parsed,
+      items: await enrichItemsFullText(parsed.items, {
+        fetch: fetchImpl,
+        logger,
+        options: fullTextOptions,
+        budget,
+      }),
+    };
   }
 
   const totalSeen = parsed.items.length;
@@ -165,6 +188,9 @@ async function mapWithConcurrency(list, limit, fn) {
  * @param {object}   [params.logger]
  * @param {Record<string,Function>} [params.parsers]
  * @param {Function} [params.fetch]
+ * @param {object}   [params.fullTextFetch]  `{ enabled, maxPerRun, minTeaserChars }`
+ *   Full-text upgrade for teaser feeds. Defaults to enabled (see
+ *   {@link DEFAULT_FULL_TEXT}); pass `{ enabled: false }` to disable.
  * @returns {Promise<{ ranAt:string, sources:Array<object>, items:Array<object>, ok:boolean }>}
  */
 export async function runPipeline({
@@ -176,13 +202,27 @@ export async function runPipeline({
   parsers: registry,
   fetch: fetchImpl,
   now,
+  fullTextFetch,
 } = {}) {
   let list = sources ?? [];
   if (sourceIds?.length) list = list.filter((s) => sourceIds.includes(s.id));
 
+  // One budget for the whole run, shared across sources, so `maxPerRun` caps
+  // the total article fetches regardless of how many sources are configured.
+  const fullTextOptions = resolveFullTextOptions(fullTextFetch);
+  const fullTextBudget = createFetchBudget(fullTextOptions.maxPerRun);
+
   const ranAt = new Date().toISOString();
   const results = await mapWithConcurrency(list, concurrency, (s) =>
-    collectSource(s, { logger, parsers: registry, fetch: fetchImpl, maxAgeDays, now }),
+    collectSource(s, {
+      logger,
+      parsers: registry,
+      fetch: fetchImpl,
+      maxAgeDays,
+      now,
+      fullTextFetch: fullTextOptions,
+      fullTextBudget,
+    }),
   );
 
   const health = [];

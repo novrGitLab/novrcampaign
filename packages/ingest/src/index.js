@@ -26,6 +26,13 @@ export {
   DEFAULT_MAX_AGE_DAYS,
 } from './pipeline.js';
 export {
+  resolveFullTextOptions,
+  createFetchBudget,
+  enrichItemFullText,
+  enrichItemsFullText,
+  DEFAULT_FULL_TEXT,
+} from './enrich/fullText.js';
+export {
   SOURCES,
   allSources,
   getSource,

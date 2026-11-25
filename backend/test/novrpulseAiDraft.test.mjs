@@ -371,53 +371,76 @@ describe('aiDraft — rewrite', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('aiDraft — rewrite guards', () => {
-  test('an output reproducing a source run is refused (422) with a refused judgement, no item', async () => {
+  test('a too-close output is SAVED with a warning + a drafted judgement carrying the warning', async () => {
     const store = makeStore({ events: [event()] });
     const llm = stubLlm({
       headline: 'The commission said telecom operators must warn subscribers about rising SIM-swap fraud',
       slots: { Summary: 'S', Impact: 'I', Affected: 'A', Mitigation: 'M', 'Why it matters': 'W', Source: 'Src' },
     });
 
-    await assert.rejects(
-      withPrisma(store, () => rewriteEventToDraft({ eventId: 'evt-1', functionId: 8, editorId: 'e', llm })),
-      (err) => {
-        assert.equal(err.statusCode, 422);
-        assert.equal(err.code, 'DRAFT_TOO_CLOSE_TO_SOURCE');
-        return true;
-      },
+    const out = await withPrisma(store, () =>
+      rewriteEventToDraft({ eventId: 'evt-1', functionId: 8, editorId: 'e', llm }),
     );
 
-    assert.equal(store.items.length, 0, 'no item may be created');
-    assert.equal(store.pivot.length, 0);
-    assert.equal(store.judgements.length, 1, 'a refused judgement is recorded');
+    // OWNER DECISION: the guard WARNS — the draft is still created.
+    assert.deepEqual(out.warnings, ['too_close_to_source']);
+    assert.equal(out.existed, false);
+    assert.equal(store.items.length, 1, 'the too-close draft is still created');
+    assert.equal(store.pivot.length, 1);
+    assert.ok(store.items[0].body.startsWith('The commission said telecom operators must warn subscribers'));
+
+    // The judgement is a normal 'drafted' row whose detail carries the warning.
+    assert.equal(store.judgements.length, 1);
     const j = store.judgements[0];
     assert.equal(j.kind, 'rewrite');
-    assert.equal(j.decision, 'refused_overlap');
-    assert.equal(j.publishItemId, null);
+    assert.equal(j.decision, 'drafted', 'not refused_overlap any more');
+    assert.equal(j.publishItemId, store.items[0].id);
+    assert.equal(j.detail.warning, 'too_close_to_source');
     assert.ok(j.detail.overlapMaxRun >= 8);
   });
 
-  test('fn7 public output naming an individual is refused (422), no item', async () => {
+  test('fn7 public output naming an individual is SAVED with a warning + a drafted judgement', async () => {
     const store = makeStore({ events: [event()] });
     const llm = stubLlm({
       headline: 'EFCC arrests Chinedu Okafor over fintech fraud',
       slots: { 'What happened': 'The EFCC arrested Chinedu Okafor.', 'Who is affected': 'Customers.', Where: 'Lagos.', Source: 'EFCC.' },
     });
 
-    await assert.rejects(
-      withPrisma(store, () => rewriteEventToDraft({ eventId: 'evt-1', functionId: 7, editorId: 'e', llm })),
-      (err) => {
-        assert.equal(err.statusCode, 422);
-        assert.equal(err.code, 'named_individual_in_public_arrest');
-        return true;
-      },
+    const out = await withPrisma(store, () =>
+      rewriteEventToDraft({ eventId: 'evt-1', functionId: 7, editorId: 'e', llm }),
     );
 
-    assert.equal(store.items.length, 0, 'no item may be created when it names an individual');
-    assert.equal(store.judgements.length, 0, 'the defamation refusal does not create a rewrite judgement');
+    // OWNER DECISION: the name guard WARNS — the named draft is still created.
+    assert.deepEqual(out.warnings, ['names_individual']);
+    assert.equal(store.items.length, 1, 'the named draft is still created');
+    assert.ok(store.items[0].body.includes('Chinedu Okafor'), 'the named text stays');
+
+    assert.equal(store.judgements.length, 1, 'a drafted judgement is still recorded');
+    const j = store.judgements[0];
+    assert.equal(j.decision, 'drafted');
+    assert.equal(j.publishItemId, store.items[0].id);
+    assert.equal(j.detail.warning, 'names_individual');
+    assert.ok(Array.isArray(j.detail.leaked) && j.detail.leaked.length > 0);
   });
 
-  test('fn7 output with no person-like token is allowed', async () => {
+  test('a warning does NOT block — the same event can still be added to the email', async () => {
+    const store = makeStore({ events: [event()] });
+    const llm = stubLlm({
+      headline: 'The commission said telecom operators must warn subscribers about rising SIM-swap fraud',
+      slots: { Summary: 'S', Impact: 'I', Affected: 'A', Mitigation: 'M', 'Why it matters': 'W', Source: 'Src' },
+    });
+
+    const out = await withPrisma(store, () =>
+      rewriteEventToDraft({ eventId: 'evt-1', functionId: 8, editorId: 'e', llm }),
+    );
+
+    // The returned item is a real, usable publish item (id + body present).
+    assert.ok(out.item.id);
+    assert.ok(out.item.body.length > 0);
+    assert.equal(out.warnings.length, 1);
+  });
+
+  test('fn7 output with no person-like token is allowed and warns nothing', async () => {
     const store = makeStore({ events: [event()] });
     const llm = stubLlm({
       headline: 'Commission said telecom operators warn customers over fraud',
@@ -428,6 +451,8 @@ describe('aiDraft — rewrite guards', () => {
     );
     assert.equal(out.existed, false);
     assert.equal(store.items.length, 1);
+    assert.deepEqual(out.warnings, []);
+    assert.equal(store.judgements[0].detail.warning, undefined);
   });
 });
 
@@ -509,12 +534,12 @@ describe('aiDraft — rewrite regenerate', () => {
     assert.equal(store.judgements[0].detail.regenerated, undefined);
   });
 
-  test('regenerate=true + overlap guard failure is 422 and leaves the old body UNCHANGED', async () => {
+  test('regenerate=true + overlap guard warning SAVES the fresh body in place and warns', async () => {
     const store = makeStore({ events: [event()] });
     const llm = stubLlm((req) =>
       req.prompt.includes('FRESH draft')
         ? {
-          // Reproduces an 8-word run from SOURCE_BODY → refused.
+          // Reproduces an 8-word run from SOURCE_BODY → warns.
           headline: 'The commission said telecom operators must warn subscribers about rising SIM-swap fraud',
           slots: { Summary: 'S', Impact: 'I', Affected: 'A', Mitigation: 'M', 'Why it matters': 'W', Source: 'Src' },
         }
@@ -526,28 +551,25 @@ describe('aiDraft — rewrite regenerate', () => {
     );
     const beforeBody = store.items[0].body;
 
-    await assert.rejects(
-      withPrisma(store, () =>
-        rewriteEventToDraft({ eventId: 'evt-1', functionId: 8, editorId: 'e', regenerate: true, llm }),
-      ),
-      (err) => {
-        assert.equal(err.statusCode, 422);
-        assert.equal(err.code, 'DRAFT_TOO_CLOSE_TO_SOURCE');
-        return true;
-      },
+    const out = await withPrisma(store, () =>
+      rewriteEventToDraft({ eventId: 'evt-1', functionId: 8, editorId: 'e', regenerate: true, llm }),
     );
 
-    // Item is unchanged and no duplicate was written.
-    assert.equal(store.items.length, 1);
-    assert.equal(store.items[0].body, beforeBody);
-    assert.equal(store.items[0].id, first.item.id);
+    // OWNER DECISION: the regen that trips the guard still SAVES + warns.
+    assert.deepEqual(out.warnings, ['too_close_to_source']);
+    assert.equal(out.regenerated, true);
+    assert.equal(store.items.length, 1, 'no duplicate item');
+    assert.equal(store.items[0].id, first.item.id, 'same item id');
+    assert.notEqual(store.items[0].body, beforeBody, 'the fresh body replaced the old one');
+    assert.ok(store.items[0].body.includes('The commission said telecom operators must warn subscribers'));
 
-    // The failed attempt is appended with { regenerated: true }.
+    // The retry attempt is appended with the warning on a 'drafted' row.
     const rows = store.judgements.filter((j) => j.subjectKey === 'rewrite:evt-1|8');
     assert.equal(rows.length, 2);
-    assert.equal(rows[1].decision, 'refused_overlap');
+    assert.equal(rows[1].decision, 'drafted');
     assert.equal(rows[1].detail.regenerated, true);
-    assert.equal(rows[1].publishItemId, null);
+    assert.equal(rows[1].detail.warning, 'too_close_to_source');
+    assert.equal(rows[1].publishItemId, first.item.id);
   });
 
   test('regenerate=false (default) over a live draft keeps the idempotent behaviour', async () => {
@@ -622,10 +644,14 @@ describe('aiDraft — AI_NOT_CONFIGURED', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 describe('aiDraft — recommend', () => {
   test('records a recommendation judgement per pick with the right kind/subjectKey', async () => {
+    // Distinct, recent timestamps so `publishedAt desc` ordering is
+    // deterministic (both inside the recommend 48h window) — candidates[0]
+    // must be e1 for the pick index 1 in the stub below.
+    const now = Date.now();
     const store = makeStore({
       events: [
-        event({ id: 'e1', title: 'NCC issues SIM-swap advisory' }),
-        event({ id: 'e2', title: 'Bank suffers data breach' }),
+        event({ id: 'e1', title: 'NCC issues SIM-swap advisory', publishedAt: new Date(now) }),
+        event({ id: 'e2', title: 'Bank suffers data breach', publishedAt: new Date(now - 60_000) }),
       ],
     });
     const llm = stubLlm({ picks: [{ index: 1, reason: 'regulator notice fits', confidence: 0.8 }] });

@@ -6,7 +6,7 @@ import { Check, ChevronDown, CloudDownload, RefreshCw, Sparkles, X } from 'lucid
 import { Button, EmptyState, Skeleton } from '../components/ui';
 import { Modal } from '../components/ui/Modal';
 import AiJudgementCard from '../components/pulse/AiJudgementCard';
-import AiDraftNote from '../components/pulse/AiDraftNote';
+import AiDraftNote, { warningMessage } from '../components/pulse/AiDraftNote';
 import { PulsePreviewModal } from '../components/pulse/PulsePanels';
 import PillarIcon from '../components/pulse/PillarIcon';
 import { PILLARS } from '../lib/pillars';
@@ -242,6 +242,10 @@ function WriteOverlay({ open, onClose, mode, source, onSave, busy, error }) {
   const [aiDrafted, setAiDrafted] = useState(false);
   const [aiFunctionId, setAiFunctionId] = useState(null);
   const [aiError, setAiError] = useState(null);
+  // Guard-warning codes returned by the AI draft (owner decision: the draft is
+  // STILL saved and the guard is surfaced as a warning). Carried onto the email
+  // row so the amber chip persists for this session.
+  const [aiWarnings, setAiWarnings] = useState([]);
   const [sourceOpen, setSourceOpen] = useState(false);
 
   const ai = useAiDraft();
@@ -260,6 +264,7 @@ function WriteOverlay({ open, onClose, mode, source, onSave, busy, error }) {
     setAiDrafted(false);
     setAiFunctionId(null);
     setAiError(null);
+    setAiWarnings([]);
     setSourceOpen(false);
   }, [open, resetKey, source]);
 
@@ -286,13 +291,16 @@ function WriteOverlay({ open, onClose, mode, source, onSave, busy, error }) {
       referenceLink: referenceLink.trim(),
       itemId: aiPatchId,
       addToEmail,
+      warning: aiPatchId ? aiWarnings : [],
     });
   };
 
   // AI draft: one click → server rewrites the source into the chosen pillar,
-  // runs its copyright + defamation guards, and returns the created item. We load
-  // its body into the form (headline = line 1, body = the rest) and remember its
-  // id. Errors are surfaced inline (422 too close / 503 not configured).
+  // runs its copyright + defamation guards, and returns the created item. The
+  // guards WARN (owner decision): a tripped guard still saves the draft and the
+  // codes come back in `res.warnings`, which we load into an amber banner. We
+  // load the body into the form (headline = line 1, body = the rest) and
+  // remember its id. Real errors (503 not configured / 400 / 404) still show red.
   const onAiDraft = async () => {
     if (isFree || !eventId || !functionId || ai.isPending) return;
     setAiError(null);
@@ -306,11 +314,10 @@ function WriteOverlay({ open, onClose, mode, source, onSave, busy, error }) {
       setFunctionId(item.functionId ?? functionId);
       setAiItemId(item.id);
       setAiFunctionId(item.functionId ?? functionId);
+      setAiWarnings(Array.isArray(res?.warnings) ? res.warnings : []);
       setAiDrafted(true);
     } catch (err) {
-      if (err?.code === 'DRAFT_TOO_CLOSE_TO_SOURCE') {
-        setAiError('Too close to the source — edit manually or retry.');
-      } else if (err?.status === 503) {
+      if (err?.status === 503) {
         setAiError('AI is not configured.');
       } else {
         setAiError(err?.message || 'Could not draft with AI.');
@@ -340,7 +347,7 @@ function WriteOverlay({ open, onClose, mode, source, onSave, busy, error }) {
           </p>
         )}
 
-        {aiDrafted && <AiDraftNote />}
+        {aiDrafted && <AiDraftNote warnings={aiWarnings} />}
 
         {isFree && !isEdit && (
           <div>
@@ -548,6 +555,12 @@ export default function PulseToday() {
   const [writeError, setWriteError] = useState(null);
   const [actionError, setActionError] = useState(null);
   const [pullNote, setPullNote] = useState(null); // transient Pull latest result
+  // Guard warnings for AI-drafted items, keyed by publish item id, for this
+  // session only. The warning is CARRIED from the draft response through the
+  // write overlay (the item's judgement detail also holds it server-side, but
+  // re-fetching it per row is out of scope for v1). A row reloaded from the
+  // server without this local state loses the chip — an accepted v1 limitation.
+  const [itemWarnings, setItemWarnings] = useState({});
 
   const regionParam = REGION_CHIPS.find((c) => c.key === region)?.param;
   // The cyber chip is a boolean "dedicated cybersecurity sources only" filter.
@@ -627,7 +640,7 @@ export default function PulseToday() {
   // server-side; this preserves the frozen preview/publish contract.
   // "Save draft" runs step (1) only — the piece exists and appears in the email
   // list, but is not yet attached to the briefing.
-  async function addToEmail({ functionId, headline, text, referenceLink, eventId, itemId, addToEmail: withEmail }) {
+  async function addToEmail({ functionId, headline, text, referenceLink, eventId, itemId, addToEmail: withEmail, warning }) {
     setWriteError(null);
     setActionError(null);
     try {
@@ -664,6 +677,12 @@ export default function PulseToday() {
           functionId: item.functionId ?? functionId,
           publishItemId: item.id,
         });
+      }
+
+      // Carry any AI guard warnings onto the item so its email row shows an
+      // amber chip for this session (see `itemWarnings`).
+      if (Array.isArray(warning) && warning.length > 0 && item?.id) {
+        setItemWarnings((prev) => ({ ...prev, [item.id]: warning }));
       }
 
       setWrite(null);
@@ -988,6 +1007,14 @@ export default function PulseToday() {
                       <span className="min-w-0 flex-1 truncate text-[14.5px] font-semibold text-foreground">
                         {parsed.headline || 'Untitled piece'}
                       </span>
+                      {itemWarnings[item.id]?.length > 0 && (
+                        <span
+                          className="shrink-0 rounded-full bg-warning/10 px-2 py-0.5 text-[10.5px] font-bold uppercase tracking-[0.04em] text-warning"
+                          title={itemWarnings[item.id].map(warningMessage).filter(Boolean).join(' · ')}
+                        >
+                          ⚠ Warning
+                        </span>
+                      )}
                       <span className="shrink-0 text-[11px] font-bold uppercase tracking-[0.04em] text-muted-foreground">
                         {item.status}
                       </span>

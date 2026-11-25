@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Check, Sparkles, X } from 'lucide-react';
+import { AlertTriangle, Check, Sparkles, X } from 'lucide-react';
 import { Button, EmptyState, Skeleton } from '../components/ui';
 import PillarIcon from '../components/pulse/PillarIcon';
+import { warningMessage } from '../components/pulse/AiDraftNote';
 import { PILLARS, pillarLabel } from '../lib/pillars';
 import { sectionNumber, parseSeedBody } from '../lib/canvasScaffolds';
+import { parseSlots, composeDraftBody } from '../lib/slots';
 import {
   usePulseEvent, usePulseEvents,
 } from '../hooks/queries';
@@ -291,12 +293,37 @@ function DraftCard({ eventId, functionId, sourceName, onDraftReady, initial }) {
   const ai = useAiDraft();
   const { data: eventDetail, isLoading: sourceLoading } = usePulseEvent(eventId);
 
+  // The parsed slot blocks for the body, or null when the body is free text
+  // (an old piece the AI did not shape) — then we render the single textarea.
+  const [slots, setSlots] = useState(() => parseSlots(initial?.body) ?? null);
   const [headline, setHeadline] = useState(initial?.headline ?? '');
   const [body, setBody] = useState(initial?.body ?? '');
   const [itemId, setItemId] = useState(initial?.itemId ?? null);
   const [status, setStatus] = useState(initial?.status ?? 'draft');
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState(null);
+  // Guard warning codes returned by the AI draft (owner decision: warn, not
+  // block). Captured from every draft/regenerate response and deduped; a card
+  // with warnings requires the two-step "Approve anyway" confirmation.
+  const [warnings, setWarnings] = useState([]);
+  // True once the editor clicked Approve on a warned draft — the button becomes
+  // "⚠ Approve anyway" until it is clicked again or the editor backs out.
+  const [confirmApprove, setConfirmApprove] = useState(false);
+
+  // The exact body the parent records/persists: the composed slot region when
+  // the draft is in slot format, else the raw free-text body unchanged.
+  const composedBody = slots ? composeDraftBody(headline, slots) : body;
+
+  // Union (deduped) the guard warning codes from a draft response into state.
+  const captureWarnings = (res) => {
+    const codes = Array.isArray(res?.warnings) ? res.warnings : [];
+    if (codes.length === 0) {
+      setWarnings([]);
+      setConfirmApprove(false);
+      return;
+    }
+    setWarnings((prev) => [...new Set([...prev, ...codes])]);
+  };
 
   // Create the draft once for a fresh pair. A pair arriving with an itemId/body
   // is already drafted (e.g. the editor came back to step 2) — do not re-call.
@@ -311,11 +338,19 @@ function DraftCard({ eventId, functionId, sourceName, onDraftReady, initial }) {
         const res = await ai.mutateAsync({ eventId, functionId });
         if (cancelled) return;
         const parsed = parseSeedBody(res?.item?.body ?? '');
+        const nextSlots = parseSlots(parsed.paragraph);
         setHeadline(parsed.headline);
         setBody(parsed.paragraph);
+        setSlots(nextSlots);
         setItemId(res?.item?.id ?? null);
         setStatus('draft');
-        onDraftReady(eventId, functionId, { itemId: res?.item?.id ?? null, headline: parsed.headline, body: parsed.paragraph, status: 'draft' });
+        captureWarnings(res);
+        onDraftReady(eventId, functionId, {
+          itemId: res?.item?.id ?? null,
+          headline: parsed.headline,
+          body: nextSlots ? composeDraftBody(parsed.headline, nextSlots) : parsed.paragraph,
+          status: 'draft',
+        });
       } catch (e) {
         if (!cancelled) setError(errorText(e));
       }
@@ -329,29 +364,54 @@ function DraftCard({ eventId, functionId, sourceName, onDraftReady, initial }) {
     try {
       const res = await ai.mutateAsync({ eventId, functionId, regenerate: true });
       const parsed = parseSeedBody(res?.item?.body ?? '');
+      // A fresh draft uses the same labels — re-parse it into slots.
+      const nextSlots = parseSlots(parsed.paragraph);
       setHeadline(parsed.headline);
       setBody(parsed.paragraph);
+      setSlots(nextSlots);
       setItemId(res?.item?.id ?? null);
       setStatus('draft');
-      onDraftReady(eventId, functionId, { itemId: res?.item?.id ?? null, headline: parsed.headline, body: parsed.paragraph, status: 'draft' }, { regenerate: true });
+      // A fresh draft replaces the previous one — reset warnings to this
+      // response's set (not unioned with the superseded draft's).
+      setWarnings(Array.isArray(res?.warnings) ? res.warnings : []);
+      setConfirmApprove(false);
+      onDraftReady(eventId, functionId, {
+        itemId: res?.item?.id ?? null,
+        headline: parsed.headline,
+        body: nextSlots ? composeDraftBody(parsed.headline, nextSlots) : parsed.paragraph,
+        status: 'draft',
+      }, { regenerate: true });
     } catch (e) {
       setError(errorText(e));
     }
   };
 
+  // Update one slot's text (slot format only).
+  const updateSlot = (index, text) => {
+    setSlots((prev) => prev.map((b, i) => (i === index ? { ...b, text } : b)));
+  };
+
   const approve = () => {
-    if (!headline.trim() || !body.trim()) {
+    if (!headline.trim() || !composedBody.trim()) {
       setError('Add a headline and body before approving.');
+      return;
+    }
+    // A warned draft needs a second, explicit confirmation (inline two-step, no
+    // window.confirm): the first click only arms "Approve anyway".
+    if (warnings.length > 0 && !confirmApprove) {
+      setConfirmApprove(true);
       return;
     }
     setStatus('approved');
     setEditing(false);
-    onDraftReady(eventId, functionId, { itemId, headline: headline.trim(), body: body.trim(), status: 'approved' });
+    setConfirmApprove(false);
+    onDraftReady(eventId, functionId, { itemId, headline: headline.trim(), body: composedBody.trim(), status: 'approved' });
   };
 
   const doneEditing = () => {
     setEditing(false);
-    onDraftReady(eventId, functionId, { itemId, headline: headline.trim(), body: body.trim(), status: 'draft' });
+    setConfirmApprove(false);
+    onDraftReady(eventId, functionId, { itemId, headline: headline.trim(), body: composedBody.trim(), status: 'draft' });
   };
 
   return (
@@ -392,15 +452,35 @@ function DraftCard({ eventId, functionId, sourceName, onDraftReady, initial }) {
                 aria-label="Draft headline"
                 className="w-full bg-transparent font-display text-[20px] font-bold leading-[1.2] tracking-[-0.01em] text-foreground focus-visible:outline-none"
               />
-              <textarea
-                value={body}
-                onChange={(e) => setBody(e.target.value)}
-                readOnly={!editing}
-                rows={12}
-                placeholder="Slot text — UPPER_LABEL blocks and their copy."
-                aria-label="Draft body"
-                className="mt-2 w-full resize-y rounded-md bg-secondary/30 p-3 font-display text-[14px] leading-[1.7] text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              />
+              {slots ? (
+                <div className="mt-2">
+                  {slots.map((slot, i) => (
+                    <div key={`${slot.label}-${i}`} className={i > 0 ? 'mt-3 border-t border-border pt-3' : ''}>
+                      <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        {slot.label}
+                      </label>
+                      <textarea
+                        value={slot.text}
+                        onChange={(e) => updateSlot(i, e.target.value)}
+                        readOnly={!editing}
+                        rows={3}
+                        aria-label={`${slot.label} slot text`}
+                        className="mt-1 w-full resize-y rounded-md bg-secondary/30 p-3 font-display text-[14px] leading-[1.7] text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <textarea
+                  value={body}
+                  onChange={(e) => setBody(e.target.value)}
+                  readOnly={!editing}
+                  rows={12}
+                  placeholder="Slot text — UPPER_LABEL blocks and their copy."
+                  aria-label="Draft body"
+                  className="mt-2 w-full resize-y rounded-md bg-secondary/30 p-3 font-display text-[14px] leading-[1.7] text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+              )}
             </>
           )}
 
@@ -411,20 +491,34 @@ function DraftCard({ eventId, functionId, sourceName, onDraftReady, initial }) {
               <Button size="sm" onClick={doneEditing}><Check className="h-3.5 w-3.5" />Done</Button>
             ) : (
               <>
-                <Button size="sm" onClick={approve} disabled={ai.isPending || status === 'approved'}>
-                  <Check className="h-3.5 w-3.5" />
-                  {status === 'approved' ? 'Approved' : 'Approve'}
+                <Button
+                  size="sm"
+                  onClick={approve}
+                  disabled={ai.isPending || status === 'approved'}
+                  className={confirmApprove ? 'bg-warning text-warning-foreground hover:bg-warning/90' : undefined}
+                >
+                  {confirmApprove ? <AlertTriangle className="h-3.5 w-3.5" /> : <Check className="h-3.5 w-3.5" />}
+                  {status === 'approved' ? 'Approved' : confirmApprove ? 'Approve anyway' : 'Approve'}
                 </Button>
                 <Button variant="secondary" size="sm" onClick={retry} disabled={ai.isPending}>
                   <Sparkles className={'h-3.5 w-3.5' + (ai.isPending ? ' animate-pulse' : '')} />
                   {ai.isPending ? 'Retrying…' : 'Retry'}
                 </Button>
-                <Button variant="ghost" size="sm" onClick={() => setEditing(true)} disabled={ai.isPending}>
+                <Button variant="ghost" size="sm" onClick={() => { setConfirmApprove(false); setEditing(true); }} disabled={ai.isPending}>
                   ✎ Edit
                 </Button>
               </>
             )}
           </div>
+
+          {/* Guard-warning note — click Approve to arm "Approve anyway". */}
+          {!editing && warnings.length > 0 && (
+            <div className="mt-2 rounded-md bg-warning/10 px-3 py-2 text-[12px] text-warning">
+              {warnings.map(warningMessage).filter(Boolean).map((m) => (
+                <p key={m}>⚠ {m}.</p>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* RIGHT — the full source, scrollable sticky pane */}

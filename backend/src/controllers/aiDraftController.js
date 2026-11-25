@@ -16,11 +16,15 @@ import { NEWS_DERIVED_PILLARS } from '../services/novrpulse/pillarShapes.js';
 const rewriteSchema = Joi.object({
   eventId: Joi.string().trim().min(1).required(),
   functionId: Joi.number().integer().min(1).max(8).required(),
+  // Retry: ask for a FRESH draft over an existing live draft (updates the same
+  // item in place) instead of returning the existing one. Default false =
+  // today's idempotent behaviour.
+  regenerate: Joi.boolean().default(false),
 });
 
 const recommendSchema = Joi.object({
   functionIds: Joi.array().items(Joi.number().integer().min(1).max(8)).default(NEWS_DERIVED_PILLARS),
-  limit: Joi.number().integer().min(1).max(3).default(2),
+  limit: Joi.number().integer().min(1).max(6).default(4),
 });
 
 /** Assert the request carries an authenticated user. */
@@ -43,21 +47,30 @@ async function validate(schema, value, options = { stripUnknown: true }) {
 /**
  * POST /api/publish/ai-draft — AI-rewrite one event into a pillar draft.
  *
+ * Idempotent by default (a live draft is returned unchanged). With
+ * `regenerate: true` and a live draft present, a FRESH draft is generated and
+ * written over the existing item (same id, no duplicate) with a new ledger row.
+ *
+ * The copyright/defamation guards WARN (owner decision): a tripped guard still
+ * returns 201/200 and lists its code in `warnings` — the draft is saved and the
+ * human decides at approval. The genuine failures remain errors.
+ *
  * @throws {BadRequest} 400 field-form pillar (AI_DRAFT_NOT_AVAILABLE) / Joi.
- * @throws {AppError}   503 AI_NOT_CONFIGURED, 422 copyright/defamation guards.
+ * @throws {AppError}   503 AI_NOT_CONFIGURED.
  */
 export async function aiDraft(req, res) {
   requireEditor(req);
 
-  const { eventId, functionId } = await validate(rewriteSchema, req.body ?? {});
+  const { eventId, functionId, regenerate } = await validate(rewriteSchema, req.body ?? {});
 
-  const { item, judgementId, existed } = await rewriteEventToDraft({
+  const { item, judgementId, existed, regenerated, warnings } = await rewriteEventToDraft({
     eventId,
     functionId,
     editorId: req.user.id,
+    regenerate,
   });
 
-  return res.status(existed ? 200 : 201).json({ item, judgementId, existed });
+  return res.status(existed ? 200 : 201).json({ item, judgementId, existed, regenerated, warnings });
 }
 
 /**

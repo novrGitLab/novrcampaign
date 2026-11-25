@@ -20,11 +20,18 @@ import { findPersonLikeNames, knownNonPersonTokens } from './project/templates/f
  * TRUST BOUNDARY: the publisher's source text is UNTRUSTED DATA. It is handed
  * to the model inside a clearly delimited block with an explicit instruction to
  * ignore any instructions inside it. Two deterministic guards then run on the
- * model's OUTPUT, fail-closed, BEFORE anything is written:
- *   - COPYRIGHT: the generated text must not reproduce a long verbatim run of
+ * model's OUTPUT, BEFORE anything is written:
+ *   - COPYRIGHT: the generated text should not reproduce a long verbatim run of
  *     the source (see `assessOverlap`).
- *   - DEFAMATION: a public F7 draft must not name an individual
+ *   - DEFAMATION: a public F7 draft should not name an individual
  *     (`findPersonLikeNames`, the same lexical detector the F7 gate uses).
+ *
+ * OWNER DECISION: these two guards WARN, they do not block. When tripped, the
+ * draft is STILL created and the guard is surfaced as a `warnings` entry on the
+ * result (and folded into the `drafted` judgement's `detail`) so the human sees
+ * it and decides at approval. The automatic arrest-name REDACTION at render time
+ * remains the last-line legal control and is untouched. The genuine errors —
+ * unknown event (404), no provider (503), field-form pillar (400) — still fail.
  *
  * COPYRIGHT (scenario snapshots): the recorded `scenario` carries only the
  * source TITLE and a bounded EXCERPT (≤500 chars), never the full source body.
@@ -272,23 +279,21 @@ function generatedText(result) {
 }
 
 /**
- * The defamation gate for a public F7 rewrite: run the lexical person-name
- * detector over the generated headline+slots. Fail-closed.
+ * The defamation check for a public F7 rewrite: run the lexical person-name
+ * detector over the generated headline+slots.
  *
- * @throws {AppError} 422 named_individual_in_public_arrest
+ * OWNER DECISION: this WARNS, it does not block. A named individual in a public
+ * F7 draft is returned as a warning (`names_individual` + the leaked tokens) so
+ * the draft is still created and a human reviews it at approval. The
+ * render-time arrest-name REDACTION remains the last-line legal control.
+ *
+ * @returns {{ leaked: string[] }|null} the leaked tokens, or null when nameless
  */
-function assertRewriteNameless(functionId, result) {
-  if (functionId !== 7) return;
+function checkRewriteNames(functionId, result) {
+  if (functionId !== 7) return null;
   const known = knownNonPersonTokens({});
   const personLike = findPersonLikeNames(generatedText(result), known);
-  if (personLike.length > 0) {
-    throw new AppError(
-      422,
-      'A public Breaking News draft must not name an individual',
-      { leaked: personLike, reason: 'person_like_token' },
-      'named_individual_in_public_arrest',
-    );
-  }
+  return personLike.length > 0 ? { leaked: personLike } : null;
 }
 
 /**
@@ -311,10 +316,16 @@ function updateDraftBody(id, body) {
  *
  * IDEMPOTENT by default: a live draft for this (event, function) is returned
  * unchanged. With `regenerate: true` and a live draft present, the LLM is asked
- * for a FRESH draft, the SAME guards run, and on pass the EXISTING item's body
- * is updated in place (no duplicate row) with a NEW `rewrite` judgement appended
- * to the ledger (history preserved). A guard failure still throws 422 and
- * appends a `refused_overlap` judgement with `{ regenerated: true }`.
+ * for a FRESH draft, the SAME guards run, and the EXISTING item's body is
+ * updated in place (no duplicate row) with a NEW `rewrite` judgement appended
+ * to the ledger (history preserved).
+ *
+ * GUARDS WARN (owner decision): a draft that trips the copyright-overlap guard
+ * or the F7 name guard is STILL created; the trip is reported in the returned
+ * `warnings` array and folded into the `drafted` judgement's `detail` as
+ * `{ warning: 'too_close_to_source' | 'names_individual', … }` so the human sees
+ * it at approval. No guard throws a 422 any more. A regen that trips a guard
+ * likewise saves + warns instead of failing.
  *
  * @param {object} input
  * @param {string} input.eventId
@@ -322,10 +333,10 @@ function updateDraftBody(id, body) {
  * @param {string} input.editorId
  * @param {boolean} [input.regenerate=false] ask for a fresh draft over an existing one
  * @param {object} [input.llm]  inject a client (tests)
- * @returns {Promise<{ item:object, judgementId:string|null, existed:boolean, regenerated:boolean, overlap:object|null }>}
+ * @returns {Promise<{ item:object, judgementId:string|null, existed:boolean, regenerated:boolean, overlap:object|null, warnings:string[] }>}
  * @throws {NotFound}            unknown event
  * @throws {BadRequest}          field-form pillar (AI_DRAFT_NOT_AVAILABLE)
- * @throws {AppError}            503 AI_NOT_CONFIGURED / 422 guards
+ * @throws {AppError}            503 AI_NOT_CONFIGURED
  */
 export async function rewriteEventToDraft({ eventId, functionId, editorId, regenerate = false, llm } = {}) {
   if (!isRewritePillar(functionId)) {
@@ -360,7 +371,7 @@ export async function rewriteEventToDraft({ eventId, functionId, editorId, regen
   // deliberately falls through so a fresh draft can replace the existing body.
   const existing = await findLiveItem(eventId, functionId);
   if (existing && !regenerate) {
-    return { item: serializeItem(existing), judgementId: null, existed: true, regenerated: false, overlap: null };
+    return { item: serializeItem(existing), judgementId: null, existed: true, regenerated: false, overlap: null, warnings: [] };
   }
 
   assertConfigured();
@@ -387,43 +398,23 @@ export async function rewriteEventToDraft({ eventId, functionId, editorId, regen
     schema: REWRITE_SCHEMA,
   });
 
-  // COPYRIGHT GUARD (fail-closed). Assessed on the generated text vs the source.
-  const overlap = assessOverlap(generatedText(result), sourceBody);
-  if (overlap.refused) {
-    await recordJudgement({
-      kind: 'rewrite',
-      eventId,
-      subjectKey: `rewrite:${eventId}|${functionId}`,
-      scenario: {
-        functionId,
-        sourceTitle: row.title,
-        sourceExcerpt: sourceBody.slice(0, SCENARIO_EXCERPT_CHARS),
-        slotLabels: pillarSlots(functionId),
-      },
-      decision: 'refused_overlap',
-      confidence: null,
-      rationale: null,
-      model,
-      promptVersion: REWRITE_PROMPT_VERSION,
-      detail: {
-        overlapMaxRun: overlap.maxRun,
-        overlapWindows: overlap.sharedWindows,
-        ...(regenerate ? { regenerated: true } : {}),
-      },
-    });
-    throw new AppError(
-      422,
-      'The draft is too close to the source text — rewrite it in original words',
-      { overlapMaxRun: overlap.maxRun, overlapWindows: overlap.sharedWindows },
-      'DRAFT_TOO_CLOSE_TO_SOURCE',
-    );
-  }
+  const regenerated = Boolean(existing && regenerate);
 
-  // DEFAMATION GATE (fail-closed): public F7 must stay nameless.
-  assertRewriteNameless(functionId, result);
+  // COPYRIGHT GUARD — WARN (owner decision): a too-close draft is still saved;
+  // the trip is reported so the human decides at approval.
+  const overlap = assessOverlap(generatedText(result), sourceBody);
+  const tooClose = overlap.refused;
+
+  // DEFAMATION GUARD — WARN (owner decision): a named individual in a public F7
+  // draft is still saved; the trip is reported for human review.
+  const names = checkRewriteNames(functionId, result);
+
+  const warnings = [
+    ...(tooClose ? ['too_close_to_source'] : []),
+    ...(names ? ['names_individual'] : []),
+  ];
 
   const body = composeRewriteBody(functionId, result);
-  const regenerated = Boolean(existing && regenerate);
   // Regenerate UPDATES the existing row (same id, same templateVersion); a
   // fresh create inserts a new one. Both share the same guards above.
   const item = regenerated
@@ -435,6 +426,16 @@ export async function rewriteEventToDraft({ eventId, functionId, editorId, regen
       editorId,
       templateVersion: 'ai@1.0.0',
     });
+
+  // The warning is folded into the judgement detail — it is part of the
+  // training data, alongside the overlap metrics for every draft.
+  const detail = {
+    overlapMaxRun: overlap.maxRun,
+    overlapWindows: overlap.sharedWindows,
+    ...(regenerated ? { regenerated: true } : {}),
+    ...(tooClose ? { warning: 'too_close_to_source' } : {}),
+    ...(names ? { warning: 'names_individual', leaked: names.leaked } : {}),
+  };
 
   const judgement = await recordJudgement({
     kind: 'rewrite',
@@ -454,11 +455,7 @@ export async function rewriteEventToDraft({ eventId, functionId, editorId, regen
     promptVersion: REWRITE_PROMPT_VERSION,
     // Regenerate appends a NEW judgement row; every prior attempt stays in the
     // append-only ledger. `{ regenerated: true }` marks this attempt as a retry.
-    detail: {
-      overlapMaxRun: overlap.maxRun,
-      overlapWindows: overlap.sharedWindows,
-      ...(regenerated ? { regenerated: true } : {}),
-    },
+    detail,
   });
 
   return {
@@ -467,6 +464,7 @@ export async function rewriteEventToDraft({ eventId, functionId, editorId, regen
     existed: regenerated,
     regenerated,
     overlap,
+    warnings,
   };
 }
 
