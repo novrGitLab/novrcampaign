@@ -1,0 +1,132 @@
+# NovrCampaign — production stack for a single Ubuntu VPS (Contabo).
+#
+# Topology:
+#   Internet :80/:443 -> caddy -> { / -> frontend, /api/* -> backend }
+#   backend            -> db (postgres)  and  -> collector (internal only)
+#   All app containers share the internal `novr` network. Only `caddy` publishes
+#   host ports. `db` and `collector` are NEVER published to the host.
+#
+# Deploy: `./deploy.sh` on the VPS (git pull -> build -> up -> migrate -> health).
+#
+# The collector is a SEPARATE repository (novr-collection). It runs as an
+# optional service behind the `collector` compose profile. Two supported layouts:
+#
+#   A) Cloned side-by-side (default): ../novr-collection next to this repo.
+#        docker compose --profile collector up -d --build
+#   B) Cloned elsewhere: override the build context, e.g.
+#        COLLECTOR_CONTEXT=/opt/novr-collection docker compose --profile collector up -d --build
+#
+# Without the profile, the stack runs WITHOUT the collector: the backend keeps
+# using its in-app collector (NP_COLLECTION_ENABLED=false). See docs/deployment.
+
+services:
+  # ── PostgreSQL (same VPS) ────────────────────────────────────────────────────
+  db:
+    image: postgres:16-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - novr
+    # Not published — reachable only by other services on the internal network.
+
+  # ── Backend API (Node, Prisma) ───────────────────────────────────────────────
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    image: novrcampaign-backend:local
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      # Force the API onto the internal network and disable the backend's
+      # built-in static SPA serving (Caddy serves the SPA; VERCEL=1 is the app's
+      # own flag to skip express.static — no source change required).
+      NODE_ENV: production
+      PORT: "4000"
+      VERCEL: "1"
+      # Collector wiring (only honoured when the collector profile is enabled
+      # AND NP_COLLECTION_ENABLED=true in .env).
+      NP_COLLECTION_BASE_URL: ${NP_COLLECTION_BASE_URL:-http://collector:4100}
+    expose:
+      - "4000"
+    networks:
+      - novr
+
+  # ── Frontend (Vite static, served by nginx) ──────────────────────────────────
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        # Inlined by Vite at build time. Same-origin so Caddy proxies /api.
+        VITE_API_URL: /api
+    image: novrcampaign-frontend:local
+    restart: unless-stopped
+    networks:
+      - novr
+
+  # ── Reverse proxy + automatic TLS (Caddy) ────────────────────────────────────
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - backend
+      - frontend
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # Bare IP: set DOMAIN to the VPS IP and CADDY_SITE_ADDRESS=":80".
+      # Real domain: set DOMAIN to the FQDN and CADDY_SITE_ADDRESS="${DOMAIN}"
+      # for automatic HTTPS (see Caddyfile + runbook).
+      DOMAIN: ${DOMAIN:-localhost}
+      CADDY_SITE_ADDRESS: ${CADDY_SITE_ADDRESS:-:80}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - novr
+
+  # ── Collector (SEPARATE repo; optional `collector` profile) ──────────────────
+  # Internal only — never published to the host. Reached exclusively by the
+  # backend over the HMAC API at http://collector:4100.
+  collector:
+    profiles: ["collector"]
+    build:
+      context: ${COLLECTOR_CONTEXT:-../novr-collection}
+    image: novr-collection:local
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: "4100"
+    expose:
+      - "4100"
+    networks:
+      - novr
+
+networks:
+  novr:
+    driver: bridge
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:
