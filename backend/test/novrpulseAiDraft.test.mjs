@@ -189,6 +189,9 @@ function event(over = {}) {
     ],
     publishItems: [],
     entities: [],
+    // Cyber by default — the recommender now draws only from
+    // cybersecurity-classified events (owner feedback 2026-11-26).
+    isCybersecurity: true,
     ...over,
   };
 }
@@ -901,6 +904,25 @@ describe('aiDraft — recommend', () => {
     assert.equal(j.rationale, 'regulator notice fits');
     assert.equal(j.promptVersion, RECOMMEND_PROMPT_VERSION);
     assert.equal(llm.calls[0].tier, 'bulk', 'recommend uses the bulk tier');
+  });
+
+  test('recommend draws ONLY from cybersecurity-classified events', async () => {
+    const now = Date.now();
+    const store = makeStore({
+      events: [
+        event({ id: 'cyber', title: 'Ransomware hits a Lagos hospital', publishedAt: new Date(now) }),
+        // Non-cyber (e.g. a fintech funding round) must never be a candidate.
+        event({ id: 'noncyber', title: 'Fintech raises $20m Series A', publishedAt: new Date(now - 60_000), isCybersecurity: false }),
+        event({ id: 'unclass', title: 'Something unclassified', publishedAt: new Date(now - 120_000), isCybersecurity: null }),
+      ],
+    });
+    const llm = stubLlm({ picks: [{ index: 1, reason: 'real cyber incident', confidence: 0.9 }] });
+
+    const out = await withPrisma(store, () => recommendEvents({ functionIds: [7], limit: 4, llm }));
+    const ids = out.recommendations[0].judgements.map((j) => j.eventId);
+
+    assert.deepEqual(ids, ['cyber'], 'only the cybersecurity event is a candidate');
+    assert.equal(store.judgements.length, 1);
   });
 
   test('recommend defaults to 4 picks per section when limit is omitted', async () => {

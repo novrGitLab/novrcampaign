@@ -635,7 +635,13 @@ export async function recommendCandidates({ now = new Date() } = {}) {
   // Only drafts created in the last 24h are "in play" for the current edition.
   const inPlayCutoff = new Date(now.getTime() - 24 * 3_600_000);
   const events = await prisma.npEvent.findMany({
-    where: { publishedAt: { gte: since } },
+    where: {
+      publishedAt: { gte: since },
+      // Recommend ONLY from cybersecurity-classified news (owner feedback
+      // 2026-11-26): the recommender must draw from the same cyber-filtered set
+      // the team works in, not from general tech/business/finance stories.
+      isCybersecurity: true,
+    },
     orderBy: { publishedAt: 'desc' },
     take: RECOMMEND_MAX_EVENTS,
     select: {
