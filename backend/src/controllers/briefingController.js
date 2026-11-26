@@ -1,9 +1,11 @@
 import Joi from 'joi';
 import { prisma } from '../utils/prisma.js';
-import { BadRequest, Conflict, Gone, NotFound } from '../utils/AppError.js';
+import { BadRequest, BadGateway, Conflict, Gone, NotFound } from '../utils/AppError.js';
 import { deriveStatus } from './publishController.js';
 import { PILLARS, pillarLabel } from '../services/novrpulse/pillars.js';
 import { renderBriefingPreview, groupStories, formatBriefingDate } from '../services/novrpulse/briefingPreview.js';
+import * as plunk from '../services/plunkService.js';
+import { config } from '../config/env.js';
 
 /**
  * Daily Briefing Desk.
@@ -53,6 +55,20 @@ const listBriefingSchema = Joi.object({
   from: Joi.string().isoDate(),
   to: Joi.string().isoDate(),
   status: Joi.string().valid(...BRIEFING_STATUSES),
+});
+
+// Publish → Preview → Send (owner requirement 2026-11-25). A test send needs an
+// address (defaulted to the caller's own when omitted); a production send needs
+// at least one segment (defaulted from config). `email` is validated as an email
+// address — the client sends a real address, not a URI.
+const publishBriefingSchema = Joi.object({
+  test: Joi.boolean().default(false),
+  email: Joi.string().trim().email({ tlds: { allow: false } }).when('test', {
+    is: true,
+    then: Joi.optional(),
+    otherwise: Joi.forbidden(),
+  }),
+  segments: Joi.array().items(Joi.string().trim().min(1)).max(50),
 });
 
 const updateSectionSchema = Joi.object({
@@ -347,8 +363,52 @@ export async function getBriefing(req, res) {
         ...serializeSection(s),
         supportingCount: supportingCounts[s.functionId] ?? 0,
       })),
+      // Publish affordances for the client: whether a default segment is
+      // configured (drives the "Send to segment" disabled state) and whether the
+      // briefing has any items to send at all (drives the Send button state).
+      publishSegmentConfigured: Boolean(config.novrpulse.pulseSegment),
+      itemCount: briefing.sections.reduce((n, s) => n + (s.items?.length ?? 0), 0),
     },
   });
+}
+
+/**
+ * Load a briefing with the sections/items/events needed to render its email,
+ * or throw 404. Used by BOTH the preview endpoint and the publish endpoint so
+ * the preview and the sent email are built from the same query and the same
+ * renderer (they must be byte-identical — owner requirement 2026-11-25).
+ */
+async function loadBriefingForRender(id) {
+  const briefing = await prisma.briefing.findUnique({
+    where: { id },
+    include: {
+      sections: {
+        orderBy: { position: 'asc' },
+        include: { items: { orderBy: { position: 'asc' }, include: PREVIEW_ITEM_INCLUDE } },
+      },
+    },
+  });
+  if (!briefing) throw NotFound('Briefing not found');
+  return briefing;
+}
+
+/**
+ * Render a loaded briefing through the email template. THE single render path —
+ * the preview endpoint and the publish send both call this, so the preview and
+ * the sent email are byte-identical.
+ */
+function renderBriefingHtml(briefing) {
+  return renderBriefingPreview({
+    date: formatBriefingDate(briefing.briefingDate),
+    preheader: briefing.title ?? '',
+    groups: groupStories(briefing.sections),
+    unsubscribeUrl: '{{unsubscribeUrl}}',
+  });
+}
+
+/** Count of publish items attached anywhere in the briefing. */
+function briefingItemCount(briefing) {
+  return (briefing.sections ?? []).reduce((n, s) => n + (s.items?.length ?? 0), 0);
 }
 
 /**
@@ -373,27 +433,194 @@ export async function getBriefing(req, res) {
  * a `sandbox=""` iframe.
  */
 export async function previewBriefing(req, res) {
-  const briefing = await prisma.briefing.findUnique({
-    where: { id: req.params.id },
-    include: {
-      sections: {
-        orderBy: { position: 'asc' },
-        include: { items: { orderBy: { position: 'asc' }, include: PREVIEW_ITEM_INCLUDE } },
-      },
+  const briefing = await loadBriefingForRender(req.params.id);
+  return res.json({ html: renderBriefingHtml(briefing) });
+}
+
+/**
+ * The subject line for a briefing send. The title when set, else a dated
+ * fallback — mirrors the campaign desk's fixed-sender pattern.
+ */
+function briefingSubject(briefing) {
+  return (briefing.title && briefing.title.trim()) || `NovrPulse Daily Briefing — ${formatBriefingDate(briefing.briefingDate)}`;
+}
+
+/**
+ * Record a `briefing_publication` row. `kind` is 'production' | 'test'. A test
+ * row is written for AUDIT but never snapshots the whole email and never counts
+ * as a publication of the briefing. `version` is the next per-briefing sequence
+ * number over ALL rows (so test and production rows never collide on the
+ * `(briefingId, version)` unique key).
+ */
+async function recordPublication(briefingId, { kind, html, segments, recipientSummary }) {
+  const last = await prisma.briefingPublication.findFirst({
+    where: { briefingId },
+    orderBy: { version: 'desc' },
+    select: { version: true },
+  });
+  const nextVersion = (last?.version ?? 0) + 1;
+
+  return prisma.briefingPublication.create({
+    data: {
+      briefingId,
+      kind,
+      version: nextVersion,
+      html: html ?? null,
+      segments: segments ?? [],
+      recipientSummary: recipientSummary ?? null,
+      sentAt: new Date(),
     },
   });
-  if (!briefing) throw NotFound('Briefing not found');
+}
 
-  const groups = groupStories(briefing.sections);
+/**
+ * POST /api/briefings/:id/publish — Publish → Preview → Send
+ * (owner requirement 2026-11-25). Behind `requireAuth`.
+ *
+ * Body (Joi): `{ test?: boolean, email?: string, segments?: string[] }`.
+ *
+ * Flow:
+ *  1. Load the briefing + ordered sections/items (+ linked events) and render the
+ *     email through THE SAME renderer the preview endpoint uses (byte-identical).
+ *  2. Guard: 400 when the briefing has no items ("Nothing to publish"); 409 when
+ *     it is already published.
+ *  3. `test: true` → send ONE email to `email` (defaults to the caller's own
+ *     address) via the campaign test-send primitive; write a `kind: 'test'`
+ *     publication row for audit; return `{ sent: true, test: true, to }`.
+ *  4. production → segments are `body.segments` or `[NP_PULSE_SEGMENT]`; when
+ *     neither is configured, 400 `NO_SEGMENT_CONFIGURED`. Send via the campaign
+ *     create+send primitives to each segment, then write the `production`
+ *     publication row (html snapshot + version + sentAt + segments), set
+ *     `briefing.status = 'published'` and stamp `publishedAt` on the briefing and
+ *     every attached publish item.
+ *  5. Failures are honest: a Plunk error becomes a 502 carrying the provider
+ *     message, and the briefing is NOT marked published.
+ */
+export async function publishBriefing(req, res) {
+  const value = await validate(publishBriefingSchema, req.body);
+  const briefing = await loadBriefingForRender(req.params.id);
 
-  const html = renderBriefingPreview({
-    date: formatBriefingDate(briefing.briefingDate),
-    preheader: briefing.title ?? '',
-    groups,
-    unsubscribeUrl: '{{unsubscribeUrl}}',
+  // Guard 1 — nothing to send.
+  if (briefingItemCount(briefing) === 0) {
+    throw BadRequest('Nothing to publish');
+  }
+  // Guard 2 — already published.
+  if (briefing.status === 'published') {
+    throw Conflict('Briefing is already published', { briefingId: briefing.id });
+  }
+
+  const html = renderBriefingHtml(briefing);
+  const subject = briefingSubject(briefing);
+
+  // ── Test send ────────────────────────────────────────────────────────────
+  if (value.test) {
+    const to = value.email || req.user?.email;
+    if (!to) throw BadRequest('No email to send the test to — pass `email` in the body');
+
+    let lastError;
+    try {
+      // Reuse the campaign primitives: create a TRANSACTIONAL draft, then send a
+      // single test copy. Nothing is transmitted to a segment.
+      const campaign = await plunk.createCampaign({
+        name: `Briefing test · ${formatBriefingDate(briefing.briefingDate)}`,
+        subject,
+        body: html,
+        type: 'TRANSACTIONAL',
+        audienceType: 'ALL',
+      });
+      await plunk.testCampaign(campaign.id, to);
+      // The throwaway test campaign is deleted so it never appears as a draft.
+      await plunk.deleteCampaign(campaign.id).catch(() => {});
+    } catch (err) {
+      lastError = err;
+    }
+
+    if (lastError) {
+      throw BadGateway(
+        `Could not send the test email: ${lastError.message}`,
+        { provider: 'plunk', status: lastError.status ?? null },
+      );
+    }
+
+    // Audit row (kind 'test'). Never marks the briefing published.
+    await recordPublication(briefing.id, { kind: 'test', segments: [], recipientSummary: { test: true, to } });
+
+    return res.json({ sent: true, test: true, to });
+  }
+
+  // ── Production send ────────────────────────────────────────────────────────
+  const configured = Array.isArray(value.segments) && value.segments.length
+    ? value.segments
+    : (config.novrpulse.pulseSegment ? [config.novrpulse.pulseSegment] : []);
+
+  if (configured.length === 0) {
+    throw Object.assign(
+      BadRequest('Set NP_PULSE_SEGMENT or pass segments'),
+      { code: 'NO_SEGMENT_CONFIGURED' },
+    );
+  }
+
+  const sentCampaigns = [];
+  let sendError;
+  try {
+    for (const segment of configured) {
+      // Reuse the campaign primitives: create a MARKETING campaign targeted at
+      // the segment, then send it now. `segment` is the Plunk segment id.
+      const campaign = await plunk.createCampaign({
+        name: `NovrPulse Daily Briefing · ${formatBriefingDate(briefing.briefingDate)}`,
+        subject,
+        body: html,
+        type: 'MARKETING',
+        audienceType: 'SEGMENT',
+        segmentId: segment,
+      });
+      await plunk.sendCampaign(campaign.id);
+      sentCampaigns.push({ segment, campaignId: campaign.id });
+    }
+  } catch (err) {
+    sendError = err;
+  }
+
+  if (sendError) {
+    // Fail loudly and honestly: 502 with the provider message; the briefing is
+    // NOT marked published.
+    throw BadGateway(
+      `Could not send the briefing: ${sendError.message}`,
+      { provider: 'plunk', status: sendError.status ?? null, segments: configured },
+    );
+  }
+
+  const publication = await recordPublication(briefing.id, {
+    kind: 'production',
+    html,
+    segments: configured,
+    recipientSummary: { segments: configured, campaigns: sentCampaigns },
   });
 
-  return res.json({ html });
+  // Mark the briefing and every attached publish item published. One write each,
+  // in a transaction, so the record is consistent.
+  const now = new Date();
+  const publishItemIds = [
+    ...new Set(
+      (briefing.sections ?? []).flatMap((s) => (s.items ?? []).map((i) => i.publishItemId)),
+    ),
+  ];
+  await prisma.$transaction([
+    prisma.briefing.update({
+      where: { id: briefing.id },
+      data: { status: 'published', publishedAt: now },
+    }),
+    ...publishItemIds.map((id) =>
+      prisma.publishItem.update({ where: { id }, data: { publishedAt: now } }),
+    ),
+  ]);
+
+  return res.json({
+    sent: true,
+    segments: configured,
+    publicationId: publication.id,
+    publishedAt: now.toISOString(),
+  });
 }
 
 /**
@@ -847,6 +1074,7 @@ export {
   attachItemSchema,
   reorderSchema,
   authorSchema,
+  publishBriefingSchema,
   supportingEventSchema,
   opportunitySchema,
   forumTopicSchema,

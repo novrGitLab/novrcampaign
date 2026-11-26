@@ -224,7 +224,19 @@ model NpEvent {
   // signal the classification query keys on.
   isCybersecurity   Boolean?
   isThreatIntel     Boolean?
+  // DEPRECATED: superseded by `cyberRegion` (owner requirement 2026-11-25).
+  // The column is RETAINED (additive migrations only; never dropped) but is no
+  // longer read or written by classification/filtering. Kept for historical
+  // data and so existing rows are never invalidated.
   isNigeriaRelated  Boolean?
+  // Regional cybersecurity tier (owner requirement 2026-11-25): 'NG' | 'AF' |
+  // 'GLOBAL', NULL = unclassified OR not-cyber. This is the model the owner
+  // asked for — is it CYBERSECURITY news, and if so which region, with Nigeria
+  // as the priority tier. Set by the deterministic keyword pre-tag at store time
+  // (only when the item looks cyber) and authoritatively by the batched AI pass;
+  // both leave it NULL when the story is not cyber. A CHECK enforces the domain
+  // (see the migration).
+  cyberRegion   String?
   createdAt     DateTime @default(now())
 
   sources NpEventSource[]
@@ -513,9 +525,34 @@ model Briefing {
   updatedAt    DateTime @updatedAt
 
   sections BriefingSection[]
+  publications BriefingPublication[]
 
   @@index([briefingDate])
   @@map("briefing")
+}
+
+// The immutable snapshot of a published BRIEFING's rendered email. Distinct from
+// `PublishedBriefing`, which is per-ITEM (one row per `publish_item`): this is
+// per-BRIEFING and records the whole rendered HTML plus the segments it was sent
+// to (owner requirement 2026-11-25, Publish → Preview → Send). `kind` is
+// 'production' | 'test'; a briefing may be published more than once, so
+// `(briefingId, version)` is unique. `html` is nullable so a `test` audit row
+// does not have to store the whole email.
+model BriefingPublication {
+  id               String   @id @default(uuid())
+  briefingId       String
+  briefing         Briefing @relation(fields: [briefingId], references: [id], onDelete: Cascade)
+  kind             String   @default("production")
+  version          Int      @default(1)
+  html             String?
+  segments         String[]
+  recipientSummary Json?
+  sentAt           DateTime @default(now())
+  createdAt        DateTime @default(now())
+
+  @@unique([briefingId, version])
+  @@index([briefingId])
+  @@map("briefing_publication")
 }
 
 model BriefingSection {

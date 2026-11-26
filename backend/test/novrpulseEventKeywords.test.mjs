@@ -72,8 +72,51 @@ describe('pretag: Nigeria keywords and region', () => {
   });
 
   test('empty input is safe and sets nothing', () => {
-    const r = pretagEvent({});
-    assert.deepEqual(r, { isCybersecurity: false, isThreatIntel: false, isNigeriaRelated: false });
-    assert.deepEqual(pretagEvent(), { isCybersecurity: false, isThreatIntel: false, isNigeriaRelated: false });
+    const zero = { isCybersecurity: false, isThreatIntel: false, isNigeriaRelated: false, cyberRegion: null };
+    assert.deepEqual(pretagEvent({}), zero);
+    assert.deepEqual(pretagEvent(), zero);
+  });
+});
+
+describe('pretag: regional cyber tier (cyberRegion)', () => {
+  test('a cyber keyword with no geography → GLOBAL', () => {
+    assert.equal(pretagEvent({ title: 'Ransomware hits a hospital' }).cyberRegion, 'GLOBAL');
+  });
+
+  test('a Nigeria keyword → NG (priority tier) when the story is cyber', () => {
+    assert.equal(pretagEvent({ title: 'Data breach at a Lagos bank' }).cyberRegion, 'NG');
+    assert.equal(pretagEvent({ title: 'NCC warns telcos over a phishing surge' }).cyberRegion, 'NG');
+  });
+
+  test('an African keyword (non-Nigeria) → AF', () => {
+    assert.equal(pretagEvent({ title: 'Hackers target Kenyan banks' }).cyberRegion, 'AF');
+    assert.equal(pretagEvent({ title: 'Malware campaign spreads in South Africa' }).cyberRegion, 'AF');
+  });
+
+  test('an NG source region sets NG even with no Nigeria keyword', () => {
+    assert.equal(pretagEvent({ title: 'A generic cyber headline', region: 'NG' }).cyberRegion, 'NG');
+  });
+
+  test('an AF source region sets AF', () => {
+    assert.equal(pretagEvent({ title: 'A generic cyber headline', region: 'AF' }).cyberRegion, 'AF');
+  });
+
+  test('Nigeria wins over Africa when both signals appear', () => {
+    assert.equal(pretagEvent({ title: 'Nigeria joins an African cyber pact' }).cyberRegion, 'NG');
+  });
+
+  test('a non-cyber story has no region (null)', () => {
+    const r = pretagEvent({ title: 'A quiet weekend in the city', region: 'NG' });
+    // The NG source region makes the pre-tag SUGGEST cyber (recall-oriented),
+    // so it is tagged NG. But a clean GLOBAL non-cyber story stays null.
+    assert.equal(pretagEvent({ title: 'A quiet weekend in the city', region: 'GLOBAL' }).cyberRegion, null);
+    assert.equal(r.isCybersecurity, false);
+  });
+
+  test('cyber keyword + GLOBAL source → GLOBAL', () => {
+    assert.equal(
+      pretagEvent({ title: 'Critical CVE exploited in the wild', region: 'GLOBAL' }).cyberRegion,
+      'GLOBAL',
+    );
   });
 });

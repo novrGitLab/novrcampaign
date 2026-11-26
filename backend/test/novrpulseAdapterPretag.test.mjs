@@ -111,11 +111,13 @@ describe('adapter storeBatch: deterministic pre-tag', () => {
     const ev = store.events[0];
     assert.equal(ev.isCybersecurity, true, 'cyber keyword set');
     assert.equal(ev.isThreatIntel, undefined, 'no threat keyword → column left unset (NULL)');
-    // 'Lagos' is a Nigeria keyword → set.
-    assert.equal(ev.isNigeriaRelated, true);
+    // 'Lagos' is a Nigeria keyword → the regional cyber tier is NG.
+    assert.equal(ev.cyberRegion, 'NG');
+    // isNigeriaRelated is deprecated and is no longer written.
+    assert.equal(ev.isNigeriaRelated, undefined, 'deprecated column not written');
   });
 
-  test('a clean non-cyber story sets no flags (all left NULL for the AI pass)', async () => {
+  test('a clean non-cyber story sets no flags and a null cyberRegion', async () => {
     const store = makeStore();
     await withPrisma(store, () =>
       novrPulseAdapter.storeBatch([
@@ -126,17 +128,20 @@ describe('adapter storeBatch: deterministic pre-tag', () => {
     assert.equal(ev.isCybersecurity, undefined);
     assert.equal(ev.isThreatIntel, undefined);
     assert.equal(ev.isNigeriaRelated, undefined);
+    // cyberRegion is ALWAYS written: null when the item is not cyber.
+    assert.equal(ev.cyberRegion, null);
   });
 
-  test('region NG from the source registry sets isNigeriaRelated with no keyword', async () => {
+  test('region NG from the source registry sets the NG cyber tier with no keyword', async () => {
     const store = makeStore();
     await withPrisma(store, () =>
       novrPulseAdapter.storeBatch([item({ sourceId: 'ncc', title: 'A generic headline' })]),
     );
-    assert.equal(store.events[0].isNigeriaRelated, true);
+    assert.equal(store.events[0].cyberRegion, 'NG');
+    assert.equal(store.events[0].isNigeriaRelated, undefined);
   });
 
-  test('a GLOBAL source with no keyword leaves isNigeriaRelated unset', async () => {
+  test('a GLOBAL source with no keyword leaves the tier GLOBAL (threat intel set, not cyber)', async () => {
     const store = makeStore();
     await withPrisma(store, () =>
       novrPulseAdapter.storeBatch([
@@ -144,12 +149,15 @@ describe('adapter storeBatch: deterministic pre-tag', () => {
       ]),
     );
     const ev = store.events[0];
-    assert.equal(ev.isNigeriaRelated, undefined, 'no Nigeria signal → NULL');
-    // 'backdoor' is a threat keyword → isThreatIntel set; 'backdoor' also not cyber.
+    // 'backdoor' is a threat keyword → isThreatIntel set; the story is not cyber
+    // by keyword, so isCybersecurity stays NULL and cyberRegion is null.
     assert.equal(ev.isThreatIntel, true);
+    assert.equal(ev.isCybersecurity, undefined);
+    assert.equal(ev.isNigeriaRelated, undefined);
+    assert.equal(ev.cyberRegion, null);
   });
 
-  test('the motivating example: no obvious cyber keyword, geography flag only', async () => {
+  test('the motivating example: no obvious cyber keyword still yields the NG tier from the source', async () => {
     const store = makeStore();
     await withPrisma(store, () =>
       novrPulseAdapter.storeBatch([
@@ -163,6 +171,8 @@ describe('adapter storeBatch: deterministic pre-tag', () => {
     // Zero obvious cyber keyword → isCybersecurity NULL (the accurate AI pass fills it).
     assert.equal(ev.isCybersecurity, undefined);
     assert.equal(ev.isThreatIntel, undefined);
-    assert.equal(ev.isNigeriaRelated, true, "'FG' is a Nigeria keyword");
+    // The NG source suggests the Nigeria cyber tier.
+    assert.equal(ev.cyberRegion, 'NG');
+    assert.equal(ev.isNigeriaRelated, undefined, 'deprecated column not written');
   });
 });

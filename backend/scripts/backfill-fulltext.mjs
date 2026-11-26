@@ -1,4 +1,4 @@
-import { enrichItemFullText, fetchText, stripHtml } from '@novr/ingest';
+import { extractArticle, capBody, fetchText, stripHtml } from '@novr/ingest';
 import { prisma } from '../src/utils/prisma.js';
 
 /**
@@ -36,16 +36,22 @@ const limit = limitIdx >= 0 ? Math.max(0, Number(args[limitIdx + 1]) || 50) : 50
 
 /** The length below which a stored body counts as a teaser (matches ingest gate). */
 const MIN_BODY_CHARS = 500;
+/** Bodies longer than this are presumed bloated (whole-page scrape) and re-extracted. */
+const MAX_BODY_CHARS = 30000;
+/** Signals that a stored body still carries markup/code that must be cleaned. */
+const CODE_RE = /<script|<style|\{\s*margin|\{\s*padding|function\s*\(|!important|@media/i;
 
-/** The full-text gates `enrichItemFullText` applies (mirror DEFAULT_FULL_TEXT). */
-const CFG = { minTeaserChars: MIN_BODY_CHARS, minFetchedChars: 500, minRatio: 2 };
+/** The full-text options the ingest enricher accepts today (mirror DEFAULT_FULL_TEXT). */
+const CFG = { minFetchedChars: 500, maxBodyChars: 20000 };
 
-console.log(`\nNovrPulse backfill — full text ${commit ? '(COMMIT)' : '(DRY RUN)'} (limit ${limit})`);
+const isNoisy = (strippedLen, body) =>
+  strippedLen < MIN_BODY_CHARS || strippedLen > MAX_BODY_CHARS || CODE_RE.test(body ?? '');
 
-// Candidates: stored bodies whose STRIPPED text is under the teaser threshold
-// and that still carry a url. Prisma cannot filter on stripped length, so we
-// scan `take`-bounded rows and strip in JS. A generous scan window keeps the
-// short bodies from being starved by long ones.
+console.log(`\nNovrPulse backfill â€” full text ${commit ? '(COMMIT)' : '(DRY RUN)'} (limit ${limit})`);
+
+// Candidates: stored bodies that are short (teasers), bloated (whole-page scrapes)
+// or still carry markup/code, and that have a url. Prisma cannot filter on the
+// stripped/derived signals, so we scan `take`-bounded rows and decide in JS.
 const rows = await prisma.npRawDocument.findMany({
   where: { url: { not: '' }, body: { not: null } },
   orderBy: { fetchedAt: 'desc' },
@@ -53,9 +59,11 @@ const rows = await prisma.npRawDocument.findMany({
   select: { id: true, url: true, body: true, fetchedAt: true },
 });
 
-const shortRows = rows.filter((r) => stripHtml(r.body ?? '').length < MIN_BODY_CHARS);
-console.log('─'.repeat(72));
-console.log(`Scanned ${rows.length} document(s); ${shortRows.length} short (< ${MIN_BODY_CHARS} chars) with a url.`);
+const shortRows = rows.filter((r) => isNoisy(stripHtml(r.body ?? '').length, r.body));
+console.log('â”€'.repeat(72));
+console.log(
+  `Scanned ${rows.length} document(s); ${shortRows.length} need repair (short < ${MIN_BODY_CHARS}, bloated > ${MAX_BODY_CHARS}, or code-marked) with a url.`,
+);
 
 const targets = shortRows.slice(0, limit);
 console.log(`Processing up to ${targets.length} (limit ${limit}).`);
@@ -67,22 +75,28 @@ let failed = 0;
 
 for (const row of targets) {
   const before = stripHtml(row.body ?? '').length;
-  let item = { link: row.url, content: row.body ?? '', title: '', publishedAt: row.fetchedAt };
+  let extracted = '';
   try {
-    item = await enrichItemFullText(item, {
-      fetch: fetchText,
-      logger: { debug: () => {} },
-      cfg: CFG,
-      budget: { remaining: 1 },
-    });
+    // Direct path: fetch the page and EXTRACT the article (do not use the
+    // pipeline enricher — it is upgrade-only and refuses to shrink a bloated body).
+    const res = await fetchText(row.url, { logger: { debug: () => {}, warn: () => {}, info: () => {} } });
+    const html = typeof res === 'string' ? res : (res?.body ?? '');
+    const readable = extractArticle(html);
+    extracted = readable?.text && readable.text.length >= 500 ? readable.text : stripHtml(html);
+    extracted = capBody(extracted, CFG.maxBodyChars);
   } catch (err) {
     failed += 1;
     console.log(`  FAIL  ${row.id}  ${err?.message ?? err}  ${row.url.slice(0, 70)}`);
     continue;
   }
+  const item = { content: extracted };
 
   const after = stripHtml(item.content ?? '').length;
-  if (after <= before) {
+  // Adopt the extraction when it is a usable article AND either the stored body
+  // was noisy (short / bloated / code-marked — clean-and-replace even if the
+  // clean text is shorter) or the fetched text is a material gain (longer).
+  const adopt = after >= 500 && (isNoisy(before, row.body) || after > before);
+  if (!adopt) {
     unchanged += 1;
     console.log(`  skip  ${row.id}  ${before} -> ${after}  (no material gain)  ${row.url.slice(0, 70)}`);
     continue;

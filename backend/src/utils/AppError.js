@@ -46,6 +46,9 @@ export class AppError extends Error {
   static Internal(message) {
     return new AppError(500, message || 'Internal server error');
   }
+  static BadGateway(message, details) {
+    return new AppError(502, message || 'Upstream provider error', details);
+  }
 }
 
 // Named exports for a functional call style (`throw BadRequest(...)`)
@@ -58,3 +61,4 @@ export const Gone = AppError.Gone;
 export const Unprocessable = AppError.Unprocessable;
 export const TooManyRequests = AppError.TooManyRequests;
 export const Internal = AppError.Internal;
+export const BadGateway = AppError.BadGateway;

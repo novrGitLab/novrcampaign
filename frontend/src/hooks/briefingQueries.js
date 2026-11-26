@@ -55,6 +55,26 @@ export function usePreviewBriefing(id) {
   });
 }
 
+/**
+ * POST /api/briefings/:id/publish — Publish → Preview → Send.
+ *
+ * `{ test: true, email? }` sends ONE test copy to `email` (or the signed-in
+ * user's own address); `{ segments? }` sends the rendered briefing to the given
+ * Plunk segments (or the configured `NP_PULSE_SEGMENT`). On a successful
+ * production send the briefing is marked published server-side, so both the
+ * list and the detail caches are invalidated.
+ *
+ * The server renders the SAME email the preview shows (one renderer), so the
+ * caller never passes HTML — only the send intent.
+ */
+export function usePublishBriefing(id) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body) => api(`/briefings/${id}/publish`, { method: 'POST', body }),
+    onSuccess: () => invalidateBriefings(qc, id),
+  });
+}
+
 // ── Briefing mutations ───────────────────────────────────────────────────────
 
 /** Invalidate both the list and a briefing's detail after any write. */

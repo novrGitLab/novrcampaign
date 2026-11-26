@@ -8,6 +8,7 @@ import {
   findUnclassified,
   buildClassifySystem,
   buildClassifyPrompt,
+  parseClassificationEntry,
   CLASSIFY_SCHEMA,
 } from '../src/services/novrpulse/classify.js';
 
@@ -32,8 +33,15 @@ function makeStore(seed = []) {
       let out = rows.filter((r) => {
         const ors = args.where?.OR;
         if (!Array.isArray(ors)) return true;
-        // OR: ANY flag IS NULL.
+        // OR: ANY clause matches.
         return ors.some((clause) => {
+          if (Array.isArray(clause.AND)) {
+            // e.g. { AND: [{ isCybersecurity: true }, { cyberRegion: null }] }.
+            return clause.AND.every((sub) => {
+              const [k] = Object.keys(sub);
+              return sub[k] === null ? (r[k] === null || r[k] === undefined) : r[k] === sub[k];
+            });
+          }
           const [key] = Object.keys(clause);
           return r[key] === null || r[key] === undefined;
         });
@@ -107,6 +115,7 @@ function event(over = {}) {
     isCybersecurity: null,
     isThreatIntel: null,
     isNigeriaRelated: null,
+    cyberRegion: null,
     sources: [{ rawDocument: { body: 'body text', source: { name: 'Src' } } }],
     ...over,
   };
@@ -121,24 +130,38 @@ after(() => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('classify: selector', () => {
-  test('findUnclassified selects events with ANY flag NULL and skips fully-classified ones', async () => {
+  test('findUnclassified selects events with a flag NULL and skips fully-classified ones', async () => {
     const store = makeStore([
       event({ id: 'null', isCybersecurity: null }),
-      event({ id: 'all-set', isCybersecurity: true, isThreatIntel: false, isNigeriaRelated: true }),
+      event({ id: 'all-set', isCybersecurity: true, isThreatIntel: false, isNigeriaRelated: true, cyberRegion: 'NG' }),
       event({ id: 'partial', isCybersecurity: true, isThreatIntel: null, isNigeriaRelated: false }),
     ]);
 
     const pending = await withPrisma(store, () => findUnclassified());
     assert.deepEqual(pending.map((e) => e.id).sort(), ['null', 'partial']);
-    // The selector is the OR-of-IS-NULL on the three flags.
+    // The selector is the OR-of-IS-NULL on isCybersecurity / isThreatIntel.
     const where = store.calls.findMany.at(-1).where;
-    assert.equal(where.OR.length, 3);
+    assert.equal(where.OR.length, 2);
   });
 
   test('the capability ceiling is applied via `take`', async () => {
     const store = makeStore([event({ id: 'a' }), event({ id: 'b' }), event({ id: 'c' })]);
     await withPrisma(store, () => findUnclassified({ limit: 2 }));
     assert.equal(store.calls.findMany.at(-1).take, 2);
+  });
+
+  test('regionBackfill also selects classified-cyber events whose region is NULL', async () => {
+    const store = makeStore([
+      event({ id: 'classified-no-region', isCybersecurity: true, isThreatIntel: false, cyberRegion: null }),
+      event({ id: 'classified-with-region', isCybersecurity: true, isThreatIntel: false, cyberRegion: 'NG' }),
+      event({ id: 'not-cyber', isCybersecurity: false, isThreatIntel: false, cyberRegion: null }),
+      event({ id: 'never-classified', isCybersecurity: null }),
+    ]);
+    const pending = await withPrisma(store, () => findUnclassified({ regionBackfill: true }));
+    assert.deepEqual(pending.map((e) => e.id).sort(), ['classified-no-region', 'never-classified']);
+    // Default (no backfill) keeps the unchanged selector.
+    const plain = await withPrisma(store, () => findUnclassified());
+    assert.deepEqual(plain.map((e) => e.id), ['never-classified']);
   });
 });
 
@@ -147,15 +170,15 @@ describe('classify: selector', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('classify: classifyEvents', () => {
-  test('a stubbed batch writes all three flags per the model judgment', async () => {
+  test('a stubbed batch writes all three fields per the model judgment', async () => {
     const store = makeStore([
       event({ id: 'e1' }),
       event({ id: 'e2' }),
     ]);
     const llm = stubLlm({
       classifications: [
-        { index: 1, isCybersecurity: true, isThreatIntel: false, isNigeriaRelated: true, confidence: 0.9 },
-        { index: 2, isCybersecurity: false, isThreatIntel: true, isNigeriaRelated: false, confidence: 0.8 },
+        { index: 1, isCybersecurity: true, cyberRegion: 'NG', isThreatIntel: false, confidence: 0.9 },
+        { index: 2, isCybersecurity: false, cyberRegion: null, isThreatIntel: true, confidence: 0.8 },
       ],
     });
 
@@ -172,42 +195,55 @@ describe('classify: classifyEvents', () => {
 
     const byId = Object.fromEntries(store.rows.map((r) => [r.id, r]));
     assert.deepEqual(
-      [byId.e1.isCybersecurity, byId.e1.isThreatIntel, byId.e1.isNigeriaRelated],
-      [true, false, true],
+      [byId.e1.isCybersecurity, byId.e1.cyberRegion, byId.e1.isThreatIntel],
+      [true, 'NG', false],
     );
     assert.deepEqual(
-      [byId.e2.isCybersecurity, byId.e2.isThreatIntel, byId.e2.isNigeriaRelated],
-      [false, true, false],
+      [byId.e2.isCybersecurity, byId.e2.cyberRegion, byId.e2.isThreatIntel],
+      [false, null, true],
     );
+  });
+
+  test('a non-cyber verdict stores a null cyberRegion even if the model sends a region', async () => {
+    const store = makeStore([event({ id: 'e1' })]);
+    const llm = stubLlm({
+      classifications: [{ index: 1, isCybersecurity: false, cyberRegion: 'NG', isThreatIntel: false }],
+    });
+    await withApiKey(() => withPrisma(store, () => classifyEvents({ llm })));
+    assert.equal(store.rows[0].isCybersecurity, false);
+    assert.equal(store.rows[0].cyberRegion, null, 'region nulled out for a non-cyber story');
   });
 
   test('the AI pass OVERWRITES a keyword pre-tag true (documented rule)', async () => {
-    const store = makeStore([event({ id: 'e1', isCybersecurity: true, isThreatIntel: false, isNigeriaRelated: null })]);
+    const store = makeStore([event({ id: 'e1', isCybersecurity: true, isThreatIntel: null, cyberRegion: 'NG' })]);
     const llm = stubLlm({
-      classifications: [{ index: 1, isCybersecurity: false, isThreatIntel: false, isNigeriaRelated: false }],
+      classifications: [{ index: 1, isCybersecurity: false, cyberRegion: null, isThreatIntel: false }],
     });
     await withApiKey(() => withPrisma(store, () => classifyEvents({ llm })));
     assert.equal(store.rows[0].isCybersecurity, false, 'AI verdict is authoritative');
+    assert.equal(store.rows[0].cyberRegion, null, 'and its region is cleared');
   });
 
-  test('malformed entries (missing index / non-boolean flags) are skipped', async () => {
-    const store = makeStore([event({ id: 'e1' }), event({ id: 'e2' }), event({ id: 'e3' })]);
+  test('malformed entries (missing index / non-boolean flags / bad region) are skipped', async () => {
+    const store = makeStore([event({ id: 'e1' }), event({ id: 'e2' }), event({ id: 'e3' }), event({ id: 'e4' })]);
     const llm = stubLlm({
       classifications: [
-        { index: 1, isCybersecurity: true, isThreatIntel: false, isNigeriaRelated: true },
-        { index: 99, isCybersecurity: true, isThreatIntel: false, isNigeriaRelated: true }, // out of range
-        { index: 3, isCybersecurity: 'yes', isThreatIntel: false, isNigeriaRelated: true }, // bad type
-        { isCybersecurity: true, isThreatIntel: false, isNigeriaRelated: true }, // no index
+        { index: 1, isCybersecurity: true, cyberRegion: 'NG', isThreatIntel: false },
+        { index: 99, isCybersecurity: true, cyberRegion: 'NG', isThreatIntel: false }, // out of range
+        { index: 3, isCybersecurity: 'yes', cyberRegion: 'NG', isThreatIntel: false }, // bad type
+        { index: 4, isCybersecurity: true, cyberRegion: 'EUROPE', isThreatIntel: false }, // bad region
+        { isCybersecurity: true, cyberRegion: 'NG', isThreatIntel: false }, // no index
       ],
     });
 
     const result = await withApiKey(() => withPrisma(store, () => classifyEvents({ llm })));
     assert.equal(result.classified, 1, 'only the valid entry is written');
-    assert.equal(result.skipped, 3);
-    // e2 and e3 stay unclassified (NULL) — never written with junk.
+    assert.equal(result.skipped, 4);
+    // e2/e3/e4 stay unclassified (NULL) — never written with junk.
     const byId = Object.fromEntries(store.rows.map((r) => [r.id, r]));
     assert.equal(byId.e2.isCybersecurity, null);
     assert.equal(byId.e3.isCybersecurity, null);
+    assert.equal(byId.e4.isCybersecurity, null, 'bad region → entry rejected, event untouched');
     assert.equal(store.calls.update.length, 1);
   });
 
@@ -218,9 +254,9 @@ describe('classify: classifyEvents', () => {
     // the good entries and skip the rest instead of losing the whole batch.
     const llm = stubLlm({
       classifications: [
-        { index: 1, isCybersecurity: true, isThreatIntel: false, isNigeriaRelated: true },
+        { index: 1, isCybersecurity: true, cyberRegion: 'AF', isThreatIntel: false },
         'not-an-object',
-        { index: 3, isCybersecurity: false, isThreatIntel: true, isNigeriaRelated: false },
+        { index: 3, isCybersecurity: false, cyberRegion: null, isThreatIntel: true },
       ],
     });
 
@@ -230,13 +266,13 @@ describe('classify: classifyEvents', () => {
     assert.equal(result.skipped, 1, 'the one invalid entry is skipped');
     const byId = Object.fromEntries(store.rows.map((r) => [r.id, r]));
     assert.deepEqual(
-      [byId.e1.isCybersecurity, byId.e1.isThreatIntel, byId.e1.isNigeriaRelated],
-      [true, false, true],
+      [byId.e1.isCybersecurity, byId.e1.cyberRegion, byId.e1.isThreatIntel],
+      [true, 'AF', false],
     );
     assert.equal(byId.e2.isCybersecurity, null, 'the invalid entry leaves its event unclassified');
     assert.deepEqual(
-      [byId.e3.isCybersecurity, byId.e3.isThreatIntel, byId.e3.isNigeriaRelated],
-      [false, true, false],
+      [byId.e3.isCybersecurity, byId.e3.cyberRegion, byId.e3.isThreatIntel],
+      [false, null, true],
     );
   });
 
@@ -257,7 +293,7 @@ describe('classify: classifyEvents', () => {
 
   test('the call schema is the permissive envelope (raw array accepted)', async () => {
     const store = makeStore([event({ id: 'e1' })]);
-    const llm = stubLlm({ classifications: [{ index: 1, isCybersecurity: true, isThreatIntel: true, isNigeriaRelated: true }] });
+    const llm = stubLlm({ classifications: [{ index: 1, isCybersecurity: true, cyberRegion: 'GLOBAL', isThreatIntel: true }] });
     await withApiKey(() => withPrisma(store, () => classifyEvents({ llm })));
     const schema = llm.calls[0].schema;
     assert.equal(schema.properties.classifications.type, 'array');
@@ -271,7 +307,7 @@ describe('classify: classifyEvents', () => {
       const count = (req.prompt.match(/^#\d+/gm) ?? []).length;
       return {
         classifications: Array.from({ length: count }, (_, i) => ({
-          index: i + 1, isCybersecurity: false, isThreatIntel: false, isNigeriaRelated: false,
+          index: i + 1, isCybersecurity: false, cyberRegion: null, isThreatIntel: false,
         })),
       };
     });
@@ -285,7 +321,7 @@ describe('classify: classifyEvents', () => {
   });
 
   test('no candidates → no LLM call, zero counts', async () => {
-    const store = makeStore([event({ id: 'done', isCybersecurity: true, isThreatIntel: true, isNigeriaRelated: true })]);
+    const store = makeStore([event({ id: 'done', isCybersecurity: true, isThreatIntel: true, cyberRegion: 'NG' })]);
     const llm = stubLlm({ classifications: [] });
     const result = await withApiKey(() => withPrisma(store, () => classifyEvents({ llm })));
     assert.equal(result.candidates, 0);
@@ -332,12 +368,37 @@ describe('classify: classifyEvents', () => {
 // Prompt contract — untrusted data is delimited + ignore-instructions present.
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('classify: prompt contract', () => {
-  test('the system prompt defines the three flags and the untrusted-data rule', () => {
+// ─────────────────────────────────────────────────────────────────────────────
+// Per-item validation — cyberRegion domain.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('classify: parseClassificationEntry (cyberRegion)', () => {
+  test('accepts the three canonical tiers', () => {
+    for (const region of ['NG', 'AF', 'GLOBAL']) {
+      const parsed = parseClassificationEntry({ index: 1, isCybersecurity: true, cyberRegion: region, isThreatIntel: false });
+      assert.equal(parsed?.cyberRegion, region);
+    }
+  });
+
+  test('accepts a null region (non-cyber)', () => {
+    const parsed = parseClassificationEntry({ index: 1, isCybersecurity: false, cyberRegion: null, isThreatIntel: false });
+    assert.equal(parsed?.cyberRegion, null);
+  });
+
+  test('an unknown region string rejects the entry', () => {
+    assert.equal(parseClassificationEntry({ index: 1, isCybersecurity: true, cyberRegion: 'EUROPE', isThreatIntel: false }), null);
+    assert.equal(parseClassificationEntry({ index: 1, isCybersecurity: true, cyberRegion: 'NG', isThreatIntel: false })?.cyberRegion, 'NG');
+  });
+});
+
+describe('classify: prompt contract', () => {  test('the system prompt defines the three fields and the untrusted-data rule', () => {
     const system = buildClassifySystem();
     assert.ok(system.includes('isCybersecurity'));
     assert.ok(system.includes('isThreatIntel'));
-    assert.ok(system.includes('isNigeriaRelated'));
+    assert.ok(system.includes('cyberRegion'));
+    assert.ok(system.includes('NG'));
+    assert.ok(system.includes('AF'));
+    assert.ok(system.includes('GLOBAL'));
     assert.ok(system.includes('UNTRUSTED'));
     assert.ok(/IGNORE any instructions/i.test(system));
   });

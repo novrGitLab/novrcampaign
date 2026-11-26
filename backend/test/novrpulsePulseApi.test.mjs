@@ -119,10 +119,11 @@ function makeStore(seed) {
 
   // Matches a single layered-cyber OR branch:
   //   { isCybersecurity: true }                          → the AI flag wins; OR
-  //   { AND: [{ isCybersecurity: null }, { sources: … }] } → unclassified AND a
-  //     dedicated cyber source. The controller emits the fallback as a nested
-  //     AND clause (so it composes with the region filter), so the fake must
-  //     evaluate that nested AND rather than a flat branch.
+  //   { AND: [{ … }, { sources: … }] }                    → a nested AND (either
+  //     the legacy unclassified+cyber-source fallback, or the regional-tier
+  //     fallback unclassified+source-region). The controller emits fallbacks as
+  //     nested AND clauses (so they compose with the region filter), so the fake
+  //     must evaluate that nested AND rather than a flat branch.
   function matchesLayered(clause, row) {
     if (clause.isCybersecurity === true) return row.isCybersecurity === true;
     if (Array.isArray(clause.AND)) {
@@ -131,15 +132,26 @@ function makeStore(seed) {
     return false;
   }
 
-  // Evaluate one leg of the nested AND fallback: the NULL flag guard, or the
-  // dedicated-cyber-source membership check.
+  // Evaluate one leg of a nested AND fallback: the NULL flag guard, an exact
+  // `cyberRegion` match (paired with isCybersecurity:true), or the
+  // dedicated-cyber-source / source-region membership check.
   function matchesLayeredPart(sub, row) {
     if (sub.isCybersecurity === null) {
       return row.isCybersecurity === null || row.isCybersecurity === undefined;
     }
+    if (sub.isCybersecurity === true) {
+      return row.isCybersecurity === true;
+    }
+    if (sub.cyberRegion !== undefined) {
+      return row.cyberRegion === sub.cyberRegion;
+    }
     const ids = sub.sources?.some?.rawDocument?.source?.id?.in;
     if (Array.isArray(ids)) {
       return (row.sources ?? []).some((s) => ids.includes(s.rawDocument?.source?.id));
+    }
+    const region = sub.sources?.some?.rawDocument?.source?.region;
+    if (region !== undefined) {
+      return (row.sources ?? []).some((s) => s.rawDocument?.source?.region === region);
     }
     return true;
   }
@@ -650,6 +662,82 @@ describe('pulse API: AI classification flag filters', () => {
       assert.equal(listSchema.validate({ [key]: 'true' }).value[key], true, key);
       assert.equal(listSchema.validate({ [key]: 'false' }).value[key], false, key);
     }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 3d. Regional cybersecurity tier filter — `cyberRegion=NG|AF|GLOBAL`.
+//     Layered exactly like `cyber`: a classified cyber event whose tier matches,
+//     OR an unclassified event whose source region equals the tier's region.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('pulse API: cyberRegion filter', () => {
+  const withSource = (region, extra = {}) => ({
+    sources: [{ rawDocument: { source: { name: `${region} Src`, region } } }],
+    ...extra,
+  });
+
+  test('cyberRegion=NG keeps classified NG cyber events plus unclassified NG-source events', async () => {
+    const store = makeStore([
+      event({ id: 'ng-cyber', isCybersecurity: true, cyberRegion: 'NG' }),
+      event({ id: 'af-cyber', isCybersecurity: true, cyberRegion: 'AF' }),
+      event({ id: 'unclassified-ng-src', isCybersecurity: null, ...withSource('NG') }),
+      event({ id: 'unclassified-global-src', isCybersecurity: null, ...withSource('GLOBAL') }),
+      event({ id: 'ng-but-not-cyber', isCybersecurity: false, cyberRegion: null, ...withSource('NG') }),
+    ]);
+
+    const { payload } = await withPrisma(store, () =>
+      callController(listPulseEvents, { query: { cyberRegion: 'NG' } }),
+    );
+
+    assert.deepEqual(payload.items.map((i) => i.id).sort(), ['ng-cyber', 'unclassified-ng-src']);
+  });
+
+  test('cyberRegion=AF keeps only the AF tier (and unclassified AF-source events)', async () => {
+    const store = makeStore([
+      event({ id: 'af-cyber', isCybersecurity: true, cyberRegion: 'AF' }),
+      event({ id: 'ng-cyber', isCybersecurity: true, cyberRegion: 'NG' }),
+      event({ id: 'unclassified-af-src', isCybersecurity: null, ...withSource('AF') }),
+    ]);
+    const { payload } = await withPrisma(store, () =>
+      callController(listPulseEvents, { query: { cyberRegion: 'AF' } }),
+    );
+    assert.deepEqual(payload.items.map((i) => i.id).sort(), ['af-cyber', 'unclassified-af-src']);
+  });
+
+  test('cyberRegion=GLOBAL keeps the GLOBAL tier', async () => {
+    const store = makeStore([
+      event({ id: 'global-cyber', isCybersecurity: true, cyberRegion: 'GLOBAL' }),
+      event({ id: 'ng-cyber', isCybersecurity: true, cyberRegion: 'NG' }),
+    ]);
+    const { payload } = await withPrisma(store, () =>
+      callController(listPulseEvents, { query: { cyberRegion: 'GLOBAL' } }),
+    );
+    assert.deepEqual(payload.items.map((i) => i.id), ['global-cyber']);
+  });
+
+  test('the where-clause is the layered OR shape and composes in AND', async () => {
+    const store = makeStore([event({ id: 'ng-cyber', isCybersecurity: true, cyberRegion: 'NG' })]);
+    await withPrisma(store, () => callController(listPulseEvents, { query: { cyberRegion: 'NG' } }));
+    const clause = store.calls.findMany.at(-1).where.AND[0];
+    assert.deepEqual(clause.OR[0].AND[0], { isCybersecurity: true });
+    assert.deepEqual(clause.OR[0].AND[1], { cyberRegion: 'NG' });
+    assert.equal(clause.OR[1].AND[0].isCybersecurity, null);
+    assert.equal(clause.OR[1].AND[1].sources.some.rawDocument.source.region, 'NG');
+  });
+
+  test('the schema accepts the three tiers case-insensitively and rejects others', () => {
+    assert.equal(listSchema.validate({ cyberRegion: 'NG' }).value.cyberRegion, 'NG');
+    assert.equal(listSchema.validate({ cyberRegion: 'af' }).value.cyberRegion, 'AF');
+    assert.equal(listSchema.validate({ cyberRegion: 'global' }).value.cyberRegion, 'GLOBAL');
+    assert.ok(listSchema.validate({ cyberRegion: 'europe' }).error);
+  });
+
+  test('omitting cyberRegion does not narrow', async () => {
+    const store = makeStore([event({ id: 'x' }), event({ id: 'y' })]);
+    const { payload } = await withPrisma(store, () => callController(listPulseEvents, { query: {} }));
+    assert.equal(payload.items.length, 2);
+    assert.equal(store.calls.findMany.at(-1).where.AND, undefined);
   });
 });
 

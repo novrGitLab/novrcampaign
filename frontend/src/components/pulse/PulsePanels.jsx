@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { CheckCircle2, ChevronDown, ChevronUp, ClipboardList, Info, Mail, Plus, RefreshCw } from 'lucide-react';
+import { CheckCircle2, ChevronDown, ChevronUp, ClipboardList, Info, Loader2, Mail, Plus, RefreshCw, Send } from 'lucide-react';
 import { Badge, Button, EmptyState, InfoTip, Input, Label, Skeleton } from '../ui';
 import { Modal } from '../ui/Modal';
-import { usePreviewBriefing } from '../../hooks/briefingQueries';
+import { usePreviewBriefing, usePublishBriefing } from '../../hooks/briefingQueries';
 import {
   useSupportingEvents, useSupportingOpportunities, useSupportingForumTopics,
   useCreateSupporting, useDeleteSupporting,
@@ -12,24 +12,79 @@ import {
 // returns full HTML; we show it in a SANDBOXED iframe (`sandbox=""` blocks
 // scripts, forms, popups, top-navigation and same-origin access, so untrusted
 // article text cannot execute or reach the app).
-export function PulsePreviewModal({ open, onClose, briefing }) {
+//
+// Two modes (owner requirement 2026-11-25, Publish → Preview → Send):
+//   * READ-ONLY (default): just shows the rendered email.
+//   * PUBLISH (`publishMode`): the same preview plus a send footer — "Send test
+//     to me" (one copy to the signed-in user) and "Send to segment →" (the real
+//     subscribers, behind a confirm step). A successful production send marks
+//     the briefing published (the caller's cache invalidation updates the pill).
+export function PulsePreviewModal({ open, onClose, briefing, publishMode = false, onPublished }) {
   const briefingId = briefing?.id;
   const preview = usePreviewBriefing(briefingId);
+  const publish = usePublishBriefing(briefingId);
   const { mutate: runPreview, reset } = preview;
+
+  // The publish footer's local state. `confirmOpen` gates the real subscriber
+  // send behind an explicit confirm; `result`/`errorText` are the terminal
+  // messages; `testTo` remembers who a test went to.
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [result, setResult] = useState(null);
+  const [errorText, setErrorText] = useState(null);
 
   useEffect(() => {
     if (open && briefingId) runPreview();
     if (!open) reset();
   }, [open, briefingId, runPreview, reset]);
 
+  // Reset the publish state every time the modal (re)opens or its briefing changes.
+  useEffect(() => {
+    setConfirmOpen(false);
+    setResult(null);
+    setErrorText(null);
+  }, [open, briefingId]);
+
   if (!briefing) return null;
+
+  const segmentConfigured = briefing.publishSegmentConfigured !== false;
+  const hasContent = (briefing.itemCount ?? 0) > 0;
+  const alreadyPublished = briefing.status === 'published';
+
+  const onSendTest = async () => {
+    setErrorText(null);
+    setResult(null);
+    try {
+      const res = await publish.mutateAsync({ test: true });
+      setResult({ kind: 'test', to: res?.to });
+    } catch (err) {
+      setErrorText(err?.message || 'Could not send the test email.');
+    }
+  };
+
+  const onSendProduction = async () => {
+    setErrorText(null);
+    setResult(null);
+    try {
+      const res = await publish.mutateAsync({});
+      setResult({ kind: 'production', segments: res?.segments ?? [] });
+      setConfirmOpen(false);
+      onPublished?.(res);
+      // The briefing's status is now 'published' server-side; refetch the
+      // preview-adjacent detail via the caller's invalidation (onPublished).
+    } catch (err) {
+      setErrorText(err?.message || 'Could not send the briefing.');
+      setConfirmOpen(false);
+    }
+  };
+
+  const segmentLabel = 'the configured segment';
 
   return (
     <Modal
       open={open}
       onClose={onClose}
       title={briefing.title || `Briefing · ${briefing.briefingDate?.slice(0, 10)}`}
-      description="Preview of the rendered briefing email."
+      description={publishMode ? 'Preview the rendered briefing email, then choose how to send it.' : 'Preview of the rendered briefing email.'}
       className="max-w-3xl"
     >
       <div className="space-y-3">
@@ -58,6 +113,84 @@ export function PulsePreviewModal({ open, onClose, briefing }) {
           </div>
         )}
       </div>
+
+      {publishMode && (
+        <div className="mt-4 space-y-3 border-t border-border pt-4">
+          {result?.kind === 'test' && (
+            <p role="status" className="flex items-center gap-2 rounded-md bg-success/10 px-3 py-2 text-[13px] text-success">
+              <CheckCircle2 className="h-4 w-4 shrink-0" />
+              Test sent to {result.to}
+            </p>
+          )}
+          {result?.kind === 'production' && (
+            <p role="status" className="flex items-center gap-2 rounded-md bg-success/10 px-3 py-2 text-[13px] text-success">
+              <CheckCircle2 className="h-4 w-4 shrink-0" />
+              Briefing sent to {(result.segments ?? []).join(', ') || segmentLabel}. Marked published.
+            </p>
+          )}
+          {errorText && (
+            <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-[13px] text-destructive">
+              {errorText}
+            </p>
+          )}
+
+          {alreadyPublished && !result && (
+            <p className="flex items-center gap-2 text-[12.5px] text-muted-foreground">
+              <Info className="h-3.5 w-3.5" />
+              This briefing is already published. A further send will be recorded as a new version.
+            </p>
+          )}
+
+          {!hasContent && (
+            <p className="flex items-center gap-2 text-[12.5px] text-muted-foreground">
+              <Info className="h-3.5 w-3.5" />
+              Nothing to publish — add at least one piece to today&apos;s email first.
+            </p>
+          )}
+
+          {confirmOpen ? (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2.5">
+              <span className="text-[13px] text-foreground">
+                Send this briefing to {segmentLabel}? This emails real subscribers.
+              </span>
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" size="sm" onClick={() => setConfirmOpen(false)} disabled={publish.isPending}>
+                  Cancel
+                </Button>
+                <Button size="sm" onClick={onSendProduction} disabled={publish.isPending}>
+                  {publish.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  {publish.isPending ? 'Sending…' : 'Confirm send'}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={onSendTest}
+                disabled={!hasContent || publish.isPending}
+              >
+                {publish.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
+                Send test to me
+              </Button>
+              <span className="inline-flex items-center gap-1">
+                <Button
+                  size="sm"
+                  onClick={() => setConfirmOpen(true)}
+                  disabled={!hasContent || !segmentConfigured || publish.isPending}
+                >
+                  <Send className="h-4 w-4" />
+                  Send to segment →
+                </Button>
+                {!segmentConfigured && (
+                  <InfoTip content="Set NP_PULSE_SEGMENT to enable" label="No segment configured" />
+                )}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
     </Modal>
   );
 }

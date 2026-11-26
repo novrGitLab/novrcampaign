@@ -978,7 +978,10 @@ export default function PulseWizard() {
         await attach(Number(fn), d.itemId);
       }
 
-      navigate('/pulse');
+      // (3) Hand off to the publish flow: navigate to Today with the publish
+      //     flag, so the briefing preview opens in publish mode — preview the
+      //     email, then choose to send it (test to yourself, or to the segment).
+      navigate(`/pulse?publish=1&briefing=${briefingId}`, { state: { publishBriefingId: briefingId } });
     } catch (e) {
       setFinishError(e.message);
       setFinishing(false);
@@ -1144,7 +1147,7 @@ export default function PulseWizard() {
               <Button variant="ghost" size="sm" onClick={() => setStep(2)}>← Back</Button>
               <div className="ml-auto">
                 <Button size="sm" onClick={onFinish} disabled={finishing}>
-                  {finishing ? 'Finishing…' : 'Finish → Today'}
+                  {finishing ? 'Finishing…' : 'Finish → Preview & send'}
                 </Button>
               </div>
             </div>

@@ -37,6 +37,101 @@ const BLOCK_SPLIT = /<\/(p|div|li|h[1-6]|section|tr|blockquote|figcaption|td)\s*
 /** Minimum words for a retained line (nav/label lines are typically 1–2 words). */
 const MIN_LINE_WORDS = 3;
 
+/**
+ * Named HTML entities that show up in article prose. A small curated map is
+ * enough: the numeric form (`&#NN;` / `&#xHH;`) is decoded generically below.
+ */
+const NAMED_ENTITIES = {
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  apos: "'",
+  nbsp: ' ',
+  mdash: '—',
+  ndash: '–',
+  hellip: '…',
+  lsquo: '\u2018',
+  rsquo: '\u2019',
+  ldquo: '\u201c',
+  rdquo: '\u201d',
+  laquo: '«',
+  raquo: '»',
+  middot: '·',
+  bull: '•',
+  copy: '©',
+  reg: '®',
+  trade: '™',
+  deg: '°',
+  euro: '€',
+  pound: '£',
+  times: '×',
+  '#39': "'",
+  '#x27': "'",
+  '#x2F': '/',
+  '#8217': '\u2019',
+  '#8216': '\u2018',
+  '#8220': '\u201c',
+  '#8221': '\u201d',
+};
+
+/**
+ * Decode HTML entities: a curated named map plus generic numeric references
+ * (`&#39;`, `&#x27;`). Unknown named entities are left untouched.
+ */
+function decodeEntities(text) {
+  return String(text).replace(/&(#x?[0-9a-fA-F]+|[a-zA-Z]+);/g, (match, body) => {
+    if (body[0] === '#') {
+      const isHex = body[1] === 'x' || body[1] === 'X';
+      const code = Number.parseInt(isHex ? body.slice(2) : body.slice(1), isHex ? 16 : 10);
+      if (Number.isFinite(code) && code > 0 && code <= 0x10ffff) {
+        try {
+          return String.fromCodePoint(code);
+        } catch {
+          return match;
+        }
+      }
+      return match;
+    }
+    const named = NAMED_ENTITIES[body] ?? NAMED_ENTITIES[body.toLowerCase()];
+    return named ?? match;
+  });
+}
+
+/** Remove any residual tag fragments (`<[^>]{1,80}>`), repeating until stable. */
+function stripResidualTags(text) {
+  let out = String(text);
+  let prev;
+  do {
+    prev = out;
+    out = out.replace(/<[^>]{1,80}>/g, ' ');
+  } while (out !== prev);
+  return out;
+}
+
+/**
+ * A line that looks like code / CSS / JS rather than article prose. Legacy and
+ * imperfect extraction still leaked "code" into stored bodies (the owner's
+ * report), so drop these lines outright. Heuristics:
+ *   - braces ({ or }) — object literals / CSS rule blocks;
+ *   - a CSS selector at line start (`@media`, `.class {`, `#id {`);
+ *   - JS keywords/operators: `function(`, `var `, `=>`, `window.`, `document.`;
+ *   - `cookie` (banner scripts) and `!important` (inline styles).
+ */
+function isCodeLikeLine(line) {
+  const s = String(line);
+  if (s.includes('{') || s.includes('}')) return true;
+  if (/^\s*[@.#][\w-]+\s*\{/.test(s)) return true;
+  if (/function\s*\(/.test(s)) return true;
+  if (/\bvar\s+\w/.test(s)) return true;
+  if (s.includes('=>')) return true;
+  if (s.includes('window.')) return true;
+  if (s.includes('document.')) return true;
+  if (/cookie/i.test(s)) return true;
+  if (s.includes('!important')) return true;
+  return false;
+}
+
 /** Remove a whole element (open to close, non-greedy) for each dropped tag. */
 function dropBlocks(html) {
   let out = String(html).replace(/<!--[\s\S]*?-->/g, ' ');
@@ -81,15 +176,22 @@ function isNavLikeLine(line) {
 
 /**
  * Split a region into lines on block boundaries and strip/normalise each line,
- * dropping nav-like lines. Joining with a space keeps the text a single blob
- * (the stored body is plain text, not line-delimited).
+ * dropping nav-like and code-like lines. Each line is tag-stripped, residual tag
+ * fragments are removed, entities are decoded, and whitespace is collapsed.
+ * Joining with a space keeps the text a single blob (the stored body is plain
+ * text, not line-delimited).
  */
 function regionToText(region) {
   const lines = String(region)
     .split(BLOCK_SPLIT)
-    .map((line) => stripHtml(line))
-    .filter((line) => line.length > 0 && !isNavLikeLine(line));
-  return lines.join(' ').replace(/\s+/g, ' ').trim();
+    // Decode entities FIRST so an encoded tag fragment (`&lt;em&gt;`) is seen as
+    // a tag and can be stripped, then strip leftover tag fragments, then tidy.
+    .map((line) => stripResidualTags(decodeEntities(stripHtml(line))))
+    .map((line) => line.replace(/\s+/g, ' ').trim())
+    .filter((line) => line.length > 0 && !isNavLikeLine(line) && !isCodeLikeLine(line));
+  // Collapse runs of 3+ blank lines (a no-op after the join, but kept explicit
+  // so the contract holds if a caller ever re-splits on newlines).
+  return lines.join(' ').replace(/\n{3,}/g, '\n\n').replace(/\s+/g, ' ').trim();
 }
 
 /**

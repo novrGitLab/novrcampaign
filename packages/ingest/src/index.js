@@ -30,8 +30,10 @@ export {
   createFetchBudget,
   enrichItemFullText,
   enrichItemsFullText,
+  capBody,
   DEFAULT_FULL_TEXT,
 } from './enrich/fullText.js';
+export { extractArticle } from './enrich/extractArticle.js';
 export {
   SOURCES,
   allSources,

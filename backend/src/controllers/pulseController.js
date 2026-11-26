@@ -38,6 +38,19 @@ const REGION_ALIASES = {
 const REVIEW_STATUSES = ['new', 'accepted', 'dismissed'];
 
 /**
+ * Map a `cyberRegion` tier to the `np_source.region` code used by the layered
+ * fallback for NOT-YET-CLASSIFIED events. The source region already encodes the
+ * tier for a dedicated regional outlet, so an unclassified story carried only by
+ * a Nigerian source is treated as a Nigeria-cyber candidate (owner requirement
+ * 2026-11-25). 'GLOBAL' maps to its own code.
+ */
+const CYBER_REGION_SOURCE_REGION = {
+  NG: 'NG',
+  AF: 'AF',
+  GLOBAL: 'GLOBAL',
+};
+
+/**
  * CIP v1 deterministic "cybersecurity related" heuristic — the curated set of
  * `np_source.id` values whose outlet is dedicated to cybersecurity coverage.
  * These are the only sources whose every story is a cyber story; every other
@@ -86,7 +99,16 @@ const listSchema = Joi.object({
   // currently a no-op (the filter only narrows on `true`).
   isCybersecurity: Joi.boolean().truthy('true').falsy('false'),
   isThreatIntel: Joi.boolean().truthy('true').falsy('false'),
+  // DEPRECATED: `isNigeriaRelated` filter param is retained for backward
+  // compatibility but the column is no longer written; `cyberRegion=NG` is the
+  // Nigeria-cyber filter now.
   isNigeriaRelated: Joi.boolean().truthy('true').falsy('false'),
+  // Regional cybersecurity tier (owner requirement 2026-11-25). One of the three
+  // canonical tiers; the case-insensitive/friendly aliases mirror `region`.
+  cyberRegion: Joi.string()
+    .trim()
+    .uppercase()
+    .valid('NG', 'AF', 'GLOBAL'),
   region: Joi.string()
     .trim()
     .lowercase()
@@ -340,7 +362,7 @@ function sourceNameOf(event) {
 export async function listPulseEvents(req, res) {
   const {
     page, pageSize, function: functionId, reviewStatus, q, since, region, language, cyber,
-    isCybersecurity, isThreatIntel, isNigeriaRelated,
+    isCybersecurity, isThreatIntel, isNigeriaRelated, cyberRegion,
   } = await validateQuery(req.query);
 
   const where = {};
@@ -362,6 +384,35 @@ export async function listPulseEvents(req, res) {
   if (isCybersecurity === true) where.isCybersecurity = true;
   if (isThreatIntel === true) where.isThreatIntel = true;
   if (isNigeriaRelated === true) where.isNigeriaRelated = true;
+  if (cyberRegion !== undefined) {
+    // REGIONAL CYBERSECURITY filter (owner requirement 2026-11-25): narrow to the
+    // cyber tier 'NG' | 'AF' | 'GLOBAL'. LAYERED, same shape as `cyber`: an event
+    // is in the tier when the AI classified it `isCybersecurity = true` AND its
+    // `cyberRegion` matches, OR — for events not yet classified — when its
+    // provenance source region equals the tier's region (the source region
+    // already encodes the tier). The OR rides in the AND list so it composes with
+    // the other filters.
+    where.AND = [
+      ...(where.AND ?? []),
+      {
+        OR: [
+          { AND: [{ isCybersecurity: true }, { cyberRegion }] },
+          {
+            AND: [
+              { isCybersecurity: null },
+              {
+                sources: {
+                  some: {
+                    rawDocument: { source: { region: CYBER_REGION_SOURCE_REGION[cyberRegion] } },
+                  },
+                },
+              },
+            ],
+          },
+        ],
+      },
+    ];
+  }
   if (cyber === true) {
     // LAYERED cyber filter. A cyber story is EITHER an event the AI classified
     // `isCybersecurity = true`, OR — for events not yet classified (the flag is

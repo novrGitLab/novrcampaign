@@ -84,16 +84,23 @@ async function attachEventSource(eventId, rawDocumentId) {
  * omitted so the column stays NULL (unclassified) and the batched AI pass can
  * still fill it. Region is read from the source registry.
  *
+ * `cyberRegion` is the exception: it is ALWAYS written — the region string when
+ * the item looks cyber, otherwise explicitly null. That makes "not cyber" a
+ * stored, non-null-ambiguous null the way the owner's filter model expects (the
+ * AI pass then overwrites it authoritatively).
+ *
+ * NOTE: `isNigeriaRelated` is DEPRECATED and no longer written (the `cyberRegion`
+ * tier supersedes it). The column is retained for historical data.
+ *
  * @param {import('@novr/ingest').NormalisedItem & { sourceId:string }} item
- * @returns {{ isCybersecurity?:boolean, isThreatIntel?:boolean, isNigeriaRelated?:boolean }}
+ * @returns {{ isCybersecurity?:boolean, isThreatIntel?:boolean, cyberRegion:'NG'|'AF'|'GLOBAL'|null }}
  */
 function pretagFlags(item) {
   const region = getSource(item.sourceId)?.region;
   const tag = pretagEvent({ title: item.title, summary: item.summary, region });
-  const flags = {};
+  const flags = { cyberRegion: tag.cyberRegion ?? null };
   if (tag.isCybersecurity) flags.isCybersecurity = true;
   if (tag.isThreatIntel) flags.isThreatIntel = true;
-  if (tag.isNigeriaRelated) flags.isNigeriaRelated = true;
   return flags;
 }
 

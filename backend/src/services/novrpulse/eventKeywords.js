@@ -38,6 +38,19 @@ export const THREAT_KEYWORDS = [
   'vulnerability exploited', 'actively exploited', 'malicious actor',
 ];
 
+/** African-region indicators (countries, blocs, outlets). */
+export const AFRICA_KEYWORDS = [
+  'africa', 'african', 'kenya', 'kenyan', 'nairobi', 'ghana', 'ghanaian', 'accra',
+  'south africa', 'south african', 'johannesburg', 'cape town', 'egypt', 'egyptian',
+  'cairo', 'morocco', 'moroccan', 'tunisia', 'tunisian', 'algeria', 'algerian',
+  'ethiopia', 'ethiopian', 'addis ababa', 'uganda', 'kampala', 'tanzania',
+  'dar es salaam', 'rwanda', 'kigali', 'senegal', 'dakar', 'ivory coast',
+  'côte d\'ivoire', 'cameroon', 'franceville', 'zambia', 'lusaka', 'zimbabwe',
+  'harare', 'botswana', 'gaborone', 'mozambique', 'maputo', 'angola', 'luanda',
+  'au', 'african union', 'ecowas', 'sadc', 'east africa', 'west africa',
+  'sub-saharan', 'sub saharan', 'horn of africa', 'sahel',
+];
+
 /** Nigeria-related indicators (geography, agencies, official bodies). */
 export const NIGERIA_KEYWORDS = [
   'nigeria', 'nigerian', 'lagos', 'abuja', 'abuja-based', 'naira',
@@ -86,24 +99,48 @@ function anyHit(text, keywords) {
  * @param {string} [input.title]
  * @param {string} [input.summary]
  * @param {string} [input.region] the source region code (e.g. 'NG'); 'NG' counts
- *   as a Nigeria-related signal.
- * @returns {{ isCybersecurity: boolean, isThreatIntel: boolean, isNigeriaRelated: boolean }}
- *   each flag is true on any hit; FALSE means "no keyword hit" (the caller
- *   leaves the column NULL so the AI pass can still fill it).
+ *   as a Nigeria-related signal and (for the cyber tier) a Nigeria cyber signal.
+ * @returns {{ isCybersecurity: boolean, isThreatIntel: boolean, isNigeriaRelated: boolean, cyberRegion: ('NG'|'AF'|'GLOBAL'|null) }}
+ *   each boolean flag is true on any hit; FALSE means "no keyword hit" (the
+ *   caller leaves the column NULL so the AI pass can still fill it). `cyberRegion`
+ *   is set ONLY when the item looks cyber (a cyber keyword hit OR a region that
+ *   suggests it): 'NG' when a Nigeria keyword hits or the source region is 'NG';
+ *   else 'AF' when an African keyword hits or the source region is 'AF'; else
+ *   'GLOBAL'. It is null for a non-cyber item (the caller stores null).
  */
 export function pretagEvent({ title, summary, region } = {}) {
   const t = String(title ?? '').toLowerCase();
   const s = String(summary ?? '').toLowerCase();
   const both = s ? `${t}\n${s}` : t;
+  const regionCode = String(region ?? '').toUpperCase();
 
   // Title hits are checked against the title alone and combined with summary
   // hits; a title hit therefore always sets the flag (it dominates the summary).
   const isCybersecurity = anyHit(t, CYBER_KEYWORDS) || anyHit(s, CYBER_KEYWORDS);
   const isThreatIntel = anyHit(t, THREAT_KEYWORDS) || anyHit(s, THREAT_KEYWORDS);
-  const isNigeriaRelated =
-    anyHit(both, NIGERIA_KEYWORDS) || String(region ?? '').toUpperCase() === 'NG';
+  const nigeriaHit = anyHit(both, NIGERIA_KEYWORDS) || regionCode === 'NG';
+  const isNigeriaRelated = nigeriaHit;
 
-  return { isCybersecurity, isThreatIntel, isNigeriaRelated };
+  // Regional cyber tier. The source region "suggests cyber" only in the sense
+  // that a trusted regional outlet carrying Nigeria/Africa news is likely a
+  // cyber item (the pre-tag is recall-oriented; the AI pass is the precision
+  // pass and overwrites). Nigeria is the priority tier, so a Nigeria signal
+  // (keyword OR source region) wins over an Africa signal.
+  const regionSuggestsCyber = regionCode === 'NG' || regionCode === 'AF';
+  let cyberRegion = null;
+  if (isCybersecurity || regionSuggestsCyber) {
+    if (nigeriaHit) cyberRegion = 'NG';
+    else if (anyHit(both, AFRICA_KEYWORDS) || regionCode === 'AF') cyberRegion = 'AF';
+    else cyberRegion = 'GLOBAL';
+  }
+
+  return { isCybersecurity, isThreatIntel, isNigeriaRelated, cyberRegion };
 }
 
-export default { pretagEvent, CYBER_KEYWORDS, THREAT_KEYWORDS, NIGERIA_KEYWORDS };
+export default {
+  pretagEvent,
+  CYBER_KEYWORDS,
+  THREAT_KEYWORDS,
+  AFRICA_KEYWORDS,
+  NIGERIA_KEYWORDS,
+};

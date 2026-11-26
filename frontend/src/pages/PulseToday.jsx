@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { format, formatDistanceToNow } from 'date-fns';
 import { Check, ChevronDown, CloudDownload, RefreshCw, Sparkles, X } from 'lucide-react';
 import { Button, EmptyState, Skeleton } from '../components/ui';
@@ -57,9 +57,10 @@ async function attachItemToSection({ briefingId, functionId, publishItemId }) {
  * per-story accept/dismiss bar, bulk checkboxes, the tray and section
  * management, lead designation, reorder, notes, final-review) is deliberately
  * NOT shown here. Those remain server-side; this is the surface the owner
- * sees. The two owner-requested additions on top of the minimal screen are a
- * small region filter chip row (All/Nigeria/Africa/Global → the `region` query
- * param) and the header Refresh / Pull latest actions.
+ * sees. The owner-requested additions on top of the minimal screen are a small
+ * regional-cybersecurity chip row (All cyber / Nigeria cyber / Africa cyber /
+ * Global cyber → the `cyberRegion` query param, Nigeria being the priority tier)
+ * plus the Threat intel chip, and the header Refresh / Pull latest actions.
  *
  * Theme: the app's LIGHT theme only (standard tokens + Inter). The email
  * preview iframe is the product's own dark-branded HTML and is unchanged.
@@ -90,14 +91,14 @@ function relativeTime(iso) {
 // pulseNewsletter so this page and the old surfaces agreed on the same set.
 const FITS_PILLARS = NEWS_DERIVED_PILLARS;
 
-// Region filter chips → the backend `region` query param. `undefined` (All) is
-// omitted entirely by the api client; the server accepts the short codes and
-// maps them to the canonical `np_source.region` value (see pulseController).
-const REGION_CHIPS = [
-  { key: 'all', label: 'All', param: undefined },
-  { key: 'ng', label: 'Nigeria', param: 'NG' },
-  { key: 'af', label: 'Africa', param: 'AF' },
-  { key: 'global', label: 'Global', param: 'GLOBAL' },
+// Regional CYBERSECURITY tier chips → the backend `cyberRegion` query param
+// (owner requirement 2026-11-25). Single-select; `undefined` (All) is omitted
+// entirely by the api client. Nigeria is the priority tier, so it leads.
+const CYBER_TIER_CHIPS = [
+  { key: 'all', label: 'All cyber', param: undefined },
+  { key: 'ng', label: 'Nigeria cyber', param: 'NG' },
+  { key: 'af', label: 'Africa cyber', param: 'AF' },
+  { key: 'global', label: 'Global cyber', param: 'GLOBAL' },
 ];
 
 /**
@@ -128,11 +129,14 @@ function bodyHint(functionId) {
   return def.slots.join(' · ');
 }
 
-// ── Region filter chips — single-select, composes with the search box ─────────
-function RegionChips({ value, onSelect }) {
+// ── Cyber tier chips — single-select, composes with the search box ───────────
+// Replaces the old region + separate "Cybersecurity only" chips. The owner's
+// filter model is regional cybersecurity: Nigeria cyber (priority) / Africa
+// cyber / Global cyber, plus All. Each maps to the backend `cyberRegion` param.
+function CyberTierChips({ value, onSelect }) {
   return (
-    <div className="flex items-center gap-1" role="radiogroup" aria-label="Filter today's news by region">
-      {REGION_CHIPS.map((chip) => {
+    <div className="flex items-center gap-1" role="radiogroup" aria-label="Filter today's news by cyber region">
+      {CYBER_TIER_CHIPS.map((chip) => {
         const active = value === chip.key;
         return (
           <button
@@ -153,30 +157,6 @@ function RegionChips({ value, onSelect }) {
         );
       })}
     </div>
-  );
-}
-
-// ── Cyber chip — a single toggle that composes with region + search ───────────
-// "Cybersecurity only" narrows the news list to cybersecurity stories (backend
-// `cyber=true`, now AI-backed: the AI `isCybersecurity` flag, falling back to the
-// dedicated-cyber-source heuristic for not-yet-classified events). Off by default.
-function CyberChip({ active, onToggle }) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={active}
-      onClick={() => onToggle(!active)}
-      title="Cybersecurity stories (AI-classified; falls back to dedicated cyber sources)"
-      className={
-        'rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.04em] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ' +
-        (active
-          ? 'bg-primary text-primary-foreground'
-          : 'bg-secondary text-secondary-foreground hover:text-foreground')
-      }
-    >
-      Cybersecurity only
-    </button>
   );
 }
 
@@ -429,17 +409,35 @@ function WriteOverlay({ open, onClose, mode, source, onSave, busy, error }) {
                   <Skeleton className="h-24 w-full" />
                 ) : sourceError ? (
                   <p className="text-[12.5px] text-destructive">Could not load the source article.</p>
-                ) : eventDetail?.sourceBody ? (
+                ) : (
                   <>
-                    <div className="max-h-72 overflow-y-auto whitespace-pre-wrap rounded-md bg-secondary/40 p-3 text-[12.5px] leading-[1.6] text-muted-foreground">
-                      {eventDetail.sourceBody}
-                    </div>
-                    {eventDetail.sourceTruncated && (
-                      <p className="mt-1.5 text-[11.5px] italic text-muted-foreground">(truncated)</p>
+                    {/* Source pane header — the event title, then source · date.
+                        Mirrors the wizard's DraftCard source-pane header so the
+                        reader always knows which article they are reading. */}
+                    {eventDetail?.title && (
+                      <div className="mb-2.5 border-b border-border pb-2.5">
+                        <p className="text-[13.5px] font-semibold leading-snug text-foreground">
+                          {eventDetail.title}
+                        </p>
+                        <p className="mt-0.5 text-[11.5px] text-muted-foreground">
+                          {eventDetail.sources?.[0]?.sourceName || source?.sourceName || 'Source'}
+                          {eventDetail.publishedAt ? <> · {relativeTime(eventDetail.publishedAt)}</> : null}
+                        </p>
+                      </div>
+                    )}
+                    {eventDetail?.sourceBody ? (
+                      <>
+                        <div className="max-h-72 overflow-y-auto whitespace-pre-wrap rounded-md bg-secondary/40 p-3 text-[12.5px] leading-[1.6] text-muted-foreground">
+                          {eventDetail.sourceBody}
+                        </div>
+                        {eventDetail.sourceTruncated && (
+                          <p className="mt-1.5 text-[11.5px] italic text-muted-foreground">(truncated)</p>
+                        )}
+                      </>
+                    ) : (
+                      <p className="text-[12.5px] italic text-muted-foreground">No source text available.</p>
                     )}
                   </>
-                ) : (
-                  <p className="text-[12.5px] italic text-muted-foreground">No source text available.</p>
                 )}
               </div>
             )}
@@ -567,14 +565,19 @@ function AiReviewModal({ open, onClose }) {
 export default function PulseToday() {
   const dayKey = lagosTodayKey();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [query, setQuery] = useState('');
-  const [region, setRegion] = useState('all');
-  const [cyberOnly, setCyberOnly] = useState(false);
+  const [cyberTier, setCyberTier] = useState('all');
   const [threatIntelOnly, setThreatIntelOnly] = useState(false);
   const [menuOpenId, setMenuOpenId] = useState(null);
   const [aiOpen, setAiOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
+  // Whether the preview modal is in Publish mode (footer with send choices).
+  // Set when arriving from the wizard Finish (`?publish=1`) or via the header
+  // Send button, which is the owner's "after the draft, preview then send" flow.
+  const [previewPublishMode, setPreviewPublishMode] = useState(false);
   const [write, setWrite] = useState(null); // { mode, source }
   const [writeError, setWriteError] = useState(null);
   const [actionError, setActionError] = useState(null);
@@ -586,17 +589,15 @@ export default function PulseToday() {
   // server without this local state loses the chip — an accepted v1 limitation.
   const [itemWarnings, setItemWarnings] = useState({});
 
-  const regionParam = REGION_CHIPS.find((c) => c.key === region)?.param;
-  // The cyber chip is a boolean "cybersecurity only" filter (backend `cyber`).
-  // The threat-intel chip is the AI `isThreatIntel` flag filter. Both OFF →
-  // undefined, so the param is omitted entirely (the api client drops undefined).
-  const cyberParam = cyberOnly ? true : undefined;
+  const cyberRegionParam = CYBER_TIER_CHIPS.find((c) => c.key === cyberTier)?.param;
+  // The threat-intel chip is the AI `isThreatIntel` flag filter. OFF → undefined,
+  // so the param is omitted entirely (the api client drops undefined).
   const threatIntelParam = threatIntelOnly ? true : undefined;
 
   // Today's wire events. The API has no date param, so fetch a wide page and
   // filter to the Lagos day client-side (as the old Inbox did).
   const { data: eventsData, isLoading: eventsLoading, isError: eventsError, error: eventsErr, refetch: refetchEvents, isFetching } =
-    usePulseEvents({ pageSize: 100, region: regionParam, cyber: cyberParam, isThreatIntel: threatIntelParam });
+    usePulseEvents({ pageSize: 100, cyberRegion: cyberRegionParam, isThreatIntel: threatIntelParam });
   const events = useMemo(() => eventsData?.items ?? [], [eventsData]);
 
   const dayEvents = useMemo(
@@ -624,6 +625,28 @@ export default function PulseToday() {
     [briefings, dayKey],
   );
   const { data: briefingDetail } = useBriefing(briefing?.id);
+  const qc = useQueryClient();
+
+  // Publish flow hand-off: the wizard navigates to `/pulse?publish=1` (optionally
+  // with a `briefing` id/state) so the preview opens in publish mode as soon as
+  // the briefing detail is loaded. We then clear the flag so a later manual
+  // Preview does not re-trigger publish mode.
+  const publishFlag = searchParams.get('publish') === '1';
+  const stateBriefingId = location.state?.publishBriefingId ?? null;
+  useEffect(() => {
+    if (!publishFlag) return;
+    // Prefer the briefing the wizard finished; else today's briefing.
+    const target = stateBriefingId ?? briefing?.id;
+    if (!target) return;
+    if (briefingDetail?.id !== target && !briefingDetail) return;
+    setPreviewPublishMode(true);
+    setPreviewOpen(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete('publish');
+    next.delete('briefing');
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [publishFlag, briefingDetail, stateBriefingId, briefing?.id]);
 
   // "In today's email" = today's desk-usable pieces (drafts + approved). The
   // desk-usable endpoint returns manually-authored items plus items whose linked
@@ -657,6 +680,10 @@ export default function PulseToday() {
   // Counters for the header + sections.
   const newsCount = filteredEvents.length;
   const emailCount = emailItems.length;
+  // The Send button is live only when today's briefing actually has attached
+  // items (the publish endpoint refuses an empty briefing with "Nothing to
+  // publish"). `itemCount` comes from the briefing detail.
+  const hasEmailContent = (briefingDetail?.itemCount ?? 0) > 0;
 
   // ── Create / add sequence ──────────────────────────────────────────────────
   // "Add to email" = (1) create the piece, (2) ensure today's briefing exists,
@@ -767,7 +794,6 @@ export default function PulseToday() {
   const busy = createFromEvent.isPending || editPublish.isPending || createBriefing.isPending;
 
   // ── Header actions: Refresh (invalidate) vs Pull latest (real collection) ───
-  const qc = useQueryClient();
   const pull = useRunPulseCollection();
 
   const onRefresh = () => {
@@ -848,8 +874,9 @@ export default function PulseToday() {
             </Button>
             <Button
               size="sm"
-              disabled
-              title="Connecting the email send is the next milestone"
+              disabled={!hasEmailContent}
+              title={hasEmailContent ? 'Preview the email, then send a test or the edition' : "Add at least one piece to today's email first"}
+              onClick={() => { setPreviewPublishMode(true); setPreviewOpen(true); }}
             >
               Send
             </Button>
@@ -888,8 +915,7 @@ export default function PulseToday() {
               Today's news <span className="ml-0.5 text-primary">({newsCount})</span>
             </h2>
             <div className="ml-auto flex items-center gap-3">
-              <RegionChips value={region} onSelect={setRegion} />
-              <CyberChip active={cyberOnly} onToggle={setCyberOnly} />
+              <CyberTierChips value={cyberTier} onSelect={setCyberTier} />
               <ThreatIntelChip active={threatIntelOnly} onToggle={setThreatIntelOnly} />
               <input
                 type="search"
@@ -999,7 +1025,7 @@ export default function PulseToday() {
             </h2>
             <div className="ml-auto flex items-center gap-2">
               <Button variant="secondary" size="sm" onClick={onWriteOwn}>✎ Write your own</Button>
-              <Button variant="secondary" size="sm" onClick={() => setPreviewOpen(true)} disabled={!briefing}>
+              <Button variant="secondary" size="sm" onClick={() => { setPreviewPublishMode(false); setPreviewOpen(true); }} disabled={!briefing}>
                 Preview email
               </Button>
             </div>
@@ -1066,7 +1092,18 @@ export default function PulseToday() {
         }
       />
       <AiReviewModal open={aiOpen} onClose={() => setAiOpen(false)} />
-      <PulsePreviewModal open={previewOpen} onClose={() => setPreviewOpen(false)} briefing={briefingDetail} />
+      <PulsePreviewModal
+        open={previewOpen}
+        onClose={() => { setPreviewOpen(false); setPreviewPublishMode(false); }}
+        briefing={briefingDetail}
+        publishMode={previewPublishMode}
+        onPublished={() => {
+          // The briefing is now 'published' server-side; refresh the briefing
+          // detail + list so the status reflects the send.
+          qc.invalidateQueries({ queryKey: ['briefing', briefing?.id] });
+          qc.invalidateQueries({ queryKey: ['briefings'] });
+        }}
+      />
     </div>
   );
 }

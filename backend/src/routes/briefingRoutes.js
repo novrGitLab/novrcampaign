@@ -28,6 +28,10 @@ router.get('/:id', asyncHandler(briefingController.getBriefing));
 // Preview the assembled briefing rendered through the email template. Registered
 // on the literal `/preview` suffix so it can never be read as a briefing id.
 router.post('/:id/preview', asyncHandler(briefingController.previewBriefing));
+// Publish → Preview → Send. Renders the SAME email the preview shows, then
+// sends it (a test to one address, or a campaign to a segment) and records a
+// publication snapshot. Registered on the literal `/publish` suffix.
+router.post('/:id/publish', asyncHandler(briefingController.publishBriefing));
 router.patch('/:id', asyncHandler(briefingController.updateBriefing));
 router.delete('/:id', asyncHandler(briefingController.deleteBriefing));
 

@@ -202,6 +202,12 @@ export const config = {
   // `provider` is an informational label only — all targets speak the same
   // OpenAI-compatible protocol, so no call site branches on it.
   novrpulse: {
+    // The Plunk segment (by id or name) a Daily Briefing is sent to when the
+    // caller does not pass `segments` explicitly. Empty means no segment is
+    // configured, and a production publish then fails closed with
+    // NO_SEGMENT_CONFIGURED (owner requirement 2026-11-25).
+    pulseSegment: process.env.NP_PULSE_SEGMENT || '',
+
     llm: {
       // When no API key is set the client runs in an inert state so non-LLM code
       // and tests still work; a real call throws a clear error.
