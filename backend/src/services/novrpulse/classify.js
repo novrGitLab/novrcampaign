@@ -10,7 +10,9 @@ import { AppError } from '../../utils/AppError.js';
  * The deterministic keyword pre-tag at store time (see `eventKeywords.js`) sets
  * a flag only when it hits and leaves a miss NULL; this pass is the precision
  * layer. It loads every event that is still UNCLASSIFIED (a classification flag
- * IS NULL) and classifies them in BATCHES with ONE bulk-tier LLM call per batch.
+ * IS NULL) and classifies them in BATCHES with one bulk-tier LLM call per batch,
+ * then retries any story the batch response did not cover one story per call
+ * (the configured model does not honour multi-story batches — see `classifyEvents`).
  *
  * Per the owner's model (2026-11-25) each event gets: `isCybersecurity`,
  * `cyberRegion` ('NG'|'AF'|'GLOBAL', set only when cyber), and `isThreatIntel`.
@@ -93,7 +95,15 @@ export const CLASSIFY_TIER = 'bulk';
  */
 export const CLASSIFY_MIN_CONFIDENCE = 0.7;
 
-/** Default batch size (one FF LLM call per batch). */
+/**
+ * Default batch size (one LLM call per batch of this many stories).
+ *
+ * NOTE (live finding 2026-11-26): the configured bulk model collapses a
+ * multi-story batch to a single entry, so `classifyEvents` retries any story the
+ * batch response does not cover one story per call (see its docblock). The batch
+ * size stays at 20 so a model that DOES return a full batch keeps the cheaper
+ * path; correctness no longer depends on the model honouring it.
+ */
 export const CLASSIFY_BATCH_SIZE = 20;
 /** Default cap on events classified per run. */
 export const CLASSIFY_MAX_EVENTS = 300;
@@ -330,16 +340,46 @@ export function resolveCyberVerdict(parsed) {
 }
 
 /**
+ * Read the classification entries out of a validated `complete()` result.
+ *
+ * The client returns the PARSED object; the schema is the permissive envelope
+ * `{ classifications: [...] }`, so the normal shape is wrapped. A model that
+ * ignores the envelope and emits the entries as a top-level JSON ARRAY is also
+ * accepted (live finding 2026-11-26: the bulk model's output shape varies), so
+ * both are normalized to a single array here instead of silently classifying
+ * nothing.
+ *
+ * @param {unknown} out the value returned by `client.complete()`
+ * @returns {unknown[]} the raw entry array (possibly empty)
+ */
+export function normalizeClassifications(out) {
+  if (Array.isArray(out)) return out;
+  if (out && typeof out === 'object' && Array.isArray(out.classifications)) {
+    return out.classifications;
+  }
+  return [];
+}
+
+/**
  * Classify events in batches, writing all three flags per the model's judgment.
  *
- * One FRONTIER-tier LLM call per batch of `batchSize` events (accuracy > cost;
- * each story is judged once). The batch's output is validated ONE ENTRY AT A
- * TIME: malformed entries (a non-object, a missing or out-of-range index, or
- * non-boolean flags) are SKIPPED and counted, while the valid entries in the
- * same batch are still applied — a single bad entry no longer discards the whole
- * batch. A batch with zero valid entries is logged and skipped; the run never
- * fails because of the model's output. The confidence floor + reason rule decide
- * each final verdict (see `resolveCyberVerdict`).
+ * One LLM call per batch of `batchSize` events. The batch's output is validated
+ * ONE ENTRY AT A TIME: malformed entries (a non-object, a missing or
+ * out-of-range index, or non-boolean flags) are SKIPPED and counted, while the
+ * valid entries in the same batch are still applied — a single bad entry no
+ * longer discards the whole batch. A batch with zero valid entries is logged and
+ * skipped; the run never fails because of the model's output. The confidence
+ * floor + reason rule decide each final verdict (see `resolveCyberVerdict`).
+ *
+ * PER-STORY RECOVERY (live finding 2026-11-26): the configured bulk model
+ * (`nemotron-3.5-bolt-e4b`) does NOT honour a multi-story batch — it returns a
+ * `{"classifications":[...]}` envelope containing only ONE entry with `index:1`,
+ * regardless of how many stories are in the prompt. Applying just that entry is
+ * the "Classified 1 of N" bug (the other N-1 stories were silently left
+ * unclassified). To be correct regardless of the model, after the batch call any
+ * story NOT covered by a returned entry is retried ONE STORY PER CALL (a prompt
+ * the model answers reliably) until every candidate is judged or the call fails.
+ * A model that DOES return a full batch still gets the fast path.
  *
  * @param {object} [input]
  * @param {number} [input.batchSize=CLASSIFY_BATCH_SIZE]
@@ -365,17 +405,53 @@ export async function classifyEvents({ batchSize = CLASSIFY_BATCH_SIZE, limit = 
 
   let classified = 0;
   let skipped = 0;
+  let calls = 0;
   const results = [];
 
+  /** Call the model for a list of events and return the raw (normalized) entries. */
+  async function completeEntries(subjects) {
+    calls += 1;
+    const out = await client.complete({
+      tier: CLASSIFY_TIER,
+      system: buildClassifySystem(),
+      prompt: buildClassifyPrompt(subjects),
+      schema: CLASSIFY_SCHEMA,
+    });
+    return normalizeClassifications(out);
+  }
+
+  /**
+   * Apply one entry to one event, last-write-wins per event. Returns the verdict
+   * result object on success, or null when the entry is invalid/out of range.
+   */
+  async function applyEntry(entry, target) {
+    const parsed = parseClassificationEntry(entry);
+    if (!parsed || !target) return null;
+    // The confidence floor + reason-presence rule decide the FINAL verdict: a
+    // low-confidence (or reason-less) "true" is stored as NOT cyber.
+    const verdict = resolveCyberVerdict(parsed);
+    await prisma.npEvent.update({
+      where: { id: target.id },
+      data: {
+        isCybersecurity: verdict.isCybersecurity,
+        isThreatIntel: verdict.isThreatIntel,
+        cyberRegion: verdict.cyberRegion,
+      },
+    });
+    return {
+      id: target.id,
+      isCybersecurity: verdict.isCybersecurity,
+      isThreatIntel: verdict.isThreatIntel,
+      cyberRegion: verdict.cyberRegion,
+      cybersecurityReason: parsed.cybersecurityReason,
+      confidence: parsed.confidence,
+    };
+  }
+
   for (const batch of batches) {
-    let out;
+    let entries;
     try {
-      out = await client.complete({
-        tier: CLASSIFY_TIER,
-        system: buildClassifySystem(),
-        prompt: buildClassifyPrompt(batch),
-        schema: CLASSIFY_SCHEMA,
-      });
+      entries = await completeEntries(batch);
     } catch (err) {
       // A failed batch leaves those events unclassified (retried on a later run);
       // it must not abort the whole pass.
@@ -385,8 +461,9 @@ export async function classifyEvents({ batchSize = CLASSIFY_BATCH_SIZE, limit = 
       continue;
     }
 
-    const entries = Array.isArray(out?.classifications) ? out.classifications : [];
-    let batchApplied = 0;
+    // Apply every valid entry that maps to a story in THIS batch (by index), and
+    // track which stories the model actually covered.
+    const covered = new Set();
     for (const entry of entries) {
       const parsed = parseClassificationEntry(entry);
       const target = parsed ? batch[parsed.index - 1] : undefined;
@@ -398,37 +475,50 @@ export async function classifyEvents({ batchSize = CLASSIFY_BATCH_SIZE, limit = 
         );
         continue;
       }
-      // The confidence floor + reason-presence rule decide the FINAL verdict: a
-      // low-confidence (or reason-less) "true" is stored as NOT cyber.
-      const verdict = resolveCyberVerdict(parsed);
-      await prisma.npEvent.update({
-        where: { id: target.id },
-        data: {
-          isCybersecurity: verdict.isCybersecurity,
-          isThreatIntel: verdict.isThreatIntel,
-          cyberRegion: verdict.cyberRegion,
-        },
-      });
-      classified += 1;
-      batchApplied += 1;
-      results.push({
-        id: target.id,
-        isCybersecurity: verdict.isCybersecurity,
-        isThreatIntel: verdict.isThreatIntel,
-        cyberRegion: verdict.cyberRegion,
-        cybersecurityReason: parsed.cybersecurityReason,
-        confidence: parsed.confidence,
-      });
+      const applied = await applyEntry(entry, target);
+      if (applied) {
+        covered.add(target.id);
+        classified += 1;
+        results.push(applied);
+      }
     }
 
-    // Never fail the run on the model's output: a fully-invalid batch is logged
-    // and the remaining batches continue (its events stay unclassified).
-    if (batchApplied === 0) {
+    // PER-STORY RECOVERY: any story the batch response did not cover is retried
+    // one story per call — the shape this model answers reliably — so a model
+    // that collapses a multi-story batch to a single entry cannot leave the rest
+    // of the corpus unclassified.
+    for (const target of batch) {
+      if (covered.has(target.id)) continue;
+      let solo;
+      try {
+        solo = await completeEntries([target]);
+      } catch (err) {
+        logger.warn({ message: err.message, id: target.id }, 'classification per-story call failed');
+        results.push({ ids: [target.id], error: err.message });
+        skipped += 1;
+        continue;
+      }
+      // A single-story prompt numbers its one story `#1`, so accept the entry at
+      // index 1 (or, defensively, any valid entry) as this story's verdict.
+      const entry = solo.find((e) => parseClassificationEntry(e)?.index === 1) ?? solo[0];
+      const applied = await applyEntry(entry, target);
+      if (applied) {
+        classified += 1;
+        results.push(applied);
+      } else {
+        skipped += 1;
+        logger.debug({ id: target.id, entries: solo.length }, 'per-story classification produced no valid entry');
+      }
+    }
+
+    // Never fail the run on the model's output: an uncovered batch is retried
+    // per story above and the remaining batches continue.
+    if (covered.size === 0) {
       logger.warn({ batch: batch.length, entries: entries.length }, 'classification batch produced no valid entries');
     }
   }
 
-  logger.info({ candidates: events.length, classified, skipped, batches: batches.length }, 'classification run complete');
+  logger.info({ candidates: events.length, classified, skipped, batches: batches.length, calls }, 'classification run complete');
   return { candidates: events.length, classified, batches: batches.length, skipped, results };
 }
 

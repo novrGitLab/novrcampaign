@@ -11,6 +11,7 @@ import {
   buildClassifyPrompt,
   parseClassificationEntry,
   resolveCyberVerdict,
+  normalizeClassifications,
   CLASSIFY_SCHEMA,
   CLASSIFY_MIN_CONFIDENCE,
 } from '../src/services/novrpulse/classify.js';
@@ -238,50 +239,67 @@ describe('classify: classifyEvents', () => {
 
   test('malformed entries (missing index / non-boolean flags / bad region) are skipped', async () => {
     const store = makeStore([event({ id: 'e1' }), event({ id: 'e2' }), event({ id: 'e3' }), event({ id: 'e4' })]);
-    const llm = stubLlm({
-      classifications: [
-        { index: 1, isCybersecurity: true, cyberRegion: 'NG', isThreatIntel: false, cybersecurityReason: 'phishing campaign targeting banks', confidence: 0.9 },
-        { index: 99, isCybersecurity: true, cyberRegion: 'NG', isThreatIntel: false }, // out of range
-        { index: 3, isCybersecurity: 'yes', cyberRegion: 'NG', isThreatIntel: false }, // bad type
-        { index: 4, isCybersecurity: true, cyberRegion: 'EUROPE', isThreatIntel: false }, // bad region
-        { isCybersecurity: true, cyberRegion: 'NG', isThreatIntel: false }, // no index
-      ],
+    // A single batch call: ONE response covers story #1 (valid); the other three
+    // entries are malformed. The per-story recovery then re-asks for #2..#4 and
+    // the stub answers each with exactly one valid entry, so those are applied.
+    const llm = stubLlm((req) => {
+      const n = (req.prompt.match(/^#\d+/gm) ?? []).length;
+      if (n > 1) {
+        return {
+          classifications: [
+            { index: 1, isCybersecurity: true, cyberRegion: 'NG', isThreatIntel: false, cybersecurityReason: 'phishing campaign targeting banks', confidence: 0.9 },
+            { index: 99, isCybersecurity: true, cyberRegion: 'NG', isThreatIntel: false }, // out of range
+            { index: 3, isCybersecurity: 'yes', cyberRegion: 'NG', isThreatIntel: false }, // bad type
+            { index: 4, isCybersecurity: true, cyberRegion: 'EUROPE', isThreatIntel: false }, // bad region
+            { isCybersecurity: true, cyberRegion: 'NG', isThreatIntel: false }, // no index
+          ],
+        };
+      }
+      return { classifications: [{ index: 1, isCybersecurity: false, cyberRegion: null, isThreatIntel: false }] };
     });
 
     const result = await withApiKey(() => withPrisma(store, () => classifyEvents({ llm })));
-    assert.equal(result.classified, 1, 'only the valid entry is written');
+    assert.equal(result.classified, 4, 'story #1 from the batch + #2..#4 from per-story recovery');
+    // Four malformed entries are counted when the batch response is scanned.
     assert.equal(result.skipped, 4);
-    // e2/e3/e4 stay unclassified (NULL) — never written with junk.
+    // ...but no event is left unclassified, and none is written with junk: the
+    // out-of-range / bad-type / bad-region / index-less entries never map to a story.
     const byId = Object.fromEntries(store.rows.map((r) => [r.id, r]));
-    assert.equal(byId.e2.isCybersecurity, null);
-    assert.equal(byId.e3.isCybersecurity, null);
-    assert.equal(byId.e4.isCybersecurity, null, 'bad region → entry rejected, event untouched');
-    assert.equal(store.calls.update.length, 1);
+    assert.equal(byId.e1.isCybersecurity, true);
+    assert.equal(byId.e2.isCybersecurity, false, 'recovered per story (valid single entry)');
+    assert.equal(byId.e3.isCybersecurity, false);
+    assert.equal(byId.e4.isCybersecurity, false);
+    assert.equal(store.calls.update.length, 4);
   });
 
   test('a mixed valid/invalid batch applies the valid entries and skips the invalid ones', async () => {
     const store = makeStore([event({ id: 'e1' }), event({ id: 'e2' }), event({ id: 'e3' })]);
-    // The live failure shape: some entries are NOT objects (bare strings/numbers/
-    // null) — the permissive schema lets them through, and the service must apply
-    // the good entries and skip the rest instead of losing the whole batch.
-    const llm = stubLlm({
-      classifications: [
-        { index: 1, isCybersecurity: true, cyberRegion: 'AF', isThreatIntel: false, cybersecurityReason: 'bank breach in Kenya', confidence: 0.85 },
-        'not-an-object',
-        { index: 3, isCybersecurity: false, cyberRegion: null, isThreatIntel: true },
-      ],
+    // The batch response mixes a valid entry (#1), a non-object, and a valid #3.
+    // Story #2 is uncovered by the batch and is recovered one story per call.
+    const llm = stubLlm((req) => {
+      const n = (req.prompt.match(/^#\d+/gm) ?? []).length;
+      if (n > 1) {
+        return {
+          classifications: [
+            { index: 1, isCybersecurity: true, cyberRegion: 'AF', isThreatIntel: false, cybersecurityReason: 'bank breach in Kenya', confidence: 0.85 },
+            'not-an-object',
+            { index: 3, isCybersecurity: false, cyberRegion: null, isThreatIntel: true },
+          ],
+        };
+      }
+      return { classifications: [{ index: 1, isCybersecurity: false, cyberRegion: null, isThreatIntel: false }] };
     });
 
     const result = await withApiKey(() => withPrisma(store, () => classifyEvents({ llm })));
 
-    assert.equal(result.classified, 2, 'the two valid entries are written');
+    assert.equal(result.classified, 3, 'valid batch entries + the recovered story');
     assert.equal(result.skipped, 1, 'the one invalid entry is skipped');
     const byId = Object.fromEntries(store.rows.map((r) => [r.id, r]));
     assert.deepEqual(
       [byId.e1.isCybersecurity, byId.e1.cyberRegion, byId.e1.isThreatIntel],
       [true, 'AF', false],
     );
-    assert.equal(byId.e2.isCybersecurity, null, 'the invalid entry leaves its event unclassified');
+    assert.equal(byId.e2.isCybersecurity, false, 'the uncovered story is recovered per story');
     assert.deepEqual(
       [byId.e3.isCybersecurity, byId.e3.cyberRegion, byId.e3.isThreatIntel],
       [false, null, true],
@@ -290,13 +308,14 @@ describe('classify: classifyEvents', () => {
 
   test('an all-invalid batch does not crash: zero applied, run continues', async () => {
     const store = makeStore([event({ id: 'e1' }), event({ id: 'e2' })]);
-    // Every entry is malformed (the exact live schema-rejection shape).
+    // Every entry is malformed on the batch AND the per-story recovery calls.
     const llm = stubLlm({ classifications: ['x', 42, null, { index: 'nope' }] });
 
     const result = await withApiKey(() => withPrisma(store, () => classifyEvents({ llm })));
 
     assert.equal(result.classified, 0);
-    assert.equal(result.skipped, 4);
+    // 4 malformed entries in the batch + 1 malformed recovery entry per story.
+    assert.equal(result.skipped, 6);
     assert.equal(result.candidates, 2);
     assert.equal(store.calls.update.length, 0, 'no writes when nothing is valid');
     assert.equal(store.rows[0].isCybersecurity, null, 'events stay unclassified');
@@ -330,6 +349,107 @@ describe('classify: classifyEvents', () => {
     assert.equal(result.batches, 2, '3 events at batchSize 2 → 2 calls');
     assert.equal(llm.calls.length, 2);
     assert.equal(result.classified, 3);
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // REGRESSION: "Classified 1 of N" — a multi-entry batch must apply EVERY entry.
+  // ───────────────────────────────────────────────────────────────────────────
+
+  test('REGRESSION: a 3-entry batch applies ALL 3 entries (not just the first)', async () => {
+    const store = makeStore([event({ id: 'e1' }), event({ id: 'e2' }), event({ id: 'e3' })]);
+    const llm = stubLlm({
+      classifications: [
+        { index: 1, isCybersecurity: true, cyberRegion: 'NG', isThreatIntel: false, cybersecurityReason: 'ransomware on a Nigerian hospital', confidence: 0.9 },
+        { index: 2, isCybersecurity: false, cyberRegion: null, isThreatIntel: false, cybersecurityReason: 'general tech news', confidence: 0.9 },
+        { index: 3, isCybersecurity: true, cyberRegion: 'GLOBAL', isThreatIntel: true, cybersecurityReason: 'named ransomware actor profiled', confidence: 0.95 },
+      ],
+    });
+
+    const result = await withApiKey(() => withPrisma(store, () => classifyEvents({ llm })));
+
+    assert.equal(result.candidates, 3);
+    assert.equal(result.classified, 3, 'all three entries are applied, not 1 of 3');
+    assert.equal(result.skipped, 0);
+    assert.equal(store.calls.update.length, 3, 'one write per applied entry');
+    const byId = Object.fromEntries(store.rows.map((r) => [r.id, r]));
+    assert.deepEqual([byId.e1.isCybersecurity, byId.e1.cyberRegion, byId.e1.isThreatIntel], [true, 'NG', false]);
+    assert.deepEqual([byId.e2.isCybersecurity, byId.e2.cyberRegion, byId.e2.isThreatIntel], [false, null, false]);
+    assert.deepEqual([byId.e3.isCybersecurity, byId.e3.cyberRegion, byId.e3.isThreatIntel], [true, 'GLOBAL', true]);
+  });
+
+  test('REGRESSION: the model collapsing a 3-story batch to ONE entry (#1) is recovered per story', async () => {
+    // The exact live shape: a 20-story prompt the model answers with a single
+    // `index:1` entry every time. Only the first story is covered by the batch
+    // response; the rest MUST be recovered one story per call.
+    const store = makeStore([event({ id: 'e1' }), event({ id: 'e2' }), event({ id: 'e3' })]);
+    let batchCalls = 0;
+    const llm = stubLlm((req) => {
+      const n = (req.prompt.match(/^#\d+/gm) ?? []).length;
+      if (n > 1) batchCalls += 1;
+      // Always answer with exactly ONE entry numbered #1 (the model's behaviour).
+      return {
+        classifications: [
+          { index: 1, isCybersecurity: false, cyberRegion: null, isThreatIntel: false, cybersecurityReason: 'judged from this story', confidence: 0.9 },
+        ],
+      };
+    });
+
+    const result = await withApiKey(() => withPrisma(store, () => classifyEvents({ llm })));
+
+    assert.equal(batchCalls, 1, 'one batch call, then per-story recovery calls');
+    assert.equal(result.classified, 3, 'all three stories are classified despite the 1-entry batches');
+    assert.equal(store.calls.update.length, 3);
+    const byId = Object.fromEntries(store.rows.map((r) => [r.id, r]));
+    assert.equal(byId.e1.isCybersecurity, false);
+    assert.equal(byId.e2.isCybersecurity, false);
+    assert.equal(byId.e3.isCybersecurity, false);
+  });
+
+  test('accepts the WRAPPED envelope shape { classifications: [...] }', async () => {
+    const store = makeStore([event({ id: 'e1' })]);
+    const llm = stubLlm({ classifications: [{ index: 1, isCybersecurity: true, cyberRegion: 'NG', isThreatIntel: false, cybersecurityReason: 'SIM-swap fraud', confidence: 0.9 }] });
+    const result = await withApiKey(() => withPrisma(store, () => classifyEvents({ llm })));
+    assert.equal(result.classified, 1);
+    assert.equal(store.rows[0].isCybersecurity, true);
+  });
+
+  test('accepts the BARE-ARRAY shape [ ... ] (the model returning the array directly)', async () => {
+    const store = makeStore([event({ id: 'e1' }), event({ id: 'e2' })]);
+    // The client returns the parsed value verbatim; a bare array (no envelope)
+    // must be normalized, not dropped.
+    const llm = stubLlm([
+      { index: 1, isCybersecurity: true, cyberRegion: 'AF', isThreatIntel: false, cybersecurityReason: 'bank breach in Kenya', confidence: 0.85 },
+      { index: 2, isCybersecurity: false, cyberRegion: null, isThreatIntel: false, cybersecurityReason: 'fintech funding', confidence: 0.9 },
+    ]);
+
+    const result = await withApiKey(() => withPrisma(store, () => classifyEvents({ llm })));
+
+    assert.equal(result.classified, 2, 'a bare array of two entries applies both');
+    const byId = Object.fromEntries(store.rows.map((r) => [r.id, r]));
+    assert.deepEqual([byId.e1.isCybersecurity, byId.e1.cyberRegion], [true, 'AF']);
+    assert.deepEqual([byId.e2.isCybersecurity, byId.e2.cyberRegion], [false, null]);
+  });
+
+  test('a single OBJECT (not an array) is handled without crashing', async () => {
+    const store = makeStore([event({ id: 'e1' })]);
+    // A model that returns one bare classification object instead of an array or
+    // an envelope. It must not crash; the one story is recovered per story.
+    const llm = stubLlm({ index: 1, isCybersecurity: true, cyberRegion: 'NG', isThreatIntel: false, cybersecurityReason: 'phishing advisory', confidence: 0.9 });
+    // The recovery call also returns the single object, which the per-story path
+    // cannot parse as an array — so the story is cleanly skipped, not crashed.
+    const result = await withApiKey(() => withPrisma(store, () => classifyEvents({ llm })));
+    assert.equal(result.candidates, 1);
+    assert.equal(result.classified, 0, 'a non-array object carries no array to normalize');
+    assert.equal(store.rows[0].isCybersecurity, null, 'the story stays unclassified, no crash');
+  });
+
+  test('normalizeClassifications accepts both shapes and rejects the rest', () => {
+    const entry = { index: 1, isCybersecurity: true, cyberRegion: 'NG', isThreatIntel: false };
+    assert.deepEqual(normalizeClassifications({ classifications: [entry] }), [entry]);
+    assert.deepEqual(normalizeClassifications([entry]), [entry]);
+    assert.deepEqual(normalizeClassifications({}), []);
+    assert.deepEqual(normalizeClassifications(null), []);
+    assert.deepEqual(normalizeClassifications(entry), [], 'a bare object is not an array of entries');
   });
 
   test('no candidates → no LLM call, zero counts', async () => {
