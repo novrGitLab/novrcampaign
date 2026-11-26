@@ -9,6 +9,10 @@ import {
   assessOverlap,
   overlapTokens,
   buildRewriteSystem,
+  regionFramingLine,
+  buildRecommendPrompt,
+  buildRecommendSystem,
+  orderPicksNigeriaFirst,
   RECOMMEND_PROMPT_VERSION,
   REWRITE_PROMPT_VERSION,
 } from '../src/services/novrpulse/aiDraft.js';
@@ -65,6 +69,7 @@ function makeStore(seed = {}) {
         title: e.title,
         summary: e.summary ?? '',
         publishedAt: e.publishedAt ?? null,
+        cyberRegion: e.cyberRegion ?? null,
         publishItems: (e.publishItems ?? []).filter(
           (p) => (p.withdrawnAt === null || p.withdrawnAt === undefined)
             && (p.publishedAt === null || p.publishedAt === undefined)
@@ -278,6 +283,130 @@ describe('buildRewriteSystem — depth requirements', () => {
     );
     assert.equal(typeof llm.calls[0].maxTokens, 'number');
     assert.ok(llm.calls[0].maxTokens > 1024, 'rewrite asks for more than the terse default');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Rewrite — region framing (owner feedback 2026-11-26)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('buildRewriteSystem — region framing', () => {
+  test('NG framing names Nigerian institutions and forbids inventing facts', () => {
+    const system = buildRewriteSystem(7, { cyberRegion: 'NG' });
+    assert.ok(/classified NIGERIA cybersecurity news/i.test(system));
+    assert.ok(system.includes('Nigerian professional audience'));
+    assert.ok(system.includes('NCC'));
+    assert.ok(system.includes('NDPC'));
+    assert.ok(system.includes('NITDA'));
+    assert.ok(system.includes('ngCERT'));
+    assert.ok(/do NOT invent Nigerian facts/i.test(system));
+  });
+
+  test('AF framing gives African context', () => {
+    const system = buildRewriteSystem(7, { cyberRegion: 'AF' });
+    assert.ok(/classified AFRICAN cybersecurity news/i.test(system));
+    assert.ok(system.includes('African professional audience'));
+    assert.ok(/do NOT invent/i.test(system));
+  });
+
+  test('GLOBAL framing stays global with no forced localisation', () => {
+    const system = buildRewriteSystem(7, { cyberRegion: 'GLOBAL' });
+    assert.ok(/classified GLOBAL cybersecurity news/i.test(system));
+    assert.ok(/do not force a local/i.test(system));
+  });
+
+  test('null / absent region keeps the framing neutral', () => {
+    const neutral = regionFramingLine(null);
+    assert.ok(/neutral/i.test(neutral));
+    assert.ok(/invent/i.test(neutral));
+    // The prompt stays neutral too (default when no region is passed).
+    const system = buildRewriteSystem(7);
+    assert.ok(/keep the framing neutral/i.test(system));
+    assert.equal(system.includes('classified NIGERIA cybersecurity news'), false);
+  });
+
+  test('an unknown region string also stays neutral', () => {
+    assert.ok(/neutral/i.test(regionFramingLine('EUROPE')));
+  });
+
+  test('the rewrite flow passes the EVENT cyberRegion into the system prompt', async () => {
+    const store = makeStore({ events: [event({ cyberRegion: 'NG' })] });
+    const llm = stubLlm({ headline: 'H', slots: { 'What happened': 'W', 'Who is affected': 'A', Where: 'L', Source: 'S' } });
+    await withPrisma(store, () =>
+      rewriteEventToDraft({ eventId: 'evt-1', functionId: 7, editorId: 'e', llm }),
+    );
+    assert.ok(/classified NIGERIA cybersecurity news/i.test(llm.calls[0].system),
+      'the NG region framing reaches the system prompt');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Recommend — NG-first ordering (owner feedback 2026-11-26)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('aiDraft — recommend NG-first ordering', () => {
+  test('the candidate block carries the REGION tag and the system prompt prefers NG', () => {
+    const prompt = buildRecommendPrompt([
+      { title: 'A', summary: 's', sourceName: 'S', cyberRegion: 'NG' },
+      { title: 'B', summary: 's', sourceName: 'S', cyberRegion: null },
+    ]);
+    assert.ok(prompt.includes('REGION: NG'));
+    assert.ok(prompt.includes('REGION: UNCLASSIFIED'));
+
+    const system = buildRecommendSystem(7, 4);
+    assert.ok(/PRIORITY TIER/i.test(system));
+    assert.ok(/prefer the one tagged NG/i.test(system));
+  });
+
+  test('orderPicksNigeriaFirst sorts NG before AF before GLOBAL among equal scores', () => {
+    const candidates = [
+      { cyberRegion: 'GLOBAL' }, // index 1
+      { cyberRegion: 'NG' },     // index 2
+      { cyberRegion: 'AF' },     // index 3
+      { cyberRegion: null },     // index 4
+    ];
+    const picks = [
+      { index: 1, confidence: 0.8, reason: 'g' },
+      { index: 2, confidence: 0.8, reason: 'ng' },
+      { index: 3, confidence: 0.8, reason: 'af' },
+      { index: 4, confidence: 0.8, reason: 'none' },
+    ];
+    const ordered = orderPicksNigeriaFirst(picks, candidates);
+    assert.deepEqual(ordered.map((p) => p.reason), ['ng', 'af', 'g', 'none']);
+  });
+
+  test('a higher-confidence pick still outranks a lower-confidence NG pick', () => {
+    const candidates = [{ cyberRegion: 'NG' }, { cyberRegion: 'GLOBAL' }];
+    const picks = [
+      { index: 1, confidence: 0.5, reason: 'ng-low' },
+      { index: 2, confidence: 0.9, reason: 'global-high' },
+    ];
+    const ordered = orderPicksNigeriaFirst(picks, candidates);
+    assert.deepEqual(ordered.map((p) => p.reason), ['global-high', 'ng-low'],
+      'region only breaks a tie; confidence still dominates');
+  });
+
+  test('recommend returns NG picks before AF before GLOBAL (equal scores) in the judgements', async () => {
+    const now = Date.now();
+    const store = makeStore({
+      events: [
+        event({ id: 'e1', title: 'Global story', publishedAt: new Date(now), cyberRegion: 'GLOBAL' }),
+        event({ id: 'e2', title: 'Nigeria story', publishedAt: new Date(now - 60_000), cyberRegion: 'NG' }),
+        event({ id: 'e3', title: 'Africa story', publishedAt: new Date(now - 120_000), cyberRegion: 'AF' }),
+      ],
+    });
+    // Candidates order (publishedAt desc): e1(1), e2(2), e3(3). The model picks
+    // all three at the SAME confidence; the service must re-order NG → AF → GLOBAL.
+    const llm = stubLlm({
+      picks: [
+        { index: 1, reason: 'g', confidence: 0.8 },
+        { index: 2, reason: 'ng', confidence: 0.8 },
+        { index: 3, reason: 'af', confidence: 0.8 },
+      ],
+    });
+    const out = await withPrisma(store, () => recommendEvents({ functionIds: [7], limit: 3, llm }));
+    const ids = out.recommendations[0].judgements.map((j) => j.eventId);
+    assert.deepEqual(ids, ['e2', 'e3', 'e1'], 'NG first, then AF, then GLOBAL');
   });
 });
 

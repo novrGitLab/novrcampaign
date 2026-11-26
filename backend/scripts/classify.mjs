@@ -1,4 +1,4 @@
-import { classifyEvents, findUnclassified, isConfigured, CLASSIFY_BATCH_SIZE } from '../src/services/novrpulse/classify.js';
+import { classifyEvents, findUnclassified, clearClassifications, isConfigured, CLASSIFY_BATCH_SIZE } from '../src/services/novrpulse/classify.js';
 import { prisma } from '../src/utils/prisma.js';
 
 /**
@@ -10,16 +10,21 @@ import { prisma } from '../src/utils/prisma.js';
  *
  * Usage:
  *   node scripts/classify.mjs                  # dry run (no writes)
- *   node scripts/classify.mjs --commit         # classify (bulk LLM)
+ *   node scripts/classify.mjs --commit         # classify (frontier LLM)
  *   node scripts/classify.mjs --commit --limit 300
  *   node scripts/classify.mjs --commit --region-backfill
  *     # ALSO re-select already-cyber events whose cyberRegion is NULL (one-off
  *     # backfill after the regional-tier column was added)
+ *   node scripts/classify.mjs --reclassify --commit [--limit N]
+ *     # CLEAR the three flags (isCybersecurity/cyberRegion/isThreatIntel = null)
+ *     # for all events (or the first N), so the stricter pass re-judges the whole
+ *     # corpus. Runs the clear then a normal classify in the same invocation.
  */
 
 const args = process.argv.slice(2);
 const commit = args.includes('--commit');
 const regionBackfill = args.includes('--region-backfill');
+const reclassify = args.includes('--reclassify');
 const limitIdx = args.indexOf('--limit');
 const limit = limitIdx !== -1 ? Number(args[limitIdx + 1]) : 300;
 
@@ -28,9 +33,13 @@ if (limitIdx !== -1 && (!Number.isInteger(limit) || limit < 1)) {
   process.exit(2);
 }
 
-console.log(`\nNovrPulse classify ${commit ? '(COMMIT)' : '(DRY RUN)'}  limit=${limit} batch=${CLASSIFY_BATCH_SIZE}${regionBackfill ? ' region-backfill' : ''}`);
+console.log(`\nNovrPulse classify ${commit ? '(COMMIT)' : '(DRY RUN)'}  limit=${limit} batch=${CLASSIFY_BATCH_SIZE}${regionBackfill ? ' region-backfill' : ''}${reclassify ? ' RECLASSIFY' : ''}`);
 
 if (!commit) {
+  if (reclassify) {
+    console.log('─'.repeat(72));
+    console.log('--reclassify set: with --commit the three flags are CLEARED before re-classifying. DRY RUN writes nothing.');
+  }
   const pending = await findUnclassified({ limit, regionBackfill });
   console.log('─'.repeat(72));
   console.log(`Events unclassified (any flag IS NULL): ${pending.length}`);  for (let i = 0; i < pending.length; i += CLASSIFY_BATCH_SIZE) {
@@ -48,6 +57,11 @@ if (!isConfigured()) {
   console.error('No AI provider configured (NP_LLM_API_KEY). Cannot classify; re-run without --commit.');
   await prisma.$disconnect();
   process.exit(1);
+}
+
+if (reclassify) {
+  const cleared = await clearClassifications({ limit });
+  console.log(`Cleared classification flags on ${cleared} event(s) for re-judging.`);
 }
 
 const result = await classifyEvents({ limit, regionBackfill });

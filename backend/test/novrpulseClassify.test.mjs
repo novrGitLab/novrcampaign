@@ -6,10 +6,13 @@ import config from '../src/config/env.js';
 import {
   classifyEvents,
   findUnclassified,
+  clearClassifications,
   buildClassifySystem,
   buildClassifyPrompt,
   parseClassificationEntry,
+  resolveCyberVerdict,
   CLASSIFY_SCHEMA,
+  CLASSIFY_MIN_CONFIDENCE,
 } from '../src/services/novrpulse/classify.js';
 
 // Tests for the batched AI filtering classification (the accurate layer).
@@ -43,6 +46,11 @@ function makeStore(seed = []) {
             });
           }
           const [key] = Object.keys(clause);
+          const cond = clause[key];
+          // `{ not: null }` (used by clearClassifications) matches any non-null.
+          if (cond && typeof cond === 'object' && 'not' in cond) {
+            return cond.not === null ? (r[key] !== null && r[key] !== undefined) : r[key] !== cond.not;
+          }
           return r[key] === null || r[key] === undefined;
         });
       });
@@ -52,11 +60,15 @@ function makeStore(seed = []) {
         return bp - ap;
       });
       if (typeof args.take === 'number') out = out.slice(0, args.take);
-      // Shape the select: title/summary + first source chain.
+      // Shape the select: title/summary + first source chain, or just id.
+      if (args.select && args.select.id === true && Object.keys(args.select).length === 1) {
+        return out.map((r) => ({ id: r.id }));
+      }
       return out.map((r) => ({
         id: r.id,
         title: r.title,
         summary: r.summary ?? '',
+        cyberRegion: r.cyberRegion ?? null,
         sources: (r.sources ?? []).slice(0, 1),
       }));
     },
@@ -177,8 +189,8 @@ describe('classify: classifyEvents', () => {
     ]);
     const llm = stubLlm({
       classifications: [
-        { index: 1, isCybersecurity: true, cyberRegion: 'NG', isThreatIntel: false, confidence: 0.9 },
-        { index: 2, isCybersecurity: false, cyberRegion: null, isThreatIntel: true, confidence: 0.8 },
+        { index: 1, isCybersecurity: true, cyberRegion: 'NG', isThreatIntel: false, cybersecurityReason: 'SIM-swap fraud advisory for Nigerian telcos', confidence: 0.9 },
+        { index: 2, isCybersecurity: false, cyberRegion: null, isThreatIntel: true, cybersecurityReason: 'no security substance', confidence: 0.8 },
       ],
     });
 
@@ -189,8 +201,8 @@ describe('classify: classifyEvents', () => {
     assert.equal(result.candidates, 2);
     assert.equal(result.classified, 2);
     assert.equal(result.batches, 1);
-    assert.equal(llm.calls.length, 1, 'one bulk call per batch');
-    assert.equal(llm.calls[0].tier, 'bulk');
+    assert.equal(llm.calls.length, 1, 'one classify call per batch');
+    assert.equal(llm.calls[0].tier, 'bulk', 'classification uses the bulk tier (frontier maps to the same model)');
     assert.deepEqual(llm.calls[0].schema, CLASSIFY_SCHEMA);
 
     const byId = Object.fromEntries(store.rows.map((r) => [r.id, r]));
@@ -228,7 +240,7 @@ describe('classify: classifyEvents', () => {
     const store = makeStore([event({ id: 'e1' }), event({ id: 'e2' }), event({ id: 'e3' }), event({ id: 'e4' })]);
     const llm = stubLlm({
       classifications: [
-        { index: 1, isCybersecurity: true, cyberRegion: 'NG', isThreatIntel: false },
+        { index: 1, isCybersecurity: true, cyberRegion: 'NG', isThreatIntel: false, cybersecurityReason: 'phishing campaign targeting banks', confidence: 0.9 },
         { index: 99, isCybersecurity: true, cyberRegion: 'NG', isThreatIntel: false }, // out of range
         { index: 3, isCybersecurity: 'yes', cyberRegion: 'NG', isThreatIntel: false }, // bad type
         { index: 4, isCybersecurity: true, cyberRegion: 'EUROPE', isThreatIntel: false }, // bad region
@@ -254,7 +266,7 @@ describe('classify: classifyEvents', () => {
     // the good entries and skip the rest instead of losing the whole batch.
     const llm = stubLlm({
       classifications: [
-        { index: 1, isCybersecurity: true, cyberRegion: 'AF', isThreatIntel: false },
+        { index: 1, isCybersecurity: true, cyberRegion: 'AF', isThreatIntel: false, cybersecurityReason: 'bank breach in Kenya', confidence: 0.85 },
         'not-an-object',
         { index: 3, isCybersecurity: false, cyberRegion: null, isThreatIntel: true },
       ],
@@ -293,7 +305,7 @@ describe('classify: classifyEvents', () => {
 
   test('the call schema is the permissive envelope (raw array accepted)', async () => {
     const store = makeStore([event({ id: 'e1' })]);
-    const llm = stubLlm({ classifications: [{ index: 1, isCybersecurity: true, cyberRegion: 'GLOBAL', isThreatIntel: true }] });
+    const llm = stubLlm({ classifications: [{ index: 1, isCybersecurity: true, cyberRegion: 'GLOBAL', isThreatIntel: true, cybersecurityReason: 'named ransomware actor profiled', confidence: 0.95 }] });
     await withApiKey(() => withPrisma(store, () => classifyEvents({ llm })));
     const schema = llm.calls[0].schema;
     assert.equal(schema.properties.classifications.type, 'array');
@@ -412,5 +424,165 @@ describe('classify: prompt contract', () => {  test('the system prompt defines t
     assert.ok(prompt.includes('--- END UNTRUSTED STORY DATA ---'));
     assert.ok(prompt.includes('#1'));
     assert.ok(prompt.includes('#2'));
+  });
+
+  test('the prompt carries the STRICT definition, the exclusions and the reason field', () => {
+    const system = buildClassifySystem();
+    // Strict definition + exclusions (owner feedback 2026-11-26).
+    assert.ok(/SUBSTANCE/i.test(system), 'the substance test is stated');
+    assert.ok(/isCybersecurity=false for/i.test(system), 'the exclusion list is present');
+    assert.ok(/AI product or funding/i.test(system), 'AI-feature stories are excluded (unless a security threat)');
+    assert.ok(/fintech\/finance\/markets/i.test(system), 'fintech/markets are excluded');
+    assert.ok(/When in doubt/i.test(system), 'the when-in-doubt tie-break is stated');
+    // Reason + confidence contract.
+    assert.ok(system.includes('cybersecurityReason'), 'the per-entry reason field is required');
+    assert.ok(/confidence/i.test(system), 'confidence is requested');
+    assert.ok(/JSON only/i.test(system), 'the JSON-only contract is stated');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Strictness: confidence floor + reason-presence rule (owner feedback 2026-11-26)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('classify: strict verdict (threshold + reason)', () => {
+  test('resolveCyberVerdict drops a low-confidence true to not-cyber', () => {
+    const parsed = parseClassificationEntry({
+      index: 1, isCybersecurity: true, cyberRegion: 'NG', isThreatIntel: false,
+      cybersecurityReason: 'ransomware on a hospital', confidence: 0.5,
+    });
+    const verdict = resolveCyberVerdict(parsed);
+    assert.equal(verdict.isCybersecurity, false, 'below the 0.7 floor → not cyber');
+    assert.equal(verdict.cyberRegion, null, 'and the region is cleared');
+    assert.equal(verdict.isThreatIntel, false);
+  });
+
+  test('resolveCyberVerdict keeps a confident true with a reason and its region', () => {
+    const parsed = parseClassificationEntry({
+      index: 1, isCybersecurity: true, cyberRegion: 'NG', isThreatIntel: true,
+      cybersecurityReason: 'NCC advisory on SIM-swap fraud', confidence: 0.9,
+    });
+    const verdict = resolveCyberVerdict(parsed);
+    assert.equal(verdict.isCybersecurity, true);
+    assert.equal(verdict.cyberRegion, 'NG');
+    assert.equal(verdict.isThreatIntel, true);
+  });
+
+  test('resolveCyberVerdict treats a reason-less true as not-cyber', () => {
+    const parsed = parseClassificationEntry({
+      index: 1, isCybersecurity: true, cyberRegion: 'GLOBAL', isThreatIntel: true, confidence: 0.99,
+    });
+    assert.equal(parsed.cybersecurityReason, null, 'no reason parsed');
+    const verdict = resolveCyberVerdict(parsed);
+    assert.equal(verdict.isCybersecurity, false, 'a true without a grounded reason is dropped');
+    assert.equal(verdict.cyberRegion, null);
+  });
+
+  test('the confidence floor constant is 0.7', () => {
+    assert.equal(CLASSIFY_MIN_CONFIDENCE, 0.7);
+    // Exactly at the floor is kept.
+    const at = resolveCyberVerdict(parseClassificationEntry({
+      index: 1, isCybersecurity: true, cyberRegion: 'AF', isThreatIntel: false,
+      cybersecurityReason: 'breach in a Kenyan bank', confidence: 0.7,
+    }));
+    assert.equal(at.isCybersecurity, true, 'a true at exactly 0.7 is kept');
+  });
+
+  test('a general-tech story returning false is stored false/null', async () => {
+    const store = makeStore([event({ id: 'e1', title: 'Startup raises Series B to scale its app' })]);
+    const llm = stubLlm({
+      classifications: [{
+        index: 1, isCybersecurity: false, cyberRegion: null, isThreatIntel: false,
+        cybersecurityReason: 'funding round, no security substance', confidence: 0.9,
+      }],
+    });
+    await withApiKey(() => withPrisma(store, () => classifyEvents({ llm })));
+    assert.equal(store.rows[0].isCybersecurity, false);
+    assert.equal(store.rows[0].cyberRegion, null);
+    assert.equal(store.rows[0].isThreatIntel, false);
+  });
+
+  test('a true + confidence 0.5 is stored FALSE (threshold)', async () => {
+    const store = makeStore([event({ id: 'e1' })]);
+    const llm = stubLlm({
+      classifications: [{
+        index: 1, isCybersecurity: true, cyberRegion: 'NG', isThreatIntel: false,
+        cybersecurityReason: 'maybe about security', confidence: 0.5,
+      }],
+    });
+    await withApiKey(() => withPrisma(store, () => classifyEvents({ llm })));
+    assert.equal(store.rows[0].isCybersecurity, false);
+    assert.equal(store.rows[0].cyberRegion, null);
+  });
+
+  test('a true + confidence 0.9 is stored true with its region', async () => {
+    const store = makeStore([event({ id: 'e1' })]);
+    const llm = stubLlm({
+      classifications: [{
+        index: 1, isCybersecurity: true, cyberRegion: 'GLOBAL', isThreatIntel: true,
+        cybersecurityReason: 'profiles a named ransomware group', confidence: 0.9,
+      }],
+    });
+    await withApiKey(() => withPrisma(store, () => classifyEvents({ llm })));
+    assert.equal(store.rows[0].isCybersecurity, true);
+    assert.equal(store.rows[0].cyberRegion, 'GLOBAL');
+    assert.equal(store.rows[0].isThreatIntel, true);
+  });
+
+  test('a true with no reason is stored FALSE (reason-presence rule)', async () => {
+    const store = makeStore([event({ id: 'e1' })]);
+    const llm = stubLlm({
+      classifications: [{
+        index: 1, isCybersecurity: true, cyberRegion: 'NG', isThreatIntel: true, confidence: 0.95,
+      }],
+    });
+    await withApiKey(() => withPrisma(store, () => classifyEvents({ llm })));
+    assert.equal(store.rows[0].isCybersecurity, false);
+    assert.equal(store.rows[0].cyberRegion, null);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// clearClassifications (--reclassify)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('classify: clearClassifications', () => {
+  test('clears the three flags on every classified row and reports the count', async () => {
+    const store = makeStore([
+      event({ id: 'cyber', isCybersecurity: true, isThreatIntel: true, cyberRegion: 'NG' }),
+      event({ id: 'not-cyber', isCybersecurity: false, isThreatIntel: false, cyberRegion: null }),
+      event({ id: 'never', isCybersecurity: null, isThreatIntel: null, cyberRegion: null }),
+    ]);
+    const cleared = await withPrisma(store, () => clearClassifications());
+    // 'cyber' and 'not-cyber' carry a non-null flag; 'never' already has all null.
+    assert.equal(cleared, 2);
+    const byId = Object.fromEntries(store.rows.map((r) => [r.id, r]));
+    assert.equal(byId.cyber.isCybersecurity, null);
+    assert.equal(byId.cyber.cyberRegion, null);
+    assert.equal(byId.cyber.isThreatIntel, null);
+    assert.equal(byId['not-cyber'].isCybersecurity, null, 'a previously-false row is reset too');
+  });
+
+  test('respects a limit', async () => {
+    const store = makeStore([
+      event({ id: 'a', isCybersecurity: true, isThreatIntel: false, cyberRegion: 'NG' }),
+      event({ id: 'b', isCybersecurity: true, isThreatIntel: false, cyberRegion: 'AF' }),
+      event({ id: 'c', isCybersecurity: true, isThreatIntel: false, cyberRegion: 'GLOBAL' }),
+    ]);
+    const cleared = await withPrisma(store, () => clearClassifications({ limit: 2 }));
+    assert.equal(cleared, 2);
+  });
+
+  test('after clearing, the rows become unclassified and re-selectable', async () => {
+    const store = makeStore([
+      event({ id: 'e1', isCybersecurity: true, isThreatIntel: false, cyberRegion: 'NG' }),
+    ]);
+    // Before clearing the row is fully classified → not selected.
+    const before = await withPrisma(store, () => findUnclassified());
+    assert.equal(before.length, 0);
+    await withPrisma(store, () => clearClassifications());
+    // After clearing it is unclassified again.
+    const after = await withPrisma(store, () => findUnclassified());
+    assert.deepEqual(after.map((e) => e.id), ['e1']);
   });
 });

@@ -228,16 +228,49 @@ export const REWRITE_SCHEMA = {
 const DEPTH_COMMON_RULES = `DEPTH: Write in full paragraphs, not fragments. Synthesise the ENTIRE source article \u2014 it is provided in full, so use its actual detail, numbers and context rather than the title alone. Never return a one-liner for a lead or case-study slot. Keep the wording entirely your own.`;
 
 /**
+ * The region-framing clause for the rewrite system prompt, keyed by the event's
+ * classification tier (`cyberRegion`). Owner feedback 2026-11-26: the rewrite
+ * must frame for the tier the story was classified into.
+ *
+ *   NG     → a Nigerian audience; Nigerian institutional context encouraged
+ *            WHERE THE SOURCE SUPPORTS IT (never invented).
+ *   AF     → an African context.
+ *   GLOBAL → a global context; no forced localisation.
+ *   null / anything else → a neutral framing line (no forced geography).
+ *
+ * The non-invention guard is explicit in every tier so the model never fabricates
+ * a Nigerian (or African) fact the source does not carry.
+ *
+ * @param {('NG'|'AF'|'GLOBAL'|null|undefined)} cyberRegion
+ * @returns {string}
+ */
+export function regionFramingLine(cyberRegion) {
+  switch (cyberRegion) {
+    case 'NG':
+      return 'This story is classified NIGERIA cybersecurity news \u2014 write for a Nigerian professional audience. Give Nigerian institutional context where the source supports it (e.g. NCC, NDPC, NITDA, ngCERT, NPF-CCC, CBN), and do NOT invent Nigerian facts the source does not support.';
+    case 'AF':
+      return 'This story is classified AFRICAN cybersecurity news \u2014 write for an African professional audience, giving African regional context where the source supports it. Do NOT invent local facts the source does not support.';
+    case 'GLOBAL':
+      return 'This story is classified GLOBAL cybersecurity news \u2014 write in a global context. Do not force a local (Nigerian or African) framing the source does not support.';
+    default:
+      return 'This story has no regional classification \u2014 keep the framing neutral. Do NOT invent a local (Nigerian or African) angle the source does not support.';
+  }
+}
+
+/**
  * Build the rewrite system prompt for a pillar. Includes the pillar's EXACT
  * slot labels, the NOVRPULSE voice rules, the DEPTH requirements (per-pillar),
  * the attribution rule, the extra no-names/pre-conviction rules for public F7,
- * and the untrusted-source instruction.
+ * the REGION-FRAMING clause for the event's classification tier, and the
+ * untrusted-source instruction.
  *
  * @param {number} functionId
  * @param {object} [opts]
  * @param {string} [opts.depthNote] override the pillar's depth note (tests/tuning).
  *   Defaults to the shared `pillarDepthNote(functionId)`. Kept optional so
  *   existing callers that pass no opts are unaffected.
+ * @param {('NG'|'AF'|'GLOBAL'|null)} [opts.cyberRegion] the event's classification
+ *   tier; drives the region-framing line. Absent/null → a neutral framing line.
  */
 export function buildRewriteSystem(functionId, opts = {}) {
   const slots = pillarSlots(functionId);
@@ -247,10 +280,11 @@ export function buildRewriteSystem(functionId, opts = {}) {
     : '';
   const depthNote = opts.depthNote ?? pillarDepthNote(functionId);
   const depth = depthNote ? `\n${depthNote}\n${DEPTH_COMMON_RULES}` : '';
+  const region = `\n${regionFramingLine(opts.cyberRegion)}`;
   return `You are the lead editor of NovrPulse, a Nigerian cybersecurity briefing.
 
 Rewrite the SOURCE TEXT below into an ORIGINAL briefing item for one section. Use your OWN wording: NEVER copy or closely paraphrase sentences from the source. Attribute every claim to the source outlet ("according to <source>").
-
+${region}
 Fill EXACTLY these slots, in this order:
 ${slotList}
 ${depth}
@@ -383,6 +417,7 @@ export async function rewriteEventToDraft({ eventId, functionId, editorId, regen
       id: true,
       title: true,
       summary: true,
+      cyberRegion: true,
       sources: {
         orderBy: { extractedAt: 'asc' },
         select: {
@@ -414,7 +449,7 @@ export async function rewriteEventToDraft({ eventId, functionId, editorId, regen
 
   const result = await client.complete({
     tier: 'frontier',
-    system: buildRewriteSystem(functionId),
+    system: buildRewriteSystem(functionId, { cyberRegion: row.cyberRegion }),
     // A regenerate asks the model for a materially different draft; a fresh
     // create (no live draft) uses the normal prompt.
     prompt: buildRewritePrompt({
@@ -529,13 +564,55 @@ export function buildRecommendSystem(functionId, limit = 4) {
 
 The section is: ${pillarPurpose(functionId)}.
 
+Each candidate carries a REGION tag: NG (Nigeria), AF (Africa), GLOBAL, or UNCLASSIFIED. NIGERIA IS THE PRIORITY TIER: when two candidates fit the section equally well, PREFER the one tagged NG, then AF, then GLOBAL. Do not pick a weaker story merely because it is Nigerian — prefer NG only to break a tie in fit.
+
 From the numbered candidate stories, pick the best fit(s) for this section. Return STRICT JSON: {"picks":[{"index":<number>,"reason":"<short reason>","confidence":<0..1>}]}. Pick UP TO ${limit} stories — only those that genuinely fit; if fewer genuinely fit, return fewer; if none fit, return {"picks":[]}. reason must be at most 160 characters.`;
+}
+
+/**
+ * The region-tier ORDER for recommendation picks (owner feedback 2026-11-26:
+ * favour Nigeria). A pick from a lower rank sorts before a higher rank WHEN the
+ * two picks are otherwise equal (a stable secondary sort); NG is preferred, then
+ * AF, then GLOBAL, then an unclassified (null) region last. This is a
+ * PREFERENCE, never a filter: a non-NG pick is still returned.
+ */
+export const REGION_RANK = { NG: 0, AF: 1, GLOBAL: 2 };
+const UNRANKED = 3;
+
+/** The rank of a candidate's region for the NG-first secondary sort. */
+function regionRank(candidate) {
+  return REGION_RANK[candidate?.cyberRegion] ?? UNRANKED;
+}
+
+/**
+ * Re-order the model's picks so NG-region candidates sort before AF, then
+ * GLOBAL, then unranked — as a STABLE secondary sort that only breaks ties
+ * between picks the model scored equally. Picks without a numeric confidence are
+ * treated as equal to each other and re-ordered by region.
+ *
+ * @template {{index:number}} T
+ * @param {T[]} picks
+ * @param {Array<{cyberRegion:(string|null)}>} candidates
+ * @returns {T[]}
+ */
+export function orderPicksNigeriaFirst(picks, candidates) {
+  return [...picks]
+    .map((pick, i) => ({ pick, i }))
+    .sort((a, b) => {
+      const ca = candidates[Number(a.pick.index) - 1];
+      const cb = candidates[Number(b.pick.index) - 1];
+      const scoreA = typeof a.pick.confidence === 'number' ? a.pick.confidence : -1;
+      const scoreB = typeof b.pick.confidence === 'number' ? b.pick.confidence : -1;
+      if (scoreA !== scoreB) return scoreB - scoreA; // higher confidence first
+      return regionRank(ca) - regionRank(cb); // then NG → AF → GLOBAL
+    })
+    .map(({ pick }) => pick);
 }
 
 /** Render the numbered candidate block for a section. */
 export function buildRecommendPrompt(candidates) {
   const lines = candidates.map(
-    (c, i) => `${i + 1}. TITLE: ${c.title || ''}\n   SUMMARY: ${c.summary || ''}\n   SOURCE: ${c.sourceName || 'unknown'}`,
+    (c, i) => `${i + 1}. TITLE: ${c.title || ''}\n   REGION: ${c.cyberRegion || 'UNCLASSIFIED'}\n   SUMMARY: ${c.summary || ''}\n   SOURCE: ${c.sourceName || 'unknown'}`,
   );
   return `CANDIDATES:\n${lines.join('\n')}`;
 }
@@ -565,6 +642,7 @@ export async function recommendCandidates({ now = new Date() } = {}) {
       id: true,
       title: true,
       summary: true,
+      cyberRegion: true,
       publishItems: {
         where: {
           withdrawnAt: null, publishedAt: null, rejectedAt: null,
@@ -588,6 +666,7 @@ export async function recommendCandidates({ now = new Date() } = {}) {
       title: e.title,
       summary: String(e.summary ?? '').slice(0, RECOMMEND_SUMMARY_CHARS),
       sourceName: e.sources?.[0]?.rawDocument?.source?.name ?? null,
+      cyberRegion: e.cyberRegion ?? null,
     }));
 }
 
@@ -625,7 +704,10 @@ export async function recommendEvents({ functionIds = NEWS_DERIVED_PILLARS, limi
       schema: RECOMMEND_SCHEMA,
     });
 
-    const picks = Array.isArray(out?.picks) ? out.picks.slice(0, limit) : [];
+    const rawPicks = Array.isArray(out?.picks) ? out.picks.slice(0, limit) : [];
+    // NG-first: re-order the model's picks so NG candidates sort before AF then
+    // GLOBAL among equal fit scores (a stable secondary sort — never a filter).
+    const picks = orderPicksNigeriaFirst(rawPicks, candidates);
     const judgements = [];
     for (const pick of picks) {
       const candidate = candidates[Number(pick.index) - 1];
@@ -675,8 +757,10 @@ export default {
   composeRewriteBody,
   buildRewriteSystem,
   buildRewritePrompt,
+  regionFramingLine,
   buildRecommendSystem,
   buildRecommendPrompt,
+  orderPicksNigeriaFirst,
   REWRITE_PROMPT_VERSION,
   RECOMMEND_PROMPT_VERSION,
 };
