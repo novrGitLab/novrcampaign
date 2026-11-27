@@ -348,7 +348,7 @@ function UploadModal({ open, onClose, importContacts }) {
             </div>
           ) : (
             <>
-              <div className="flex gap-3 rounded-md bg-emerald-50 p-4 text-sm text-emerald-800">
+              <div className="flex gap-3 rounded-md bg-success/10 p-4 text-sm text-success">
                 <CheckCircle2 className="h-5 w-5 shrink-0" />
                 <p>Import queued. {result.message}</p>
               </div>
@@ -358,13 +358,13 @@ function UploadModal({ open, onClose, importContacts }) {
                   <p className="text-muted-foreground">Total rows</p>
                   <p className="text-lg font-semibold">{formatNumber(result.report.total)}</p>
                 </div>
-                <div className="rounded-md bg-emerald-50 p-3">
-                  <p className="text-emerald-700">Valid</p>
-                  <p className="text-lg font-semibold text-emerald-800">{formatNumber(result.report.valid)}</p>
+                <div className="rounded-md bg-success/10 p-3">
+                  <p className="text-success">Valid</p>
+                  <p className="text-lg font-semibold text-success">{formatNumber(result.report.valid)}</p>
                 </div>
-                <div className="rounded-md bg-amber-50 p-3">
-                  <p className="text-amber-700">Rejected</p>
-                  <p className="text-lg font-semibold text-amber-800">
+                <div className="rounded-md bg-warning/10 p-3">
+                  <p className="text-warning">Rejected</p>
+                  <p className="text-lg font-semibold text-warning">
                     {formatNumber(result.report.invalid.length)}
                   </p>
                 </div>
@@ -451,7 +451,7 @@ function AddContactModal({ open, onClose }) {
     <Modal open={open} onClose={close} title="Add contact" description="Create or update a contact.">
       {saved ? (
         <div className="space-y-4">
-          <div className="flex gap-3 rounded-md bg-emerald-50 p-4 text-sm text-emerald-800">
+          <div className="flex gap-3 rounded-md bg-success/10 p-4 text-sm text-success">
             <CheckCircle2 className="h-5 w-5 shrink-0" />
             <p>
               {saved.isNew === false ? 'Updated existing contact' : 'Contact created'}: {saved.email}
@@ -604,7 +604,7 @@ function PasteListModal({ open, onClose }) {
                 ))}
               </select>
               {segments.length > 0 && staticSegments.length === 0 && (
-                <p className="text-xs text-amber-600">Only STATIC segments accept manual members.</p>
+                <p className="text-xs text-warning">Only STATIC segments accept manual members.</p>
               )}
             </div>
             <div className="flex items-end pb-2">
@@ -626,17 +626,17 @@ function PasteListModal({ open, onClose }) {
       ) : (
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3 text-sm">
-            <div className="rounded-md bg-emerald-50 p-3">
-              <p className="text-emerald-700">Created</p>
-              <p className="text-lg font-semibold text-emerald-800">{report.created}</p>
+            <div className="rounded-md bg-success/10 p-3">
+              <p className="text-success">Created</p>
+              <p className="text-lg font-semibold text-success">{report.created}</p>
             </div>
             <div className="rounded-md bg-secondary/60 p-3">
               <p className="text-muted-foreground">Updated</p>
               <p className="text-lg font-semibold">{report.updated}</p>
             </div>
-            <div className="rounded-md bg-amber-50 p-3">
-              <p className="text-amber-700">Invalid</p>
-              <p className="text-lg font-semibold text-amber-800">{report.invalid.length}</p>
+            <div className="rounded-md bg-warning/10 p-3">
+              <p className="text-warning">Invalid</p>
+              <p className="text-lg font-semibold text-warning">{report.invalid.length}</p>
             </div>
             <div className="rounded-md bg-destructive/10 p-3">
               <p className="text-destructive">Failed</p>

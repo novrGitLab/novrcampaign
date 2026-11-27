@@ -57,7 +57,7 @@ function NavItem({ to, label, icon: Icon, end=false, badge=undefined, collapsed,
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1',
           collapsed && 'justify-center px-0',
           isActive
-            ? 'bg-brand-purple/10 text-brand-purple dark:bg-brand-purple/25 dark:text-purple-200'
+            ? 'bg-brand-purple/10 text-highlight dark:bg-brand-purple/25'
             : 'text-muted-foreground hover:bg-secondary/70 hover:text-foreground',
         )
       }
@@ -309,7 +309,7 @@ export function Layout({children}: {children: React.ReactNode}) {
               collapsed ? 'justify-center px-0' : 'px-3',
             )}
           >
-            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-600/15 text-[11px] font-bold text-emerald-700 dark:bg-emerald-600/25 dark:text-emerald-300">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-success/15 text-[11px] font-bold text-success dark:bg-success/15">
               {(user?.name || user?.email || '?').trim().charAt(0).toUpperCase()}
             </span>
             {!collapsed && (

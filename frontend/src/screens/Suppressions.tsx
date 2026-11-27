@@ -15,9 +15,9 @@ const FILTERS = [
 ];
 
 const REASON_STYLE = {
-  BOUNCE: { label: 'Hard bounce', className: 'bg-amber-500/15 text-amber-700 dark:text-amber-400' },
-  COMPLAINT: { label: 'Spam complaint', className: 'bg-rose-500/15 text-rose-700 dark:text-rose-400' },
-  UNSUBSCRIBED: { label: 'Unsubscribed', className: 'bg-sky-500/15 text-sky-700 dark:text-sky-400' },
+  BOUNCE: { label: 'Hard bounce', className: 'bg-warning/15 text-warning' },
+  COMPLAINT: { label: 'Spam complaint', className: 'bg-destructive/15 text-destructive' },
+  UNSUBSCRIBED: { label: 'Unsubscribed', className: 'bg-info/15 text-info' },
 };
 
 const EMPTY = [];

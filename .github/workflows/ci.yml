@@ -104,6 +104,27 @@ jobs:
       group: production-newsroom
       cancel-in-progress: false
     steps:
+      - name: Prepare the VPS deployment key
+        env:
+          DEPLOY_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          umask 077
+          python3 - <<'PY'
+          import base64, binascii, os, pathlib
+          key = os.environ["DEPLOY_KEY"].strip().replace("\\n", "\n").replace("\r", "")
+          if not key.startswith("-----BEGIN"):
+              try:
+                  decoded = base64.b64decode(key, validate=True).decode("ascii").strip()
+                  if decoded.startswith("-----BEGIN"):
+                      key = decoded
+              except (ValueError, UnicodeError, binascii.Error):
+                  pass
+          if not key.startswith("-----BEGIN") or "PRIVATE KEY-----" not in key:
+              raise SystemExit("VPS_SSH_KEY must contain the private deployment key for VPS_USER, including its header and footer.")
+          target = pathlib.Path(os.environ["RUNNER_TEMP"]) / "pulse-deploy-key"
+          target.write_text(key + "\n")
+          PY
+          ssh-keygen -y -P '' -f "$RUNNER_TEMP/pulse-deploy-key" >/dev/null 2>&1 || { echo 'VPS_SSH_KEY must be a valid, unattended OpenSSH/PEM deployment key.' >&2; exit 1; }
       - name: Release the tested revision
         uses: appleboy/ssh-action@v1.2.0
         env:
@@ -111,7 +132,7 @@ jobs:
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
+          key_path: ${{ runner.temp }}/pulse-deploy-key
           fingerprint: ${{ secrets.VPS_HOST_FINGERPRINT }}
           port: ${{ secrets.VPS_PORT || 22 }}
           envs: RELEASE_SHA
@@ -124,3 +145,6 @@ jobs:
             test "$(git rev-parse origin/main)" = "$RELEASE_SHA" || { echo 'A newer release superseded this job'; exit 0; }
             git merge --ff-only "$RELEASE_SHA"
             bash ./deploy.sh
+      - name: Remove the temporary deployment key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/pulse-deploy-key"

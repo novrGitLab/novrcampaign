@@ -13,7 +13,7 @@ import {
 import { prisma } from '../utils/prisma.js';
 import { config } from '../config/env.js';
 import { digest, opaqueToken } from '../services/staffSession.js';
-import { addSegmentMembers, sendConfirmation } from '../services/plunkService.js';
+import { addSegmentMembers, createContact, sendConfirmation } from '../services/plunkService.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 
 const router = Router();
@@ -111,13 +111,16 @@ router.post(
     const token = opaqueToken(),
       expiresAt = new Date(Date.now() + 86400000);
     await prisma.newsletterConfirmation.deleteMany({ where: { expiresAt: { lt: new Date() } } });
-    const recent = await prisma.newsletterConfirmation.findUnique({ where: { email } });
-    if (!recent || recent.expiresAt.getTime() < Date.now() + 86400000 - 600000) {
-      await prisma.newsletterConfirmation.upsert({
-        where: { email },
-        create: { email, hash: digest(token), expiresAt },
-        update: { hash: digest(token), expiresAt },
-      });
+    const hash = digest(token);
+    const retryAfter = new Date(expiresAt.getTime() - 600000);
+    const claimed = await prisma.$executeRaw`
+      INSERT INTO "newsletter_confirmation" ("email", "hash", "expiresAt")
+      VALUES (${email}, ${hash}, ${expiresAt})
+      ON CONFLICT ("email") DO UPDATE
+        SET "hash" = EXCLUDED."hash", "expiresAt" = EXCLUDED."expiresAt"
+        WHERE "newsletter_confirmation"."expiresAt" < ${retryAfter}
+    `;
+    if (claimed === 1) {
       try {
         await sendConfirmation(email, publicOrigin + '/subscribe/confirm#' + token);
       } catch {
@@ -142,8 +145,9 @@ router.post(
       await addSegmentMembers(config.novrpulse.pulseSegment, {
         emails: [record.email],
         createMissing: true,
-        subscribed: true,
+        subscribed: false,
       });
+      await createContact({ email: record.email, subscribed: true });
     } catch {
       return message(res, 'Subscription could not be confirmed', 503);
     }

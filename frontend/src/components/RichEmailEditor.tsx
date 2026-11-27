@@ -147,8 +147,8 @@ function ToolButton({ active=false, disabled, onClick, title, children }) {
       title={title}
       aria-label={title}
       className={cn(
-        'flex h-8 w-8 items-center justify-center rounded text-slate-500 hover:bg-slate-200 hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-40',
-        active && 'bg-purple-100 text-purple-800',
+        'flex h-8 w-8 items-center justify-center rounded text-muted-foreground hover:bg-border hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40',
+        active && 'bg-highlight/10 text-highlight',
       )}
     >
       {children}
@@ -205,7 +205,7 @@ export default function RichEmailEditor({ value, onChange, disabled=false, inser
     editable: !disabled,
     editorProps: {
       // Email canvas stays light in both modes — it previews the sent email
-      attributes: { class: 'tiptap min-h-[280px] w-full bg-white px-4 py-3 text-sm text-slate-900 focus:outline-none' },
+      attributes: { class: 'tiptap min-h-[280px] w-full bg-card px-4 py-3 text-sm text-foreground focus:outline-none' },
     },
     onUpdate: ({ editor: e }) => emitHtml(e.getHTML()),
   });
@@ -286,17 +286,17 @@ export default function RichEmailEditor({ value, onChange, disabled=false, inser
             onClick={onClear}
             disabled={disabled || !value}
             title="Clear the canvas completely, then paste fresh HTML"
-            className="flex items-center gap-1 rounded border border-slate-200 bg-white px-2 py-1 text-xs text-slate-500 hover:bg-red-50 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex items-center gap-1 rounded border border-border bg-card px-2 py-1 text-xs text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-40"
           >
             <Trash2 className="h-3 w-3" /> Clear
           </button>
         </div>
         {view === 'rich' && (
           <div className="hidden gap-1 sm:flex">
-            <button type="button" disabled={disabled} onClick={() => insertToken('{{firstName}}')} title="Insert first-name personalisation" className="flex items-center gap-1 rounded border border-slate-200 bg-white px-2 py-1 text-xs text-slate-500 hover:bg-slate-100 hover:text-slate-800">
+            <button type="button" disabled={disabled} onClick={() => insertToken('{{firstName}}')} title="Insert first-name personalisation" className="flex items-center gap-1 rounded border border-border bg-card px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">
               <User className="h-3 w-3" /> {'{{firstName}}'}
             </button>
-            <button type="button" disabled={disabled} onClick={() => insertToken('<p><a href="{{unsubscribeUrl}}">Unsubscribe</a></p>')} title="Insert unsubscribe link (required for HEADLESS)" className="flex items-center gap-1 rounded border border-slate-200 bg-white px-2 py-1 text-xs text-slate-500 hover:bg-slate-100 hover:text-slate-800">
+            <button type="button" disabled={disabled} onClick={() => insertToken('<p><a href="{{unsubscribeUrl}}">Unsubscribe</a></p>')} title="Insert unsubscribe link (required for HEADLESS)" className="flex items-center gap-1 rounded border border-border bg-card px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">
               <BellOff className="h-3 w-3" /> Unsubscribe link
             </button>
           </div>
@@ -304,7 +304,7 @@ export default function RichEmailEditor({ value, onChange, disabled=false, inser
       </div>
 
       {view === 'rich' && hasComplexEmailHtml(value) && (
-        <p className="mb-2 flex items-start gap-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
+        <p className="mb-2 flex items-start gap-2 rounded-md bg-warning/10 px-3 py-2 text-xs text-warning">
           <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           Full email HTML (tables, styles, classes) — rich editing keeps text but can drop head styles and
           layout details. Prefer the HTML tab for structural edits, Preview to verify.
@@ -312,26 +312,26 @@ export default function RichEmailEditor({ value, onChange, disabled=false, inser
       )}
 
       {view === 'rich' && (
-        <div className="overflow-hidden rounded-md border bg-white">
-          <div className="flex flex-wrap items-center gap-0.5 border-b border-slate-200 bg-slate-50 px-2 py-1.5">
+        <div className="overflow-hidden rounded-md border bg-card">
+          <div className="flex flex-wrap items-center gap-0.5 border-b border-border bg-muted px-2 py-1.5">
             <ToolButton disabled={disabled} onClick={() => editor?.chain().focus().undo().run()} title="Undo"><Undo2 className="h-4 w-4" /></ToolButton>
             <ToolButton disabled={disabled} onClick={() => editor?.chain().focus().redo().run()} title="Redo"><Redo2 className="h-4 w-4" /></ToolButton>
-            <span className="mx-1 h-5 w-px bg-slate-200" />
+            <span className="mx-1 h-5 w-px bg-border" />
             <ToolButton active={editor?.isActive('bold')} disabled={disabled} onClick={() => editor?.chain().focus().toggleBold().run()} title="Bold"><Bold className="h-4 w-4" /></ToolButton>
             <ToolButton active={editor?.isActive('italic')} disabled={disabled} onClick={() => editor?.chain().focus().toggleItalic().run()} title="Italic"><Italic className="h-4 w-4" /></ToolButton>
             <ToolButton active={editor?.isActive('underline')} disabled={disabled} onClick={() => editor?.chain().focus().toggleUnderline().run()} title="Underline"><UnderlineIcon className="h-4 w-4" /></ToolButton>
             <ToolButton active={editor?.isActive('strike')} disabled={disabled} onClick={() => editor?.chain().focus().toggleStrike().run()} title="Strikethrough"><Strikethrough className="h-4 w-4" /></ToolButton>
-            <span className="mx-1 h-5 w-px bg-slate-200" />
+            <span className="mx-1 h-5 w-px bg-border" />
             <ToolButton active={editor?.isActive('heading', { level: 1 })} disabled={disabled} onClick={() => editor?.chain().focus().toggleHeading({ level: 1 }).run()} title="Heading 1"><span className="text-xs font-bold">H1</span></ToolButton>
             <ToolButton active={editor?.isActive('heading', { level: 2 })} disabled={disabled} onClick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()} title="Heading 2"><span className="text-xs font-bold">H2</span></ToolButton>
             <ToolButton active={editor?.isActive('bulletList')} disabled={disabled} onClick={() => editor?.chain().focus().toggleBulletList().run()} title="Bullet list"><List className="h-4 w-4" /></ToolButton>
             <ToolButton active={editor?.isActive('orderedList')} disabled={disabled} onClick={() => editor?.chain().focus().toggleOrderedList().run()} title="Numbered list"><ListOrdered className="h-4 w-4" /></ToolButton>
             <ToolButton active={editor?.isActive('blockquote')} disabled={disabled} onClick={() => editor?.chain().focus().toggleBlockquote().run()} title="Quote"><Quote className="h-4 w-4" /></ToolButton>
-            <span className="mx-1 h-5 w-px bg-slate-200" />
+            <span className="mx-1 h-5 w-px bg-border" />
             <ToolButton active={editor?.isActive({ textAlign: 'left' })} disabled={disabled} onClick={() => editor?.chain().focus().setTextAlign('left').run()} title="Align left"><AlignLeft className="h-4 w-4" /></ToolButton>
             <ToolButton active={editor?.isActive({ textAlign: 'center' })} disabled={disabled} onClick={() => editor?.chain().focus().setTextAlign('center').run()} title="Align center"><AlignCenter className="h-4 w-4" /></ToolButton>
             <ToolButton active={editor?.isActive({ textAlign: 'right' })} disabled={disabled} onClick={() => editor?.chain().focus().setTextAlign('right').run()} title="Align right"><AlignRight className="h-4 w-4" /></ToolButton>
-            <span className="mx-1 h-5 w-px bg-slate-200" />
+            <span className="mx-1 h-5 w-px bg-border" />
             <ToolButton active={editor?.isActive('link')} disabled={disabled} onClick={setLink} title="Add/edit link"><LinkIcon className="h-4 w-4" /></ToolButton>
             <ToolButton disabled={disabled} onClick={() => editor?.chain().focus().unsetLink().run()} title="Remove link"><Unlink className="h-4 w-4" /></ToolButton>
             <ToolButton disabled={disabled} onClick={() => editor?.chain().focus().setHorizontalRule().run()} title="Divider"><Minus className="h-4 w-4" /></ToolButton>
@@ -340,7 +340,7 @@ export default function RichEmailEditor({ value, onChange, disabled=false, inser
           {editor ? (
             <EditorContent editor={editor} />
           ) : (
-            <p className="min-h-[280px] bg-white px-4 py-3 text-sm text-slate-400">Loading editor…</p>
+            <p className="min-h-[280px] bg-card px-4 py-3 text-sm text-muted-foreground">Loading editor…</p>
           )}
         </div>
       )}

@@ -327,7 +327,7 @@ export default function CampaignBuilder() {
                       ))}
                     </select>
                   ) : (
-                    <p className="text-xs text-amber-600">
+                    <p className="text-xs text-warning">
                       No segments yet — create one under Segments first, then pick it here.
                     </p>
                   )
@@ -378,7 +378,7 @@ export default function CampaignBuilder() {
                   insertRef={insertRef}
                 />
                 {form.type !== 'TRANSACTIONAL' && !form.body.toLowerCase().includes('{{unsubscribe') && (
-                  <p className="mt-3 text-xs text-amber-600">
+                  <p className="mt-3 text-xs text-warning">
                     {form.type === 'HEADLESS'
                       ? 'Headless sends must include {{unsubscribeUrl}} — add an unsubscribe link.'
                       : 'Marketing emails include an unsubscribe footer.'}
@@ -404,7 +404,7 @@ export default function CampaignBuilder() {
             {saving ? 'Saving…' : isEditing ? 'Save changes' : 'Save draft'}
           </Button>
           {dirty && (
-            <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-800">
+            <span className="rounded-full bg-warning/10 px-3 py-1 text-xs font-medium text-warning">
               Unsaved changes — sends use the last saved version
             </span>
           )}
@@ -463,7 +463,7 @@ export default function CampaignBuilder() {
         <div className="space-y-4">
           {testSent ? (
             <>
-              <p className="rounded-md bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+              <p className="rounded-md bg-success/10 px-4 py-3 text-sm text-success">
                 Test email sent to {testRecipient}. Check the inbox (and spam) in a minute.
               </p>
               <Button className="w-full" onClick={() => { setTestOpen(false); setTestSent(false); }}>
