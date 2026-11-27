@@ -188,7 +188,7 @@
     border-color: var(--control-focus);
   }
 
-  .input:is(:user-invalid, [aria-invalid="true"]) {
+  .input:enabled:is(:user-invalid, [aria-invalid="true"]) {
     border-color: var(--signal);
     outline-color: var(--signal);
   }
