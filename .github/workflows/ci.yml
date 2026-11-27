@@ -174,8 +174,9 @@ jobs:
             git fetch origin main
             test "$(git rev-parse origin/main)" = "$RELEASE_SHA" || { echo 'A newer release superseded this job'; exit 0; }
             git merge --ff-only "$RELEASE_SHA"
-            if [ "${INCLUDE_COLLECTOR:-false}" = true ]; then bash ./deploy.sh --with-collector; else bash ./deploy.sh; fi
+            bash ./deploy.sh
             if [ "${MODEL_CHECK:-false}" = true ]; then docker compose exec -T backend node backend/scripts/newsroom-model-check.mjs; fi
+            if [ "${INCLUDE_COLLECTOR:-false}" = true ]; then bash ./scripts/release-collector.sh; fi
       - name: Remove the temporary deployment key
         if: always()
         run: rm -f "$RUNNER_TEMP/pulse-deploy-key"

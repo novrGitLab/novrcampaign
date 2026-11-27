@@ -31,8 +31,7 @@ docker compose run --rm --no-deps backend sh -c 'cd backend && npx prisma migrat
 docker compose up -d backend frontend
 docker compose up -d --force-recreate caddy
 if [[ "${1:-}" == "--with-collector" ]]; then
-  collector_dir="${COLLECTOR_CONTEXT:-../novr-collection}"
-  (cd "$collector_dir" && git pull --ff-only && docker compose up -d --build)
+  bash ./scripts/release-collector.sh
 fi
 for attempt in {1..40}; do
   if [[ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 4 https://pulse.cybernovr.com/api/health)" == 200 ]] &&
