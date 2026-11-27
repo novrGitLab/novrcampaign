@@ -58,7 +58,7 @@ HARD RULES (copyright and accuracy):
 
 Return STRICT JSON only: {"summary":"..","whatItMeans":".."}
 - summary: 1-2 sentences on what happened. Neutral, attributed where relevant.
-- whatItMeans: 1-2 sentences on why it matters to a Nigerian reader or organisation.`;
+- whatItMeans: 1-2 sentences explaining the significance supported by the source. Do not infer a Nigerian impact, affected organisation, attribution or outcome.`;
 
 const ENTITY_SCHEMA = {
   type: 'object',

@@ -325,7 +325,7 @@ export function createCollectionClient(cfg = config.novrpulse?.collection, deps 
      * @returns {Promise<{ runId:string, status:string }>}
      */
     async startRun({ sourceIds, maxAgeDays } = {}) {
-      const body = {};
+      const body = { fullText: true };
       if (sourceIds !== undefined) body.sourceIds = sourceIds;
       if (maxAgeDays !== undefined) body.maxAgeDays = maxAgeDays;
       const out = await send('POST', '/v1/collections', { body });

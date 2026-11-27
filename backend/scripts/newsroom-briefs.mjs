@@ -1,6 +1,6 @@
 import Joi from 'joi';
 import { prisma } from '../src/utils/prisma.js';
-import { fillNewsroomBriefs } from '../src/services/newsroomBriefs.js';
+import { prepareArticles } from '../src/services/articleReview.js';
 import { isConfigured } from '../src/services/novrpulse/understand/orchestrator.js';
 
 const args = process.argv.slice(2);
@@ -14,7 +14,7 @@ try {
     throw Error('Choose a valid story ID.');
   if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw Error('Choose a limit between 1 and 100.');
   if (commit && !isConfigured()) throw Error('The newsroom model is unavailable.');
-  const result = await fillNewsroomBriefs({ limit, commit, eventId });
+  const result = await prepareArticles({ limit, commit, eventId });
   console.log(JSON.stringify({ commit, ...result }));
   if (result.failed > 0) process.exitCode = 1;
 } finally {

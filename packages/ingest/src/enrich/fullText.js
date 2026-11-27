@@ -83,7 +83,7 @@ export function createFetchBudget(maxPerRun) {
  *      shorter page is never an improvement;
  *   3. it is NOT a near-duplicate of the existing content. A feed that already
  *      carries the full body yields a page whose opening matches the feed text;
- *      swapping then would churn the `contentHash` for no gain. The cheap check
+ *      a matching prefix with only a small length gain would churn the `contentHash` for no gain. The cheap check
  *      compares the first `duplicatePrefixChars` characters, lowercased.
  *
  * @param {string} existing stripped current content
@@ -94,7 +94,8 @@ function isMaterialImprovement(existing, fetched, cfg) {
   if (!fetched) return false;
   if (fetched.length < cfg.minFetchedChars) return false;
   if (fetched.length <= existing.length) return false;
-  if (isNearDuplicate(existing, fetched, cfg.duplicatePrefixChars)) return false;
+  const gain = fetched.length - existing.length;
+  if (gain < Math.max(120, existing.length * 0.08) && isNearDuplicate(existing, fetched, cfg.duplicatePrefixChars)) return false;
   return true;
 }
 
@@ -164,7 +165,7 @@ export function capBody(text, maxChars) {
  * @param {{ remaining:number }} params.budget   shared per-run fetch budget
  * @returns {Promise<import('../parse/item.js').NormalisedItem>}
  */
-export async function enrichItemFullText(item, { fetch, logger, cfg, budget }) {
+export async function enrichItemFullText(item, { fetch, logger, cfg, budget, publisherUrl }) {
   // Tolerate a partial `cfg` from direct callers: fill any missing gate from
   // the defaults so a caller that does not know the current option names still
   // gets the documented behaviour.
@@ -176,7 +177,9 @@ export async function enrichItemFullText(item, { fetch, logger, cfg, budget }) {
   budget.remaining -= 1;
   let candidate;
   try {
-    const res = await fetch(item.link, { logger, label: 'full-text' });
+    const allowedHost = publisherUrl ? new URL(publisherUrl).hostname.toLowerCase().replace(/^www\./,'') : undefined;
+    if (allowedHost && new URL(item.link).hostname.toLowerCase().replace(/^www\./,'') !== allowedHost) return item;
+    const res = await fetch(item.link, { logger, label: 'full-text', allowedHost, maxAttempts: 1 });
     candidate = readableBodyOf(res.body, gates.minFetchedChars);
   } catch (err) {
     logger?.debug?.({ link: item.link, message: err?.message }, 'full-text fetch failed');
@@ -218,12 +221,12 @@ export async function enrichItemFullText(item, { fetch, logger, cfg, budget }) {
  * @param {object} params.options  raw full-text options (see {@link resolveFullTextOptions})
  * @param {{ remaining:number }} params.budget
  */
-export async function enrichItemsFullText(items, { fetch, logger, options, budget }) {
+export async function enrichItemsFullText(items, { fetch, logger, options, budget, publisherUrl }) {
   const cfg = resolveFullTextOptions(options);
   if (!cfg.enabled || !fetch) return items;
   const out = [];
   for (const item of items) {
-    out.push(await enrichItemFullText(item, { fetch, logger, cfg, budget }));
+    out.push(await enrichItemFullText(item, { fetch, logger, cfg, budget, publisherUrl }));
   }
   return out;
 }

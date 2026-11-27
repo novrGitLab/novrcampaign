@@ -122,24 +122,6 @@ export async function collectSource(source, opts = {}) {
     return { ...base, ok: false, status: 'parse_failed', error: err.message };
   }
 
-  // Full-text upgrade for every item. Runs before canary/freshness so the
-  // full article body is what the consumer stores. Any failure keeps the feed
-  // content, and the shared budget bounds how many article fetches a whole run
-  // may make. A standalone collectSource (no injected budget) gets its own budget.
-  const fullTextOptions = resolveFullTextOptions(fullTextFetch);
-  const budget = fullTextBudget ?? createFetchBudget(fullTextOptions.maxPerRun);
-  if (fullTextOptions.enabled && budget.remaining > 0) {
-    parsed = {
-      ...parsed,
-      items: await enrichItemsFullText(parsed.items, {
-        fetch: fetchImpl,
-        logger,
-        options: fullTextOptions,
-        budget,
-      }),
-    };
-  }
-
   const totalSeen = parsed.items.length;
   const dates = parsed.items
     .map((i) => (i.publishedAt ? Date.parse(i.publishedAt) : NaN))
@@ -158,8 +140,13 @@ export async function collectSource(source, opts = {}) {
     return { ...base, ok: false, status: 'stale', itemCount: 0, totalSeen, newestAt, canary };
   }
 
+  const options = resolveFullTextOptions(fullTextFetch);
+  const budget = fullTextBudget ?? createFetchBudget(options.maxPerRun);
+  const items = options.enabled && !source.paywall && ![source.licence, source.licenceStatus].some(v => String(v).toLowerCase() === 'denied')
+    ? await enrichItemsFullText(fresh, { fetch: fetchImpl, logger, options, budget, publisherUrl: source.url || source.feedUrl })
+    : fresh;
   logger?.info?.({ sourceId: source.id, itemCount: fresh.length, totalSeen, newestAt }, 'source ok');
-  return { ...base, ok: true, status: 'ok', itemCount: fresh.length, totalSeen, newestAt, items: fresh, canary };
+  return { ...base, ok: true, status: 'ok', itemCount: fresh.length, totalSeen, newestAt, items, canary };
 }
 
 /** Bounded-concurrency map, so a run never hammers every source at once. */

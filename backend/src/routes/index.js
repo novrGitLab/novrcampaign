@@ -1,3 +1,4 @@
+import articleRoutes from './articleRoutes.js';
 import { applicantRoutes, reviewRoutes } from './staffAccessRoutes.js';
 import newsroomMedia from './newsroomMedia.js';
 import { Router } from 'express';
@@ -28,6 +29,7 @@ router.use('/auth/access', applicantRoutes);
 router.use('/auth', authRoutes);
 router.use('/staff-access', requireAuth, reviewRoutes);
 router.use('/media', newsroomMedia);
+router.use('/articles', requireAuth, articleRoutes);
 
 // Pulse collection trigger — cron/ADMIN-guarded INSIDE the controller, so it
 // must be mounted BEFORE the `requireAuth`-wrapped `/pulse` mount below (a

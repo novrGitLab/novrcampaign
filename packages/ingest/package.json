@@ -13,13 +13,16 @@
     "./sources": "./src/sources.js",
     "./understand": "./src/understand/index.js",
     "./store": "./src/store/index.js",
+    "./article": "./src/enrich/extractArticle.js",
     "./text": "./src/text/language.js"
   },
   "engines": {
     "node": ">=18.0.0"
   },
   "dependencies": {
-    "openai": "^4.104.0"
+    "ipaddr.js": "^2.5.0",
+    "openai": "^4.104.0",
+    "undici": "^6.29.1"
   },
   "devDependencies": {
     "eslint": "^9.18.0",
