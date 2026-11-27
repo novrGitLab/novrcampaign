@@ -178,8 +178,7 @@ function isNavLikeLine(line) {
  * Split a region into lines on block boundaries and strip/normalise each line,
  * dropping nav-like and code-like lines. Each line is tag-stripped, residual tag
  * fragments are removed, entities are decoded, and whitespace is collapsed.
- * Joining with a space keeps the text a single blob (the stored body is plain
- * text, not line-delimited).
+ * Paragraph breaks preserve the sequence for downstream editors.
  */
 function regionToText(region) {
   const lines = String(region)
@@ -189,9 +188,7 @@ function regionToText(region) {
     .map((line) => stripResidualTags(decodeEntities(stripHtml(line))))
     .map((line) => line.replace(/\s+/g, ' ').trim())
     .filter((line) => line.length > 0 && !isNavLikeLine(line) && !isCodeLikeLine(line));
-  // Collapse runs of 3+ blank lines (a no-op after the join, but kept explicit
-  // so the contract holds if a caller ever re-splits on newlines).
-  return lines.join(' ').replace(/\n{3,}/g, '\n\n').replace(/\s+/g, ' ').trim();
+  return lines.join('\n\n');
 }
 
 /**
