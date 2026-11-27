@@ -11,7 +11,7 @@ const escape = (value) =>
 const descriptions = {
   WELCOME: [
     'Staff identity verified',
-    'Your CyberNovr account is verified. To join the newsroom, sign in and select Request access.',
+    'Your staff account is verified. To join the newsroom, sign in and select Request access.',
   ],
   RECEIVED: [
     'Access request received',
@@ -32,7 +32,7 @@ export function noticeContent(notice) {
           'Newsroom access granted',
           'Your newsroom access was approved with the ' +
             escape(r.role) +
-            ' role. Sign in with your CyberNovr account.',
+            ' role. Sign in with your staff account.',
         ]);
   const review = notice.kind === 'REVIEW';
   const link = review ? '/staff-access' : '/login';

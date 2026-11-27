@@ -114,6 +114,8 @@ export const NON_PERSON_TOKENS = new Set([
   'scheduled', 'pending', 'stalled', 'listed',
   'named', 'names', 'name', 'read', 'wrote', 'writes', 'write', 'told', 'tells',
   'tell', 'toll', 'hotline',
+  'confirms', 'intruders', 'accessed', 'personal', 'intrusion', 'exposed',
+  'governing', 'body', 'working', 'attributed', 'taken', 'reference',
 ]);
 
 /**
@@ -149,7 +151,7 @@ export const TRUSTED_ACRONYMS = new Set([
   'nbc', 'nipost', 'nira', 'nnpc', 'nef', 'cisa', 'nist', 'gdpr', 'nis',
   'un', 'eu', 'uk', 'us', 'usa', 'au', 'ecowas', 'who', 'imf', 'itu', 'undp',
   'nato', 'ai', 'it', 'ict', 'sms', 'ussd', 'otp', 'pin', 'atm', 'pos',
-  'url', 'https', 'http', 'www', 'id', 'ng',
+  'url', 'https', 'http', 'www', 'id', 'ng', 'fifa', 'uefa', 'unicef', 'ap',
 ]);
 
 /**

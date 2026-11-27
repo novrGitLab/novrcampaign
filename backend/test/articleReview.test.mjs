@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { prisma } from '../src/utils/prisma.js';
 import { findNews, listNews } from '../src/services/publicNews.js';
+import { rejectedStories, restoreStory } from '../src/services/rejectedStories.js';
 import { generateArticle, saveArticle } from '../src/services/articleReview.js';
 
 test('a new article is private until approval and later changes cannot overwrite a newer draft', async (t) => {
@@ -67,4 +68,24 @@ test('a new article is private until approval and later changes cannot overwrite
   assert.equal((await findNews(id)).region, 'NG');
   assert.equal((await findNews(id)).title, article.headline);
   await assert.rejects(saveArticle(id, 2, article, { publishBy: 'fixture-editor' }), { statusCode: 409 });
+
+  await prisma.npEvent.update({ where: { id }, data: { reviewStatus: 'dismissed' } });
+  assert.equal(await findNews(id), null);
+  const rejected = await rejectedStories(null, 'Records audit at two libraries');
+  assert.ok(rejected.items.some((row) => row.id === id && row.dismissed));
+  await assert.rejects(restoreStory(id, 3, 'unknown', 'fixture-admin'), { statusCode: 400 });
+  const attempts = await Promise.allSettled([
+    restoreStory(id, 3, 'AF', 'fixture-admin'), restoreStory(id, 3, 'AF', 'fixture-admin'),
+  ]);
+  assert.equal(attempts.filter((r) => r.status === 'fulfilled').length, 1);
+  assert.equal(attempts.find((r) => r.status === 'rejected').reason.statusCode, 409);
+  assert.equal(await findNews(id), null);
+  const row = await prisma.npEvent.findUnique({ where: { id } });
+  assert.equal(row.articleDraft.region, 'AF');
+  assert.equal(row.cyberRegion, 'AF');
+  assert.equal(row.restoredBy, 'fixture-admin');
+  assert.ok(row.restoredAt);
+  assert.ok(!(await rejectedStories(null, 'Records audit at two libraries')).items.some((item) => item.id === id));
+  await saveArticle(id, 4, article, { publishBy: 'fixture-editor' });
+  assert.equal((await findNews(id)).region, 'AF');
 });

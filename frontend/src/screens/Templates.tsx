@@ -1,3 +1,4 @@
+import { PublisherLogo } from '@/components/ui/PublisherLogo';
 import { useState } from 'react';
 import Link from 'next/link';
 import { Plus, LayoutTemplate, Trash2, Copy, Eye } from '../components/ui/icons';
@@ -135,7 +136,7 @@ export default function Templates() {
         <div className="space-y-4">
           {error && <p className="rounded-md bg-destructive/10 px-4 py-3 text-sm text-destructive">{error}</p>}
           <div className="space-y-2">
-            <Label>Start from a CyberNovr newsletter starter</Label>
+            <div className="label"><PublisherLogo /> newsletter starters</div>
             <div className="flex flex-wrap gap-2">
               {STARTER_TEMPLATES.map((s) => (
                 <button

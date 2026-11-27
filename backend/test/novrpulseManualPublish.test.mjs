@@ -305,3 +305,15 @@ describe('manual publish: denied paths', () => {
     assert.equal(store.items.length, 0);
   });
 });
+
+test('Breaking News recognises FIFA and reviewed organisation names while retaining personal-name checks', () => {
+  const copy = composeManualBody({
+    headline: 'FIFA confirms intruders accessed personal and business information',
+    text: 'In a statement to the Associated Press, FIFA said an intrusion exposed some personal and business records. The governing body is working with law enforcement. It has neither attributed the breach nor confirmed how much data was taken.',
+    referenceLink: 'https://pulse.cybernovr.com/news/fifa',
+  });
+  assert.doesNotThrow(() => assertManualNameless(7, 'public', copy));
+  for (const name of ['Okafor', 'OKAFOR', 'chinédu', 'Okafor-FIFA', 'Associated Pressman']) {
+    assert.throws(() => assertManualNameless(7, 'public', copy + ' ' + name), { statusCode: 422 });
+  }
+});

@@ -258,7 +258,11 @@ export function knownNonPersonTokens(event) {
  * @returns {string[]} offending tokens, exactly as they appeared, de-duplicated.
  */
 export function findPersonLikeNames(text, knownTokens = new Set()) {
-  const words = stripUrls(String(text ?? '')).match(PERSON_TOKEN_RE) ?? [];
+  const copy = stripUrls(String(text ?? '')).replace(
+    /(?<![\p{L}\p{M}\p{N}'’-])(?:Associated Press|World Health Organization|African Union|Union of European Football Associations|Fédération Internationale de Football Association)(?![\p{L}\p{M}\p{N}'’-])/giu,
+    ' ',
+  );
+  const words = copy.match(PERSON_TOKEN_RE) ?? [];
   const out = [];
   const seen = new Set();
   for (const word of words) {

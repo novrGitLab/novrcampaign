@@ -5,7 +5,20 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 import { BadRequest, Forbidden } from '../utils/AppError.js';
 import { articleQueue, reviewRecord, generateArticle, saveArticle } from '../services/articleReview.js';
 
+import { rejectedStories, restoreStory } from '../services/rejectedStories.js';
+
 const router = Router();
+const queueQuery = Joi.object({ after: Joi.string().uuid(), search: Joi.string().trim().max(120) });
+function admin(req, res, next) {
+  return next(req.user.role === 'ADMIN' ? undefined : Forbidden('Administrator access required.'));
+}
+function readQueue(list) {
+  return asyncHandler(async (req, res) => {
+    const { value, error } = queueQuery.validate(req.query);
+    if (error) throw BadRequest('Invalid search or page.');
+    res.json(await list(value.after, value.search));
+  });
+}
 const uuid = Joi.string().uuid().required();
 const limited = rateLimit({
   windowMs: 60000,
@@ -17,15 +30,12 @@ const limited = rateLimit({
 router.param('id', (req, res, next, id) =>
   next(uuid.validate(id).error ? BadRequest('Invalid story ID.') : undefined),
 );
-router.get(
-  '/',
+router.get('/', readQueue(articleQueue));
+router.get('/rejected', admin, readQueue(rejectedStories));
+router.post(
+  '/:id/restore', admin,
   asyncHandler(async (req, res) => {
-    const { value, error } = Joi.object({
-      after: Joi.string().uuid(),
-      search: Joi.string().trim().max(120),
-    }).validate(req.query);
-    if (error) throw BadRequest('Invalid search or page.');
-    res.json(await articleQueue(value.after, value.search));
+    res.json(await restoreStory(req.params.id, version(req.body), req.body.region, req.user.id));
   }),
 );
 router.get(

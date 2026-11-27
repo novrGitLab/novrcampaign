@@ -1,4 +1,5 @@
 import Joi from 'joi';
+import { Prisma } from '../generated/prisma/client.js';
 import { fetchText } from '@novr/ingest/fetch';
 import { extractArticle } from '@novr/ingest/article';
 import { prisma } from '../utils/prisma.js';
@@ -112,6 +113,8 @@ const staffRecord = {
   canonicalUrl: true,
   body: true,
   eventType: true,
+  summary: true,
+  whatItMeans: true,
   sources,
 };
 
@@ -121,9 +124,9 @@ export async function articleQueue(after, search) {
     orderBy: [{ publishedAt: 'desc' }, { id: 'desc' }],
     take: 21,
     ...(after && { cursor: { id: after }, skip: 1 }),
-    select: staffFields,
+    select: { ...staffFields, articleDraft: true },
   });
-  return { items: rows.slice(0, 20), next: rows.length > 20 ? rows[19].id : null };
+  return { items: rows.slice(0, 20).map(({ articleDraft, ...row }) => ({ ...row, hasDraft: Boolean(articleDraft) })), next: rows.length > 20 ? rows[19].id : null };
 }
 
 export async function reviewRecord(id) {
@@ -222,7 +225,7 @@ export async function prepareArticles({ limit, commit, eventId }) {
   const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
   const where = {
     ...eligibility(),
-    articleVersion: 0,
+    articleDraft: { equals: Prisma.DbNull },
     ...(eventId && { id: eventId }),
     OR: [{ publicBriefAttemptedAt: null }, { publicBriefAttemptedAt: { lt: cutoff } }],
   };
@@ -230,18 +233,18 @@ export async function prepareArticles({ limit, commit, eventId }) {
     where,
     orderBy: [{ publishedAt: 'desc' }, { id: 'desc' }],
     take: limit,
-    select: { id: true },
+    select: { id: true, articleVersion: true },
   });
   const result = { candidates: rows.length, saved: 0, skipped: 0, failed: 0 };
   if (!commit) return result;
   for (const row of rows) {
     const claim = await prisma.npEvent.updateMany({
-      where: { ...where, id: row.id },
+      where: { ...where, id: row.id, articleVersion: row.articleVersion },
       data: { publicBriefAttemptedAt: new Date() },
     });
     if (!claim.count) continue;
     try {
-      await generateArticle(row.id, 0);
+      await generateArticle(row.id, row.articleVersion);
       result.saved++;
     } catch (error) {
       if ([400, 404, 409, 422].includes(error.statusCode)) result.skipped++;

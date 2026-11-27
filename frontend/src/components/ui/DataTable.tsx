@@ -52,6 +52,7 @@ export function FilterTabs<T extends string>({
       {options.map((option) => (
         <Button
           key={option.key}
+          type="button"
           size="sm"
           variant={value === option.key ? 'primary' : 'secondary'}
           aria-pressed={value === option.key}

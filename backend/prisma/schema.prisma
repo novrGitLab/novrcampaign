@@ -233,6 +233,11 @@ model NpEvent {
   // LLM classification pass then sets all three per its judgment. There is no
   // `aiClassifiedAt` column — the null booleans are the "not yet classified"
   // signal the classification query keys on.
+  screeningDecision   String?
+  screeningReason     String?
+  screeningConfidence Float?
+  restoredAt          DateTime?
+  restoredBy          String?
   isCybersecurity   Boolean?
   isThreatIntel     Boolean?
   // DEPRECATED: superseded by `cyberRegion` (owner requirement 2026-11-25).

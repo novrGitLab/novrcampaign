@@ -388,3 +388,32 @@
   width: 5px;
   background: var(--accent);
 }
+
+
+.publisher-logo {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+  border-radius: .2rem;
+  padding: .22em .28em;
+}
+.publisher-logo img {
+  display: block;
+  height: .92em;
+  width: auto;
+  max-width: none;
+}
+:root[data-theme='dark'] .publisher-logo::after {
+  content: '';
+  position: absolute;
+  inset: .22em .28em;
+  pointer-events: none;
+  /* The full-colour ring occupies columns 663–756 in the supplied 972px wordmark. */
+  background: linear-gradient(to right, var(--ink) 0 68%, transparent 68% 78%, var(--ink) 78%);
+  mask: url('/press/cybernovr-wordmark.png') center / 100% 100% no-repeat;
+}
+.publisher-logo:focus-visible {
+  outline: 2px solid var(--control-focus);
+  outline-offset: 3px;
+}

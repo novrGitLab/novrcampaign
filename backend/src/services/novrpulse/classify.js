@@ -205,20 +205,14 @@ export function buildClassifyPrompt(events) {
  */
 export async function findUnclassified({ limit = CLASSIFY_MAX_EVENTS, regionBackfill = false } = {}) {
   const rows = await prisma.npEvent.findMany({
-    where: regionBackfill
-      ? {
-          OR: [
-            { isCybersecurity: null },
-            { isThreatIntel: null },
-            { AND: [{ isCybersecurity: true }, { cyberRegion: null }] },
-          ],
-        }
-      : {
-          OR: [
-            { isCybersecurity: null },
-            { isThreatIntel: null },
-          ],
-        },
+    where: {
+      restoredAt: null,
+      OR: [
+        { isCybersecurity: null },
+        { isThreatIntel: null },
+        ...(regionBackfill ? [{ AND: [{ isCybersecurity: true }, { cyberRegion: null }] }] : []),
+      ],
+    },
     orderBy: [{ publishedAt: { sort: 'desc', nulls: 'last' } }, { createdAt: 'desc' }],
     take: limit,
     select: {
@@ -304,7 +298,7 @@ export function parseClassificationEntry(entry) {
     isThreatIntel: entry.isThreatIntel,
     cyberRegion,
     cybersecurityReason: reason && reason.length > 0 ? reason.slice(0, 120) : null,
-    confidence: typeof entry.confidence === 'number' ? entry.confidence : null,
+    confidence: Number.isFinite(entry.confidence) && entry.confidence >= 0 && entry.confidence <= 1 ? entry.confidence : null,
   };
 }
 
@@ -337,6 +331,14 @@ export function resolveCyberVerdict(parsed) {
     isThreatIntel: Boolean(parsed.isThreatIntel),
     cyberRegion: keepCyber ? parsed.cyberRegion : null,
   };
+}
+
+function screeningDecision(parsed) {
+  if (!parsed.isCybersecurity) return 'outside_scope';
+  if (parsed.confidence === null) return 'missing_confidence';
+  if (parsed.confidence < CLASSIFY_MIN_CONFIDENCE) return 'low_confidence';
+  if (!parsed.cybersecurityReason) return 'missing_reason';
+  return 'kept';
 }
 
 /**
@@ -430,14 +432,17 @@ export async function classifyEvents({ batchSize = CLASSIFY_BATCH_SIZE, limit = 
     // The confidence floor + reason-presence rule decide the FINAL verdict: a
     // low-confidence (or reason-less) "true" is stored as NOT cyber.
     const verdict = resolveCyberVerdict(parsed);
-    await prisma.npEvent.update({
-      where: { id: target.id },
+    const updated = await prisma.npEvent.updateMany({
+      where: { id: target.id, restoredAt: null },
       data: {
-        isCybersecurity: verdict.isCybersecurity,
-        isThreatIntel: verdict.isThreatIntel,
-        cyberRegion: verdict.cyberRegion,
+        ...verdict,
+        ...(!verdict.isCybersecurity && { articleApprovedAt: null, articleApprovedBy: null }),
+        screeningDecision: screeningDecision(parsed),
+        screeningReason: parsed.cybersecurityReason,
+        screeningConfidence: parsed.confidence,
       },
     });
+    if (!updated.count) return null;
     return {
       id: target.id,
       isCybersecurity: verdict.isCybersecurity,
@@ -541,6 +546,7 @@ export async function classifyEvents({ batchSize = CLASSIFY_BATCH_SIZE, limit = 
 export async function clearClassifications({ limit } = {}) {
   const ids = await prisma.npEvent.findMany({
     where: {
+      restoredAt: null,
       OR: [
         { isCybersecurity: { not: null } },
         { isThreatIntel: { not: null } },
@@ -553,11 +559,11 @@ export async function clearClassifications({ limit } = {}) {
 
   let cleared = 0;
   for (const { id } of ids) {
-    await prisma.npEvent.update({
-      where: { id },
-      data: { isCybersecurity: null, cyberRegion: null, isThreatIntel: null },
+    const result = await prisma.npEvent.updateMany({
+      where: { id, restoredAt: null },
+      data: { isCybersecurity: null, cyberRegion: null, isThreatIntel: null, screeningDecision: null, screeningReason: null, screeningConfidence: null },
     });
-    cleared += 1;
+    cleared += result.count;
   }
   logger.info({ cleared }, 'classifications cleared for re-judging');
   return cleared;

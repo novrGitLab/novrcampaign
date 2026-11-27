@@ -2,11 +2,13 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '@/hooks/useAuth';
 import api from '@/lib/api';
 import { Button, EmptyState, Input, PageHeader } from '@/components/ui';
 
-type Row = { id: string; title: string; articleVersion: number; articleApprovedAt: string | null };
+type Row = { id: string; title: string; hasDraft: boolean; articleApprovedAt: string | null };
 export default function Articles() {
+  const { user } = useAuth();
   const [term, setTerm] = useState('');
   const [search, setSearch] = useState('');
   const [pages, setPages] = useState<string[]>(['']);
@@ -19,6 +21,7 @@ export default function Articles() {
     <div className="mx-auto max-w-5xl space-y-6 p-4 sm:p-8">
       <PageHeader
         title="Article review"
+        actions={user?.role === 'ADMIN' && <Link className="btn-secondary" href="/articles/rejected">Rejected stories</Link>}
         description="Prepare, edit and approve stories for the public edition."
       />
       <form
@@ -48,7 +51,7 @@ export default function Articles() {
                 <Link className="review-row" href={'/articles/' + row.id}>
                   <span>{row.title}</span>
                   <small>
-                    {row.articleApprovedAt ? 'Published' : row.articleVersion ? 'Draft' : 'Awaiting draft'}
+                    {row.articleApprovedAt ? 'Published' : row.hasDraft ? 'Draft' : 'Awaiting draft'}
                   </small>
                 </Link>
               </li>

@@ -44,7 +44,7 @@ export function enforceUnsubscribeLink(html, type = 'MARKETING') {
 <div style="margin-top:32px;padding-top:16px;border-top:1px solid #e5e7eb;font-size:12px;color:#6b7280;text-align:center;">
   <p><a href="{{unsubscribeUrl}}" style="color:#6b7280;">Unsubscribe</a> &middot;
      Manage your email preferences at any time.</p>
-  <p>CyberNovr &middot; 17 Sunday Adigun Street, Alausa, Ikeja, Lagos, Nigeria</p>
+  <p><a href="https://cybernovr.com" style="display:inline-block;vertical-align:middle;background:#ffffff;border-radius:3px;padding:4px"><img src="https://pulse.cybernovr.com/press/cybernovr-wordmark.png" width="92" alt="CyberNovr" style="display:block;width:92px;height:auto;border:0"></a> &middot; 17 Sunday Adigun Street, Alausa, Ikeja, Lagos, Nigeria</p>
 </div>`;
   }
 

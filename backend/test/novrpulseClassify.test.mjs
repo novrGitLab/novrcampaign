@@ -73,12 +73,12 @@ function makeStore(seed = []) {
         sources: (r.sources ?? []).slice(0, 1),
       }));
     },
-    async update({ where, data }) {
+    async updateMany({ where, data }) {
       calls.update.push({ where, data });
       const row = rows.find((r) => r.id === where.id);
-      if (!row) throw new Error(`npEvent.update: no row ${where.id}`);
+      if (!row || row.restoredAt) return { count: 0 };
       Object.assign(row, data);
-      return { ...row };
+      return { count: 1 };
     },
   };
 
@@ -632,6 +632,9 @@ describe('classify: strict verdict (threshold + reason)', () => {
     });
     await withApiKey(() => withPrisma(store, () => classifyEvents({ llm })));
     assert.equal(store.rows[0].isCybersecurity, false);
+    assert.equal(store.rows[0].screeningDecision, 'low_confidence');
+    assert.equal(store.rows[0].screeningConfidence, 0.5);
+    assert.equal(store.rows[0].screeningReason, 'maybe about security');
     assert.equal(store.rows[0].cyberRegion, null);
   });
 

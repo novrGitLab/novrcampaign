@@ -1,7 +1,7 @@
 import Joi from 'joi';
 import { sessionUser } from '../services/staffSession.js';
 import { prisma } from '../utils/prisma.js';
-import { BadRequest, NotFound, Unauthorized } from '../utils/AppError.js';
+import { BadRequest, Conflict, NotFound, Unauthorized } from '../utils/AppError.js';
 import { deriveStatus } from './publishController.js';
 import { runCollection } from '../services/novrpulse/ingest.js';
 import { purgeStaleNews } from '../services/novrpulse/retention.js';
@@ -528,10 +528,8 @@ export async function getPulseEvent(req, res) {
 /**
  * PATCH /api/pulse/events/:id/review — persist the reviewer triage state.
  *
- * Non-destructive: it only writes `reviewStatus` ("new" | "accepted" |
- * "dismissed"). Raw evidence (sources, body, entities) is never touched, so a
- * dismissed event is hidden from the inbox by filter, not deleted. Returns the
- * updated card so the client can reconcile without a refetch.
+ * Dismissal closes public approval and invalidates outstanding article edits.
+ * A dismissed story can return to review through the edition-aware restoration route.
  */
 export async function reviewPulseEvent(req, res) {
   const { status } = await validateReviewBody(req.body);
@@ -543,9 +541,14 @@ export async function reviewPulseEvent(req, res) {
   if (!existing) throw NotFound('Pulse event not found');
 
   const updated = await prisma.npEvent.update({
-    where: { id: req.params.id },
-    data: { reviewStatus: status },
+    where: { id: req.params.id, ...(status !== 'dismissed' && { reviewStatus: { not: 'dismissed' } }) },
+    data: { reviewStatus: status, ...(status === 'dismissed' && {
+      articleApprovedAt: null, articleApprovedBy: null, articleVersion: { increment: 1 },
+    }) },
     select: { ...CARD_SELECT, sources: SOURCES_INCLUDE, publishItems: { orderBy: PUBLISH_ITEM_ORDER_BY, select: PUBLISH_ITEM_SELECT } },
+  }).catch((error) => {
+    if (error.code === 'P2025') throw Conflict('Restore the story from the rejected stories queue and choose its edition.');
+    throw error;
   });
 
   return res.json({
