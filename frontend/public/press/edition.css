@@ -514,8 +514,12 @@
       margin-right: 0.35rem;
     }
     .colophon {
-      gap: 0.8rem;
+      display: grid;
+      grid-template-columns: max-content max-content;
+      justify-content: start;
+      gap: .7rem 1.2rem;
     }
+    .publication-credit { grid-column: 1 / -1; }
     .colophon > a {
       margin-left: 0;
     }
