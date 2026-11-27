@@ -7,7 +7,8 @@ Deployed by `git pull` on the server — no registry, no CI.
 
 ## Topology
 
-Two compose stacks share one **external** Docker network, `novr-shared`:
+The app stack runs on its own private **named** network, `novr`; the app and the
+collector also share a second named network, `novr-shared`:
 
 ```
                         ┌────────────────────────── VPS ───────────────────────────┐
@@ -19,12 +20,18 @@ Two compose stacks share one **external** Docker network, `novr-shared`:
                         │   stack B: ~/novr/novr-collection  (own repo, own up)     │
                         │  collector (:4100)  ◄── backend calls http://collector:4100│
                         │                                                           │
-                        │  both stacks join the external network `novr-shared`      │
+                        │  `novr` (private): db, frontend, caddy, backend          │
+                        │  `novr-shared` (named): backend ──────── collector        │
                         │  only `caddy` publishes host ports (80/443)               │
                         └───────────────────────────────────────────────────────────┘
 ```
 
-- `db` and `collector` are **never** published to the host — shared network only.
+- `db`, `frontend`, and `caddy` are on the app's private `novr` network only;
+  `backend` joins **both** `novr` and `novr-shared`; `collector` is on
+  `novr-shared` only. `db` and `collector` are **never** published to the host.
+- `novr-shared` is a **named** network (not `external: true`): whichever stack starts
+  first creates it, and the other attaches to it — so the app boots fine even when the
+  collector is not deployed at all.
 - The backend reaches the collector at `http://collector:4100` over their HMAC API.
 - The browser reaches the API at `/api` (same origin), proxied by Caddy. `VITE_API_URL=/api`
   is inlined into the SPA at build time.
@@ -73,7 +80,7 @@ sudo ufw enable
 
 Only 22/80/443 are exposed. PostgreSQL and the collector have no host ports.
 
-## 4. Clone BOTH repos + create the shared network
+## 4. Clone BOTH repos
 
 ```bash
 mkdir -p ~/novr && cd ~/novr
@@ -82,10 +89,12 @@ git clone <collector-repo-url> novr-collection
 # Result:
 #   ~/novr/novrcampaign
 #   ~/novr/novr-collection
-
-# The external network both stacks join (create ONCE; survives compose down):
-docker network create novr-shared
 ```
+
+The shared network `novr-shared` is a **named** network (not `external: true`):
+whichever stack starts first creates it and the other attaches to it, so **no manual
+`docker network create` is required**. (If you prefer to pre-create it explicitly, you
+may — `docker network create novr-shared` — but it is optional.)
 
 If the collector runs on a different host (see §12 "Lift to its own VPS"), it does
 not need to be cloned here and the shared network is not used — point
@@ -149,8 +158,9 @@ docker compose up -d --build
 ```
 
 `./deploy.sh` runs: `git pull` → `docker compose build` → `up -d` → `prisma migrate
-deploy` → `curl /api/health` → `compose ps`. It also creates `novr-shared` if
-missing. The backend image's entrypoint also runs `prisma migrate deploy` on every
+deploy` → `curl /api/health` → `compose ps`. The named network `novr-shared` is
+created automatically by whichever stack starts first, so no manual step is needed.
+The backend image's entrypoint also runs `prisma migrate deploy` on every
 start, so first boot and upgrades both migrate.
 
 > `./deploy.sh --with-collector` is a convenience that also drives the collector
@@ -237,8 +247,8 @@ docker compose up -d --build                        # rebuild after a change
 docker compose down                                 # stop the collector only
 ```
 
-`docker network create novr-shared` is a one-time step; both `down` commands leave
-the external network intact. The two stacks are otherwise independent.
+`novr-shared` is a named network; whichever stack starts first creates it, and both
+`down` commands leave it intact. The two stacks are otherwise independent.
 
 
 ## 9. Rollback
@@ -309,19 +319,27 @@ The collector is a **separate repository** and runs as its **own compose stack**
 cd ~/novr/novr-collection && docker compose up -d
 ```
 
-The two stacks are joined by an **external** Docker network, `novr-shared`, which
-both composes declare as `external: true`. The collector attaches to it and does
-**not** publish port 4100 to the host; the app's backend resolves it as
-`http://collector:4100` (a container-DNS name on the shared network). The port is
-reachable only by containers on that network.
+The two stacks are joined by a **shared named** Docker network, `novr-shared`, which
+both composes declare as a named network (not `external: true`):
+
+```yaml
+networks:
+  novr-shared:
+    name: novr-shared
+```
+
+Whichever stack starts first **creates** it; the other **attaches**. The collector
+attaches to it and does **not** publish port 4100 to the host; the app's backend
+resolves it as `http://collector:4100` (a container-DNS name on the shared network).
+The port is reachable only by containers on that network.
 
 Rationale:
 
 - **Fully standalone, owner-initiated.** The collector is not owned by the app's
   compose and is not merely a profile of it. You can start, stop, rebuild, or redeploy
   the collector without touching the app stack (and vice versa).
-- **One network, no duplication.** The shared external network is created once
-  (`docker network create novr-shared`) and survives `compose down` on either side.
+- **One network, no duplication.** The shared named network is created automatically
+  by whichever stack starts first and survives `compose down` on either side.
   Container DNS on a user-defined network provides the `collector` name the backend
   needs — no `links`, no published ports.
 - **Relocatable with zero app change.** Moving the collector to its own VPS later is
@@ -354,8 +372,9 @@ docker compose up -d backend
 
 There is **no app code change** — only the base URL (and, if the collector host uses
 a different LLM/secret, the shared secret value kept in both `.env` files). When the
-collector is remote, `novr-shared` is not needed by the collector; leave it in place
-for the app stack (harmless) or remove the collector's `networks` block.
+collector is remote, `novr-shared` is no longer the path the backend uses to reach it;
+leave the network in place for the app stack (harmless) or remove the collector's
+`networks` block.
 
 ## 13. First-deploy command sequence (owner)
 
@@ -363,11 +382,12 @@ for the app stack (harmless) or remove the collector's `networks` block.
 # 1. as root: install docker (§2), create deploy user (§3), firewall (§3)
 su - deploy
 
-# 2. clone both repos + create the shared network (§4)
+# 2. clone both repos (§4)
 mkdir -p ~/novr && cd ~/novr
 git clone <app-repo-url> novrcampaign
 git clone <collector-repo-url> novr-collection
-docker network create novr-shared
+# No `docker network create` needed: the named network `novr-shared` is created
+# automatically by whichever stack starts first.
 
 # 3. configure env (§5)
 cd ~/novr/novrcampaign
@@ -401,10 +421,13 @@ crontab -e
 
 ## 14. Risks / must-test on the real VPS
 
-- **Network creation order.** `novr-shared` must exist before EITHER stack starts
-  (both composes declare it `external: true`); `docker compose up` fails fast if it
-  is missing. `deploy.sh` creates it if absent; the collector's manual `up` does not
-  — run `docker network create novr-shared` first when deploying the collector alone.
+- **Network creation order — not a prerequisite.** `novr-shared` is a **named** network
+  (both composes declare `networks: { novr-shared: { name: novr-shared } }`, not
+  `external: true`). Whichever stack starts first **creates** it and the other
+  **attaches**, so there is **no** required `docker network create novr-shared` step.
+  The app runs on its own private `novr` network and is unaffected if the collector is
+  absent; only the backend's cross-stack calls to `collector:4100` need `novr-shared`,
+  and it is created automatically.
 - **Container DNS is per-network.** The backend resolves `collector` only because both
   are attached to the same user-defined network. If the collector is later moved to
   another host, `http://collector:4100` no longer resolves — repoint
@@ -415,9 +438,11 @@ crontab -e
 - **Prisma engines**: the generated client is produced during the image build; if the
   VPS arch differs from the build host it is irrelevant here because the build runs on
   the VPS itself.
-- **`VERCEL=1`** is set on the backend container solely to disable its built-in static
-  serving (Caddy/nginx serve the SPA). If the backend is ever expected to serve the SPA
-  directly, remove that flag and copy `frontend/dist` into the image.
+- **`SERVE_STATIC=false`** is set on the backend container solely to disable its
+  built-in static serving (Caddy/nginx serve the SPA). `SERVE_STATIC` defaults to `true`
+  and the backend still also honours `VERCEL` (set automatically on Vercel). If the
+  backend is ever expected to serve the SPA directly, drop the flag and copy
+  `frontend/dist` into the image.
 - **The collector is untested end-to-end against the app** in this environment — run
   one manual `POST /api/pulse/collect/run` with `NP_COLLECTION_ENABLED=true` and confirm
   HMAC acceptance before enabling the cron.

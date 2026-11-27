@@ -10,10 +10,11 @@
 #
 # The collector is a SEPARATE repository (novr-collection) that runs as its OWN
 # compose stack (`cd ~/novr/novr-collection && docker compose up -d`). It is NOT
-# part of this compose file. The two stacks communicate over the external Docker
-# network `novr-shared`, which both join:
-#
-#   docker network create novr-shared      # once, before either stack starts
+# part of this compose file. This stack runs on its own private network `novr`;
+# only the `backend` additionally joins the shared NAMED network `novr-shared`,
+# which the collector also joins. Whichever stack starts first creates
+# `novr-shared` (no manual `docker network create` needed); the app itself boots
+# fine without the collector present.
 #
 # The backend therefore resolves the collector as `http://collector:4100`
 # (NP_COLLECTION_BASE_URL). Without the collector stack running, the backend
