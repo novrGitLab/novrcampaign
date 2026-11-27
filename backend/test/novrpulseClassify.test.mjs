@@ -632,6 +632,9 @@ describe('classify: strict verdict (threshold + reason)', () => {
     });
     await withApiKey(() => withPrisma(store, () => classifyEvents({ llm })));
     assert.equal(store.rows[0].isCybersecurity, false);
+    assert.equal(store.rows[0].screeningDecision, 'low_confidence');
+    assert.equal(store.rows[0].screeningConfidence, 0.5);
+    assert.equal(store.rows[0].screeningReason, 'maybe about security');
     assert.equal(store.rows[0].cyberRegion, null);
   });
 

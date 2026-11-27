@@ -84,7 +84,7 @@ export default function RejectedStories() {
         <ul className="divide-y divide-border">
           {data.items.map((row) => <li key={row.id} className="space-y-2 py-5">
             <p className="text-sm text-muted-foreground">{[row.source, row.publishedAt && new Date(row.publishedAt).toLocaleDateString('en-GB', { dateStyle: 'medium' })].filter(Boolean).join(' · ')}</p>
-            <h2 className="text-lg font-semibold">{row.title}</h2>
+            <h2 className="break-words text-lg font-semibold">{row.title}</h2>
             {row.dismissed && <p>Dismissed by the newsroom.</p>}
             {row.decision && <p>{decisions[row.decision] || decisions.legacy}</p>}
             {row.reason && <p className="text-sm text-muted-foreground">{row.reason}</p>}

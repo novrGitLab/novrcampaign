@@ -11,7 +11,7 @@ const select = {
   summary: true, whatItMeans: true, body: true, eventType: true,
   sources: {
     orderBy: { extractedAt: 'asc' },
-    select: { rawDocument: { select: { source: { select: { name: true, licenceStatus: true } } } } },
+    select: { rawDocument: { select: { source: { select: { name: true, licenceStatus: true, licence: true, paywall: true } } } } },
   },
 };
 
@@ -19,6 +19,8 @@ function restriction(row) {
   if (!row.sources.length) return 'A publisher source is required for article review.';
   if (row.sources.some(({ rawDocument }) => rawDocument.source.licenceStatus?.toLowerCase() === 'denied'))
     return 'The publisher licence excludes this story from article review.';
+  if (row.sources.every(({ rawDocument }) => rawDocument.source.paywall || rawDocument.source.licence?.toLowerCase() === 'denied'))
+    return 'Article review requires a publisher source available for reuse.';
   if (!row.publishedAt || row.publishedAt > new Date()) return 'A current or past publication date is required.';
   if (isArrestItem(row)) return 'Arrest and accusation coverage requires the separate Breaking News review.';
   return null;

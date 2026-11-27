@@ -528,10 +528,8 @@ export async function getPulseEvent(req, res) {
 /**
  * PATCH /api/pulse/events/:id/review — persist the reviewer triage state.
  *
- * Non-destructive: it only writes `reviewStatus` ("new" | "accepted" |
- * "dismissed"). Raw evidence (sources, body, entities) is never touched, so a
- * dismissed event is hidden from the inbox by filter, not deleted. Returns the
- * updated card so the client can reconcile without a refetch.
+ * Dismissal closes public approval and invalidates outstanding article edits.
+ * A dismissed story can return to review through the edition-aware restoration route.
  */
 export async function reviewPulseEvent(req, res) {
   const { status } = await validateReviewBody(req.body);
