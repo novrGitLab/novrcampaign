@@ -69,6 +69,9 @@ jobs:
       - name: Test @novr/ingest (deterministic gate, 118 tests)
         run: npm -w @novr/ingest test
 
+      - name: Generate Prisma client used by backend tests
+        run: npm -w backend run build
+
       # DB/LLM-free backend subset only. No NP_LLM_API_KEY / DATABASE_URL needed.
       - name: Test backend (DB/LLM-free subset)
         working-directory: backend
