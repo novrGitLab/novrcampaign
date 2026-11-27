@@ -20,7 +20,9 @@ datasource db {
 model User {
   id           String   @id @default(uuid())
   email        String   @unique
-  passwordHash String
+  passwordHash String?
+  oidcSubject  String? @unique
+  sessions     StaffSession[]
   name         String?
   role         Role     @default(ADMIN)
   createdAt    DateTime @default(now())
@@ -520,6 +522,7 @@ model Briefing {
   status       String   @default("not_started")
   title        String?
   publishedAt  DateTime?
+  sendingAt    DateTime?
   scheduledFor DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -572,6 +575,9 @@ model BriefingSection {
 }
 
 model BriefingSectionItem {
+  imageUrl      String?
+  imageAlt      String?
+  imageCredit   String?
   id            String          @id @default(uuid())
   sectionId     String
   section       BriefingSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
@@ -631,3 +637,24 @@ model ForumTopic {
   @@map("forum_topic")
 }
 
+
+model StaffSession {
+  hash      String @id
+  userId    String
+  user      User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  @@index([expiresAt])
+  @@map("staff_session")
+}
+model NewsletterConfirmation {
+  hash String @id
+  email String @unique
+  expiresAt DateTime
+  @@map("newsletter_confirmation")
+}
+
+model NewsroomImage {
+  hash String @id
+  bytes Bytes
+  @@map("newsroom_image")
+}

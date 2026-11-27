@@ -50,4 +50,6 @@ router.delete('/:id/sections/:functionId/items/:itemId', asyncHandler(briefingCo
 // refuses every call with 410 Gone (AUTHOR_MOVED_TO_CANVAS).
 router.post('/:id/sections/:functionId/author', asyncHandler(briefingController.authorSectionItem));
 
+router.patch('/:id/sections/:functionId/items/:itemId/photo', asyncHandler(briefingController.updatePhoto));
+
 export default router;

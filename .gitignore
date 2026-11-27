@@ -57,3 +57,8 @@ drive-dist/
 
 # Local env backups (contain credentials)
 backend/.env.backup-*
+
+frontend/.next/
+*.tsbuildinfo
+
+!frontend/src/app/(staff)/pulse/build/

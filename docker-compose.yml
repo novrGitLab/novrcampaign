@@ -59,7 +59,9 @@ services:
       # built-in static SPA serving (Caddy serves the SPA).
       NODE_ENV: production
       PORT: "4000"
-      SERVE_STATIC: "false"
+      FRONTEND_URL: https://pulse.cybernovr.com
+      PUBLIC_SITE_URL: https://pulse.cybernovr.com
+      OIDC_REDIRECT_URI: https://pulse.cybernovr.com/api/auth/oidc/callback
       # Collector wiring (only honoured when NP_COLLECTION_ENABLED=true in .env
       # AND the standalone collector stack is running on `novr-shared`).
       NP_COLLECTION_BASE_URL: ${NP_COLLECTION_BASE_URL:-http://collector:4100}
@@ -73,15 +75,15 @@ services:
       - novr
       - novr-shared
 
-  # ── Frontend (Vite static, served by nginx) ──────────────────────────────────
+  # ── Frontend (Next.js, server-rendered) ──────────────────────────────────
   frontend:
     build:
       context: .
       dockerfile: frontend/Dockerfile
-      args:
-        # Inlined by Vite at build time. Same-origin so Caddy proxies /api.
-        VITE_API_URL: /api
-    image: novrcampaign-frontend:local
+    environment:
+      INTERNAL_API_ORIGIN: http://backend:4000
+      PUBLIC_SITE_URL: https://pulse.cybernovr.com
+    image: novrpulse-frontend:local
     restart: unless-stopped
     networks:
       - novr
@@ -100,8 +102,8 @@ services:
       # Bare IP: set DOMAIN to the VPS IP and CADDY_SITE_ADDRESS=":80".
       # Real domain: set DOMAIN to the FQDN and CADDY_SITE_ADDRESS="${DOMAIN}"
       # for automatic HTTPS (see Caddyfile + runbook).
-      DOMAIN: ${DOMAIN:-localhost}
-      CADDY_SITE_ADDRESS: ${CADDY_SITE_ADDRESS:-:80}
+      DOMAIN: pulse.cybernovr.com
+      CADDY_SITE_ADDRESS: pulse.cybernovr.com
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data

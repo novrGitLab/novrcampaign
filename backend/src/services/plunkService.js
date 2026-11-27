@@ -49,7 +49,7 @@ function unwrap(payload) {
  * @param {{ method?: string, query?: Record<string,string|number>, body?: object }} [opts]
  * @returns {Promise<any>}
  */
-async function plunkRequest(path, { method = 'GET', query = {}, body } = {}) {
+async function plunkRequest(path, { method = 'GET', query = {}, body, retry = true } = {}) {
   const call = async () => {
     // 1. Honour an active lockout
     const lockMs = await getLockoutMs();
@@ -118,6 +118,7 @@ async function plunkRequest(path, { method = 'GET', query = {}, body } = {}) {
     return unwrap(data);
   };
 
+  if (!retry) return call();
   return withRetry(call, {
     maxAttempts: 4,
     label: `plunk.${method}:${path}`,
@@ -328,6 +329,7 @@ export async function sendCampaign(campaignId, scheduledFor) {
   return plunkRequest(`/campaigns/${campaignId}/send`, {
     method: 'POST',
     body: scheduledFor ? { scheduledFor } : {},
+    retry: false,
   });
 }
 
@@ -721,3 +723,10 @@ export default {
   refreshSegment,
   computeSegment,
 };
+
+export function sendConfirmation(email, link) {
+  return plunkRequest('/v1/send', { method: 'POST', body: {
+    to: email, subject: 'Confirm your NovrPulse subscription',
+    body: '<p>Confirm this address to receive the NovrPulse Daily Brief.</p><p><a href="' + link + '">Confirm subscription</a></p><p>The link expires in 24 hours.</p>',
+  } });
+}

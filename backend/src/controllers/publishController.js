@@ -31,7 +31,7 @@ const CONTENT_TYPES = ['briefing', 'urgent_alert'];
 
 const listSchema = Joi.object({
   status: Joi.string().valid(...STATUSES),
-  functionId: Joi.number().integer().min(1).max(8),
+  functionId: Joi.number().integer().min(1).max(10),
   tier: Joi.string().valid(...TIERS),
   contentType: Joi.string().valid(...CONTENT_TYPES),
   // Optional event scoping (Editorial Canvas "prior work" panel): show only the
@@ -91,7 +91,7 @@ const fromEventSchema = Joi.object({
   // `np_event.id` is a uuid, but the repo stores ids as plain strings in tests;
   // a non-empty string is required, matching how :id params are accepted elsewhere.
   eventId: Joi.string().trim().min(1).required(),
-  functionId: Joi.number().integer().min(1).max(8).required(),
+  functionId: Joi.number().integer().min(1).max(10).required(),
 });
 
 // The template tag for a MANUALLY authored piece (no source event). Distinct
@@ -111,7 +111,7 @@ const MANUAL_TEMPLATE_VERSION = 'manual@2.0.0';
  * `Reference: <link>` line when a reference link is supplied.
  */
 const manualPublishSchema = Joi.object({
-  functionId: Joi.number().integer().min(1).max(8).required(),
+  functionId: Joi.number().integer().min(1).max(10).required(),
   headline: Joi.string().trim().min(1).max(200).required(),
   text: Joi.string().trim().min(1).max(20000).required(),
   referenceLink: Joi.string().trim().uri({ scheme: ['http', 'https'] }).max(2000),
@@ -712,7 +712,7 @@ export async function editPublishItem(req, res) {
 
   const { body, regulatoryImpact, eventDate } = await validate(editSchema, req.body ?? {});
 
-  const item = await prisma.publishItem.findUnique({ where: { id: req.params.id } });
+  const item = await prisma.publishItem.findUnique({ where: { id: req.params.id }, include:{sectionItems:{select:{section:{select:{id:true,briefing:{select:{publishedAt:true,sendingAt:true}}}}}}} });
   if (!item) throw NotFound('Publish item not found');
   if (item.publishedAt) {
     throw Conflict('Cannot edit a published item — use the corrections path');
@@ -729,11 +729,10 @@ export async function editPublishItem(req, res) {
     throw BadRequest('Provide at least one field to update (body, regulatoryImpact, or eventDate)');
   }
 
-  const updated = await prisma.publishItem.update({
-    where: { id: item.id },
-    data,
-  });
-
+  const sections=(item.sectionItems ?? []).map(link=>link.section);
+  if(sections.some(section=>section.briefing.publishedAt || section.briefing.sendingAt)) throw Conflict('This story belongs to a closed edition.');
+  const save=prisma.publishItem.update({where:{id:item.id},data});
+  const updated=sections.length ? (await prisma.$transaction([save, prisma.briefingSection.updateMany({where:{id:{in:sections.map(section=>section.id)}},data:{state:'awaiting'}})]))[0] : await save;
   return res.json({ item: serializeItem(updated) });
 }
 

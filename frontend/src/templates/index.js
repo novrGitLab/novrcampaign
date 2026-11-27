@@ -1,12 +1,12 @@
 import starters from './starters.json';
-import newsletterDark from './newsletter-dark.html?raw';
-import newsletterLight from './newsletter-light.html?raw';
-import newsletterMinimal from './newsletter-minimal.html?raw';
-import newsletterOctoberWeek1 from './newsletter-october-week1.html?raw';
-import newsletterOctoberWeek2 from './newsletter-october-week2.html?raw';
-import pulseDailyBrief from './pulse-daily-brief.html?raw';
-import pulseBreakingAlert from './pulse-breaking-alert.html?raw';
-import pulseAnalystDeepDive from './pulse-analyst-deep-dive.html?raw';
+import newsletterDark from './newsletter-dark.html';
+import newsletterLight from './newsletter-light.html';
+import newsletterMinimal from './newsletter-minimal.html';
+import newsletterOctoberWeek1 from './newsletter-october-week1.html';
+import newsletterOctoberWeek2 from './newsletter-october-week2.html';
+import pulseDailyBrief from './pulse-daily-brief.html';
+import pulseBreakingAlert from './pulse-breaking-alert.html';
+import pulseAnalystDeepDive from './pulse-analyst-deep-dive.html';
 
 const HTML_BY_FILE = {
   'newsletter-dark.html': newsletterDark,

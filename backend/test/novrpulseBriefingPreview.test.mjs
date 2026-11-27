@@ -1,5 +1,6 @@
 import { test, describe, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { pillarLabel } from '../src/services/novrpulse/pillars.js';
 
 import { prisma } from '../src/utils/prisma.js';
 import { previewBriefing } from '../src/controllers/briefingController.js';
@@ -11,7 +12,7 @@ import {
   renderBriefingPreview,
   formatBriefingDate,
   CURATED_PLACEHOLDER,
-  PILLAR_HEADERS,
+
 } from '../src/services/novrpulse/briefingPreview.js';
 
 // Controller + renderer tests for the Briefing Desk rendered-email preview.
@@ -231,7 +232,7 @@ describe('briefing preview: parsing', () => {
         },
       },
     });
-    assert.equal(withEvent.headline, 'Event headline');
+    assert.equal(withEvent.headline, 'Body text');
     assert.equal(withEvent.source, 'EFCC');
     assert.equal(withEvent.sourceUrl, 'https://example.gov/notice');
 
@@ -261,8 +262,8 @@ describe('briefing preview: token mapping', () => {
       !html.replace(/\{\{unsubscribeUrl\}\}/g, '').includes('{{'),
       'no raw tokens remain (except the unsubscribe passthrough)',
     );
-    assert.ok(html.includes(PILLAR_HEADERS[8]), 'the fn 8 pillar header is used');
-    assert.ok(html.includes('Key Details'), 'key details box present');
+    assert.ok(html.includes(pillarLabel(8)), 'the fn 8 pillar header is used');
+    assert.ok(html.includes('Who is affected'), 'affected readers have a section');
     assert.ok(html.includes('Why It Matters'), 'why it matters callout present');
     assert.ok(html.includes('About four in five banks'), 'lead summary is present');
     assert.ok(html.includes('Network reliability is a pressure point'), 'lead impact is present');
@@ -287,7 +288,7 @@ describe('briefing preview: token mapping', () => {
       groups: groupStories([{ functionId: 7, items }]),
       unsubscribeUrl: '{{unsubscribeUrl}}',
     });
-    assert.ok(html.includes(PILLAR_HEADERS[7]), 'the fn 7 pillar header is used');
+    assert.ok(html.includes(pillarLabel(7)), 'the fn 7 pillar header is used');
     assert.ok(!html.includes('More news today'), 'the old editorial roll header is gone');
     assert.ok(html.includes('Roll headline 1'));
     assert.ok(html.includes(`Roll headline ${count}`), 'all news pieces render (no cap)');
@@ -301,8 +302,8 @@ describe('briefing preview: token mapping', () => {
       unsubscribeUrl: '{{unsubscribeUrl}}',
     });
     // No section headers at all when every section is empty.
-    for (const id of [1, 2, 3, 4, 5, 6, 7, 8]) {
-      assert.ok(!html.includes(PILLAR_HEADERS[id]), `no fn ${id} header when empty`);
+    for (const id of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]) {
+      assert.ok(!html.includes(pillarLabel(id)), `no fn ${id} header when empty`);
     }
     assert.ok(!html.includes(CURATED_PLACEHOLDER), 'no placeholder text is rendered');
     assert.ok(!html.includes('takes a break'), 'no "takes a break" placeholder rows');
@@ -357,7 +358,7 @@ describe('briefing preview: endpoint', () => {
     assert.equal(statusCode, 200);
     assert.equal(typeof payload.html, 'string');
     assert.ok(payload.html.includes('19 November 2026'), 'briefing date is rendered');
-    assert.ok(payload.html.includes('Breaking headline'), 'the roll story is rendered');
+    assert.ok(payload.html.includes('Breaking item body'), 'the roll story is rendered');
     assert.ok(payload.html.includes('Banks face automated threat containment gap'), 'the lead is rendered');
     assert.ok(payload.html.includes('{{unsubscribeUrl}}'), 'unsubscribe passthrough survives');
     // No raw tokens other than the deliberate unsubscribe passthrough.
@@ -374,7 +375,7 @@ describe('briefing preview: endpoint', () => {
 
     const { statusCode, payload } = await callPreview({ params: { id: 'br-1' } }, store);
     assert.equal(statusCode, 200);
-    assert.ok(payload.html.includes('<!DOCTYPE html>'));
+    assert.ok(/^<!doctype html>/i.test(payload.html));
     assert.ok(!/\{\{date\}\}/.test(payload.html), 'tokens are filled');
     assert.equal(payload.html.replace(/\{\{unsubscribeUrl\}\}/g, '').includes('{{'), false);
   });

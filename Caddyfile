@@ -1,35 +1,21 @@
-# Caddy reverse proxy for NovrCampaign.
-#
-# Address is driven by the CADDY_SITE_ADDRESS env var so the SAME file works for
-# a bare IP (http) and a real domain (automatic HTTPS):
-#
-#   Bare IP  → .env: DOMAIN=<vps-ip>   CADDY_SITE_ADDRESS=:80
-#              (serves plain HTTP on port 80; edit the IP to switch later)
-#
-#   Domain   → .env: DOMAIN=app.example.com   CADDY_SITE_ADDRESS=app.example.com
-#              (Caddy auto-provisions a Let's Encrypt certificate for the domain;
-#               requires DNS A/AAAA pointing at the VPS and ports 80+443 open)
-#
-# Routing:
-#   /api/*  → backend:4000   (strips nothing; the backend mounts routes at /api)
-#   /*      → frontend:80    (static SPA with history fallback)
-
 {$CADDY_SITE_ADDRESS} {
-	encode zstd gzip
+  encode zstd gzip
+  header {
+    -Server
+    X-Content-Type-Options nosniff
+    Referrer-Policy strict-origin-when-cross-origin
+    Strict-Transport-Security "max-age=31536000"
+  }
+  handle /api/* {
+    reverse_proxy backend:4000
+  }
+  handle {
+    reverse_proxy frontend:3000
+  }
+}
 
-	# API first — most specific path wins.
-	handle /api/* {
-		reverse_proxy backend:4000
-	}
-
-	# Everything else → the static SPA.
-	handle {
-		reverse_proxy frontend:80
-	}
-
-	# Structured access logs to the container stdout (visible via `compose logs`).
-	log {
-		output stdout
-		format console
-	}
+http://127.0.0.1 {
+  @scheduled path /api/health /api/pulse/collect/* /api/pulse/maintenance/*
+  reverse_proxy @scheduled backend:4000
+  respond 404
 }

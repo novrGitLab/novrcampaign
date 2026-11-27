@@ -8,7 +8,7 @@
 #   docker build -f backend/Dockerfile -t novrcampaign-backend .
 
 # ── Stage 1: install workspace dependencies (incl. dev, needed for prisma) ──────
-FROM node:20-bookworm-slim AS deps
+FROM node:22-bookworm-slim AS deps
 WORKDIR /app
 
 # openssl + ca-certificates are required by Prisma to detect the libssl version
@@ -25,7 +25,7 @@ COPY frontend/package.json ./frontend/package.json
 
 # Full install across all workspaces. Needed because @novr/ingest is a workspace
 # dep of the backend and prisma (a devDependency) is required to generate.
-RUN npm ci
+RUN npm ci -w backend -w @novr/ingest --include-workspace-root=false
 
 # ── Stage 2: build — generate the Prisma client from the schema ─────────────────
 FROM deps AS build
@@ -38,7 +38,7 @@ COPY backend ./backend
 RUN npm -w backend run build
 
 # ── Stage 3: minimal runtime ────────────────────────────────────────────────────
-FROM node:20-bookworm-slim AS runtime
+FROM node:22-bookworm-slim AS runtime
 WORKDIR /app
 
 ENV NODE_ENV=production
