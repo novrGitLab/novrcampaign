@@ -44,7 +44,7 @@ export function safeUrl(value) {
   }
 }
 
-function eligibility(region) {
+export function eligibility(region) {
   return {
     isCybersecurity: true,
     reviewStatus: { not: 'dismissed' },
