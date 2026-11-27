@@ -51,12 +51,6 @@
   .desk-nav,
   main,
   .footer-inner,
-  .signup button:is(:hover, :focus-visible) {
-    background: var(--inverse);
-    color: var(--pulse-purple);
-    text-decoration: underline;
-    text-underline-offset: 0.18em;
-  }
   .colophon {
     padding-inline: var(--gutter);
   }
@@ -372,6 +366,12 @@
   .signup button {
     background: var(--paper);
     color: var(--ink);
+  }
+  .signup button:is(:hover, :focus-visible) {
+    background: var(--inverse);
+    color: var(--pulse-purple);
+    text-decoration: underline;
+    text-underline-offset: 0.18em;
   }
   .colophon {
     display: flex;
