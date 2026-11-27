@@ -110,8 +110,11 @@ services:
       - caddy_config:/config
     networks:
       - novr
+      - novrevents-edge
 
 networks:
+  novrevents-edge:
+    external: true
   # Private network owned by this stack — the app works on it alone. (Not
   # `internal` — caddy needs outbound for ACME TLS and the backend fetches
   # sources / calls the LLM over the internet.)
