@@ -1,5 +1,7 @@
 # Deploying NovrCampaign on a Contabo Ubuntu VPS
 
+For the current Next.js release, SSO, DNS and release procedure, use the [newsroom runbook](newsroom.md). The sections below record the earlier deployment and its backup and scheduler setup.
+
 Single-VPS Docker Compose deployment: PostgreSQL, the Node API, the static SPA
 (nginx), Caddy (reverse proxy + automatic TLS), and — when used — the standalone
 `novr-collection` service as a **separate compose stack from its own repo**.

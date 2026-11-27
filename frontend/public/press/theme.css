@@ -1,0 +1,51 @@
+:root {
+  --pulse-purple: #632d8a;
+  --pulse-blue: #4353a3;
+  --pulse-red: #e3192a;
+  --paper: #f8f6f0;
+  --panel: #fffefa;
+  --ink: #202020;
+  --subtle: #5e5a59;
+  --line: #cfcac1;
+  --accent: var(--pulse-purple);
+  --link: var(--pulse-blue);
+  --signal: var(--pulse-red);
+  --inverse: #fff;
+  --display: Georgia, 'Times New Roman', serif;
+  --utility: Inter, Arial, sans-serif;
+  --radius: 0.7rem;
+  --gutter: clamp(1rem, 4.5vw, 5rem);
+}
+:root[data-theme='dark'],
+:root.dark {
+  --paper: #19171b;
+  --panel: #242126;
+  --ink: #f5f1e9;
+  --subtle: #bdb7bc;
+  --line: #49444c;
+  --accent: #d6a6f1;
+  --link: #adb9ff;
+  --signal: #ff7380;
+  color-scheme: dark;
+}
+@font-face {
+  font-family: Inter;
+  src: url('/press/inter.woff2') format('woff2');
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+.desk-heading {
+  font: 600 clamp(1.7rem, 4vw, 2.8rem)/1.1 var(--display);
+  letter-spacing: -0.045em;
+  color: var(--ink);
+}
+@media (max-width: 720px) {
+  .desk-actions {
+    width: 100%;
+    margin: 0;
+  }
+  .desk-actions button {
+    min-height: 40px;
+  }
+}

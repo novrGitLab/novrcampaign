@@ -1,3 +1,4 @@
+import newsroomMedia from './newsroomMedia.js';
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth.js';
 import healthRoutes from './healthRoutes.js';
@@ -23,6 +24,7 @@ const router = Router();
 router.use('/health', healthRoutes);
 router.use('/webhooks', webhookRoutes);
 router.use('/auth', authRoutes);
+router.use('/media', newsroomMedia);
 
 // Pulse collection trigger — cron/ADMIN-guarded INSIDE the controller, so it
 // must be mounted BEFORE the `requireAuth`-wrapped `/pulse` mount below (a

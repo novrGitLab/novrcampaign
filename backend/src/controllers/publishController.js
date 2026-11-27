@@ -31,7 +31,7 @@ const CONTENT_TYPES = ['briefing', 'urgent_alert'];
 
 const listSchema = Joi.object({
   status: Joi.string().valid(...STATUSES),
-  functionId: Joi.number().integer().min(1).max(8),
+  functionId: Joi.number().integer().min(1).max(10),
   tier: Joi.string().valid(...TIERS),
   contentType: Joi.string().valid(...CONTENT_TYPES),
   // Optional event scoping (Editorial Canvas "prior work" panel): show only the
@@ -91,7 +91,7 @@ const fromEventSchema = Joi.object({
   // `np_event.id` is a uuid, but the repo stores ids as plain strings in tests;
   // a non-empty string is required, matching how :id params are accepted elsewhere.
   eventId: Joi.string().trim().min(1).required(),
-  functionId: Joi.number().integer().min(1).max(8).required(),
+  functionId: Joi.number().integer().min(1).max(10).required(),
 });
 
 // The template tag for a MANUALLY authored piece (no source event). Distinct
@@ -111,7 +111,7 @@ const MANUAL_TEMPLATE_VERSION = 'manual@2.0.0';
  * `Reference: <link>` line when a reference link is supplied.
  */
 const manualPublishSchema = Joi.object({
-  functionId: Joi.number().integer().min(1).max(8).required(),
+  functionId: Joi.number().integer().min(1).max(10).required(),
   headline: Joi.string().trim().min(1).max(200).required(),
   text: Joi.string().trim().min(1).max(20000).required(),
   referenceLink: Joi.string().trim().uri({ scheme: ['http', 'https'] }).max(2000),
@@ -729,10 +729,9 @@ export async function editPublishItem(req, res) {
     throw BadRequest('Provide at least one field to update (body, regulatoryImpact, or eventDate)');
   }
 
-  const updated = await prisma.publishItem.update({
-    where: { id: item.id },
-    data,
-  });
+  const locked = await prisma.briefingSectionItem.findFirst({where:{publishItemId:item.id,section:{briefing:{OR:[{sendingAt:{not:null}},{publishedAt:{not:null}}]}}},select:{id:true}});
+  if (locked) throw Conflict('This story belongs to a closed edition.');
+  const [updated] = await prisma.$transaction([prisma.publishItem.update({where:{id:item.id},data}),prisma.briefingSection.updateMany({where:{items:{some:{publishItemId:item.id}}},data:{state:'awaiting'}})]);
 
   return res.json({ item: serializeItem(updated) });
 }

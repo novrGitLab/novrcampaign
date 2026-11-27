@@ -67,3 +67,6 @@ Thumbs.db
 
 # Docker volumes
 postgres_data
+
+**/.next
+**/*.tsbuildinfo

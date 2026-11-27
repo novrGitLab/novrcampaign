@@ -1,9 +1,9 @@
 /**
- * The eight NovrPulse pillars (functionId 1..8).
+ * The ten NovrPulse pillars (functionId 1..10).
  *
  * A frontend mirror of `backend/src/services/novrpulse/pillars.js` labels. The
  * backend stays the source of truth for the ids/labels; this constant exists so
- * the Editorial Canvas can render the eight pillar-choice cards without a
+ * the Editorial Canvas can render the ten pillar-choice cards without a
  * second round-trip. Keep the order and labels in step with the backend.
  *
  * `purpose` is a one-line, name-free description of what the pillar is for,
@@ -18,6 +18,8 @@ export const PILLARS = [
   { functionId: 6, key: 'outreach', label: 'Outreach Initiatives', purpose: 'Programmes, scholarships and community outreach.' },
   { functionId: 7, key: 'breaking_news', label: 'Breaking News of the Day', purpose: 'The day’s headline news (public-arrest items are name-checked).' },
   { functionId: 8, key: 'cyberintel', label: 'CyberIntel', purpose: 'Technical threat intelligence and analysis.' },
+  { functionId: 9, key: 'tool_spotlight', label: 'Tool Spotlight', purpose: 'A practical tool and when to use it.' },
+  { functionId: 10, key: 'quiz', label: 'Quiz', purpose: 'A question to test the reader’s understanding.' },
 ];
 
 const LABEL_BY_ID = new Map(PILLARS.map((p) => [p.functionId, p.label]));

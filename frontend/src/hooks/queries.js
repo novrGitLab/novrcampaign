@@ -40,6 +40,7 @@ export function useCampaignStats(id, { refetch = false } = {}) {
 
 // ── Contacts ─────────────────────────────────────────────────────────────────
 
+/** @param {{limit?:number,cursor?:string,search?:string,subscribed?:boolean,sort?:string,dir?:string}} [options] */
 export function useContacts({ limit = 25, cursor, search, subscribed, sort, dir } = {}) {
   return useQuery({
     queryKey: ['contacts', { limit, cursor, search, subscribed, sort, dir }],

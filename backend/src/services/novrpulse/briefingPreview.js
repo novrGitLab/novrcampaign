@@ -1,3 +1,6 @@
+import { mediaUrl } from '../editionReview.js';
+import { safeUrl } from '../publicNews.js';
+import { pillarLabel } from './pillars.js';
 /**
  * Briefing preview renderer.
  *
@@ -77,7 +80,7 @@ export const PILLAR_HEADERS = {
 export const RAWSECTIONS = [
   'leadSection', 'newsSection', 'attackSection', 'regulatorySection',
   'eventsSection', 'careerSection', 'toolSection', 'productSection',
-  'glossarySection', 'quizSection',
+  'glossarySection', 'quizSection', 'editionSections',
 ];
 
 /** Characters escaped for HTML-text/attribute contexts. */
@@ -201,14 +204,17 @@ export function buildStory(link) {
   const sourceName = event?.sources?.[0]?.rawDocument?.source?.name ?? null;
 
   const parsed = parseComposedBody(body, functionId);
-  const headline = collapseWhitespace(event?.title) || parsed.headline || 'Untitled';
+  const headline = parsed.headline || collapseWhitespace(event?.title) || 'Untitled';
   const sourceUrl = event?.canonicalUrl ?? '';
 
   return {
     functionId,
     headline,
     source: sourceName || 'NovrPulse',
-    sourceUrl,
+    sourceUrl: safeUrl(sourceUrl) || '',
+    imageUrl: mediaUrl(link.imageUrl),
+    imageAlt: link.imageAlt || '',
+    imageCredit: link.imageCredit || '',
     slots: parsed.slots,
     body,
     // Carry the linked event so the 📅 Events mapping can read its region/venue.
@@ -517,6 +523,22 @@ export function buildTokenMap(vm) {
   };
   for (const key of RAWSECTIONS) tokens.set(key, sections[key] ?? '');
 
+  const edition = [];
+  for (const id of [8,7,1,4,2,3,5,6,9,10]) {
+    const stories=groups.get(id) || [];
+    if (!stories.length) continue;
+    const heading=escapeHtml(pillarLabel(id));
+    const blocks=stories.map(story=>{
+      const lines=String(story.body || '').trim().split(/\r?\n/);
+      if(lines[0]?.trim()===story.headline)lines.shift();
+      const paragraphs=lines.join('\n').trim().split(/\n\s*\n/).filter(Boolean).map(p=>'<p style="font:16px/1.6 Georgia,serif;margin:12px 0">'+escapeHtml(p).replaceAll('\n','<br>')+'</p>').join('');
+      const photo=story.imageUrl?'<img width="540" style="display:block;width:100%;height:auto" src="'+escapeHtml(story.imageUrl)+'" alt="'+escapeHtml(story.imageAlt)+'"><p style="font:12px Arial;color:#5e5a59">'+escapeHtml(story.imageCredit)+'</p>':'';
+      const link=safeUrl(story.sourceUrl);
+      return '<h3 style="font: bold 25px/1.15 Georgia,serif;margin:12px 0">'+escapeHtml(story.headline)+'</h3>'+photo+paragraphs+(link?'<p><a style="color:#4353a3" href="'+escapeHtml(link)+'">'+escapeHtml(story.source)+'</a></p>':'');
+    });
+    edition.push('<tr><td style="padding:22px;border-top:1px solid #cfcac1"><h2 style="font: bold 13px Arial;color:#632d8a;margin:0">'+heading+'</h2>'+blocks.join('')+'</td></tr>');
+  }
+  tokens.set('editionSections',edition.join(''));
   // {{newsItems}} is retained as an alias for the pre-rendered news roll body.
   tokens.set('newsItems', sections.newsSection);
 

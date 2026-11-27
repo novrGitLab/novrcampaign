@@ -1,3 +1,4 @@
+import { completeEdition, mediaUrl } from '../services/editionReview.js';
 import Joi from 'joi';
 import { prisma } from '../utils/prisma.js';
 import { BadRequest, BadGateway, Conflict, Gone, NotFound } from '../utils/AppError.js';
@@ -187,6 +188,7 @@ function serializeSection(section) {
       id: link.id,
       position: link.position,
       publishItemId: link.publishItemId,
+      imageUrl: link.imageUrl ?? null, imageAlt: link.imageAlt ?? null, imageCredit: link.imageCredit ?? null,
       publishItem: link.publishItem ? serializePublishItemSummary(link.publishItem) : null,
     }));
 
@@ -267,6 +269,7 @@ const PREVIEW_ITEM_INCLUDE = {
 async function requireBriefing(id) {
   const briefing = await prisma.briefing.findUnique({ where: { id } });
   if (!briefing) throw NotFound('Briefing not found');
+  if (briefing.publishedAt || briefing.sendingAt) throw Conflict('This edition is closed for editing.');
   return briefing;
 }
 
@@ -275,6 +278,7 @@ async function requireBriefing(id) {
  * that briefing) with its items, or throw 404.
  */
 async function requireSection(briefingId, functionId) {
+  await requireBriefing(briefingId);
   const fid = Number(functionId);
   if (!Number.isInteger(fid)) throw BadRequest('functionId must be an integer');
 
@@ -366,6 +370,7 @@ export async function getBriefing(req, res) {
       // Publish affordances for the client: whether a default segment is
       // configured (drives the "Send to segment" disabled state) and whether the
       // briefing has any items to send at all (drives the Send button state).
+      reviewComplete: completeEdition(briefing.sections),
       publishSegmentConfigured: Boolean(config.novrpulse.pulseSegment),
       itemCount: briefing.sections.reduce((n, s) => n + (s.items?.length ?? 0), 0),
     },
@@ -550,7 +555,7 @@ export async function publishBriefing(req, res) {
 
   // ── Production send ────────────────────────────────────────────────────────
   const configured = Array.isArray(value.segments) && value.segments.length
-    ? value.segments
+    ? [...new Set(value.segments)]
     : (config.novrpulse.pulseSegment ? [config.novrpulse.pulseSegment] : []);
 
   if (configured.length === 0) {
@@ -560,8 +565,12 @@ export async function publishBriefing(req, res) {
     );
   }
 
+  if (!completeEdition(briefing.sections)) throw BadRequest('Review all ten sections before sending.');
+  const claim = await prisma.briefing.updateMany({ where: { id: briefing.id, publishedAt: null, sendingAt: null }, data: { sendingAt: new Date() } });
+  if (claim.count !== 1) throw Conflict('Delivery is in progress or has already completed.');
   const sentCampaigns = [];
   let sendError;
+  let dispatchAttempted = false;
   try {
     for (const segment of configured) {
       // Reuse the campaign primitives: create a MARKETING campaign targeted at
@@ -574,6 +583,7 @@ export async function publishBriefing(req, res) {
         audienceType: 'SEGMENT',
         segmentId: segment,
       });
+      dispatchAttempted = true;
       await plunk.sendCampaign(campaign.id);
       sentCampaigns.push({ segment, campaignId: campaign.id });
     }
@@ -582,6 +592,7 @@ export async function publishBriefing(req, res) {
   }
 
   if (sendError) {
+    if (!dispatchAttempted) await prisma.briefing.updateMany({ where: { id: briefing.id, publishedAt: null }, data: { sendingAt: null } });
     // Fail loudly and honestly: 502 with the provider message; the briefing is
     // NOT marked published.
     throw BadGateway(
@@ -608,7 +619,7 @@ export async function publishBriefing(req, res) {
   await prisma.$transaction([
     prisma.briefing.update({
       where: { id: briefing.id },
-      data: { status: 'published', publishedAt: now },
+      data: { status: 'published', publishedAt: now, sendingAt: null },
     }),
     ...publishItemIds.map((id) =>
       prisma.publishItem.update({ where: { id }, data: { publishedAt: now } }),
@@ -678,6 +689,7 @@ export async function updateBriefing(req, res) {
 
   const data = {};
   if (value.title !== undefined) data.title = value.title || null;
+  if (value.status === 'published') throw BadRequest('Use Send to publish a briefing.');
   if (value.status !== undefined) data.status = value.status;
   if (value.scheduledFor !== undefined) {
     data.scheduledFor = value.scheduledFor === null ? null : new Date(value.scheduledFor);
@@ -713,6 +725,8 @@ export async function updateSection(req, res) {
   const section = await requireSection(req.params.id, req.params.functionId);
 
   const data = {};
+  if (value.state === 'ready' && !section.items.length) throw BadRequest('Confirm no updates for an empty section.');
+  if (value.state === 'no_updates' && section.items.length) throw BadRequest('Review the stories in this section.');
   if (value.state !== undefined) data.state = value.state;
   if (value.note !== undefined) data.note = value.note || null;
   if (value.position !== undefined) data.position = value.position;
@@ -752,9 +766,7 @@ export async function attachSectionItem(req, res) {
   }
 
   try {
-    await prisma.briefingSectionItem.create({
-      data: { sectionId: section.id, publishItemId, position: targetPosition },
-    });
+    await prisma.$transaction([prisma.briefingSectionItem.create({data: { sectionId: section.id, publishItemId, position: targetPosition }}), prisma.briefingSection.update({where: {id:section.id},data:{state:'awaiting'}})]);
   } catch (err) {
     if (isUniqueViolation(err)) throw Conflict('Publish item is already attached to this section');
     throw err;
@@ -775,7 +787,7 @@ export async function detachSectionItem(req, res) {
   // Scope the link to this section: a link id from another section is a 404.
   if (!link || link.sectionId !== section.id) throw NotFound('Section item not found');
 
-  await prisma.briefingSectionItem.delete({ where: { id: link.id } });
+  await prisma.$transaction([prisma.briefingSectionItem.delete({where:{id:link.id}}), prisma.briefingSection.update({where:{id:section.id},data:{state:'awaiting'}})]);
 
   const fresh = await reloadSection(section.id);
   return res.json({ section: serializeSection(fresh) });
@@ -1082,3 +1094,16 @@ export {
   serializeSection,
   serializePublishItemSummary,
 };
+
+export async function updatePhoto(req,res) {
+  const value=await validate(Joi.object({imageUrl:Joi.string().max(2048).allow(null).required(),imageAlt:Joi.string().trim().max(250).allow(null,''),imageCredit:Joi.string().trim().max(160).allow(null,'')}),req.body);
+  if(value.imageUrl && (!mediaUrl(value.imageUrl) || !value.imageAlt))throw BadRequest('Provide an approved photograph and an image description.');
+  const section=await requireSection(req.params.id,req.params.functionId);
+  const link=section.items.find(item=>item.id===req.params.itemId);
+  if(!link)throw NotFound('Story unavailable');
+  await prisma.$transaction([
+    prisma.briefingSectionItem.update({where:{id:link.id},data:{imageUrl:value.imageUrl,imageAlt:value.imageAlt||null,imageCredit:value.imageCredit||null}}),
+    prisma.briefingSection.update({where:{id:section.id},data:{state:'awaiting'}}),
+  ]);
+  return res.sendStatus(204);
+}

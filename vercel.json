@@ -9,23 +9,21 @@
     },
     "frontend": {
       "root": "frontend",
-      "framework": "vite",
-      "rewrites": [
-        {
-          "source": "/((?!assets/|[^/]*\\.[^/]+$).*)",
-          "destination": "/index.html"
-        }
-      ]
+      "framework": "nextjs"
     }
   },
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": { "service": "backend" }
+      "destination": {
+        "service": "backend"
+      }
     },
     {
       "source": "/(.*)",
-      "destination": { "service": "frontend" }
+      "destination": {
+        "service": "frontend"
+      }
     }
   ]
 }

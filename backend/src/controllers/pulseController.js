@@ -1,5 +1,5 @@
 import Joi from 'joi';
-import jwt from 'jsonwebtoken';
+import { sessionUser } from '../services/staffSession.js';
 import { prisma } from '../utils/prisma.js';
 import { BadRequest, NotFound, Unauthorized } from '../utils/AppError.js';
 import { deriveStatus } from './publishController.js';
@@ -580,20 +580,7 @@ export function isPulseCollectAuthorized(req) {
  * or absent token is simply ignored here — the guard decides authorization.
  */
 export async function attachOptionalUser(req) {
-  const header = req.headers?.authorization;
-  if (!header?.startsWith('Bearer ')) return;
-  const token = header.slice('Bearer '.length).trim();
-  try {
-    const payload = jwt.verify(token, config.jwt.secret, { algorithms: ['HS256'] });
-    const user = await prisma.user.findUnique({
-      where: { id: payload.sub },
-      select: { id: true, email: true, name: true, role: true },
-    });
-    if (user) req.user = user;
-  } catch {
-    // A malformed/expired token is not an error here: the Bearer token may be
-    // the cron secret instead, and the guard below is the single decision point.
-  }
+  req.user = await sessionUser(req);
 }
 
 /**

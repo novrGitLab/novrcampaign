@@ -1,6 +1,4 @@
 import express from 'express';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import helmet from 'helmet';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
@@ -10,6 +8,7 @@ import logger from './utils/logger.js';
 import { apiLimiter } from './middleware/rateLimiter.js';
 import { errorHandler, notFound } from './middleware/errorHandler.js';
 import routes from './routes/index.js';
+import publicRoutes from './routes/publicRoutes.js';
 
 const app = express();
 
@@ -50,41 +49,28 @@ app.use(
   }),
 );
 
-app.use(pinoHttp({ logger }));
+app.use(pinoHttp({ logger, serializers: { req: req => ({ method: req.method, path: req.url?.split('?')[0] }), res: res => ({ statusCode: res.statusCode }) } }));
 app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 app.use(cookieParser());
+app.set('trust proxy', 1);
+app.use((req, res, next) => {
+  if (!['GET','HEAD','OPTIONS'].includes(req.method) && (req.cookies.pulse_staff || req.headers.origin)) {
+    const origins = config.frontendUrl.split(',').map(value => value.trim());
+    if (!origins.includes(req.headers.origin) || req.get('sec-fetch-site') === 'cross-site') return res.sendStatus(403);
+  }
+  return next();
+});
+app.use('/api/public', apiLimiter);
+app.use(publicRoutes);
 
-// Never let the drive be indexed, and keep it out of search results even when a
-// link leaks. This is one of several defence-in-depth layers, not a control.
 app.use((req, res, next) => {
   res.setHeader('X-Robots-Tag', 'noindex, nofollow');
   next();
 });
 
-// Trust the proxy header so req.ip is real behind Railway/Render/ALB
-app.set('trust proxy', 1);
 
 app.use('/api', apiLimiter);
 app.use('/api', routes);
-
-// In production the built frontend is served from this same process, so the
-// internal tool deploys as a single unit (no separate static host needed).
-// On Vercel the CDN serves dist instead (VERCEL=1 is automatic there); in the
-// Docker deployment Caddy serves the SPA, so set SERVE_STATIC=false. Either
-// signal skips the built-in static serving.
-const serveStatic =
-  !process.env.VERCEL && (process.env.SERVE_STATIC ?? 'true').toLowerCase() !== 'false';
-if (config.isProd && serveStatic) {
-  const __dirname = path.dirname(fileURLToPath(import.meta.url));
-  const frontendDist = path.resolve(__dirname, '../../frontend/dist');
-
-  app.use(express.static(frontendDist));
-  // SPA fallback — let the client router handle non-/api paths
-  app.use((req, res, next) => {
-    if (req.path.startsWith('/api')) return next();
-    return res.sendFile(path.join(frontendDist, 'index.html'));
-  });
-}
 
 app.use(notFound);
 app.use(errorHandler);

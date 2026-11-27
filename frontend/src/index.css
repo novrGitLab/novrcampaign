@@ -3,10 +3,9 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-  /* Plunk-style neutral surfaces (light defaults; .dark overrides below) */
-  --color-background: hsl(0 0% 100%);
+  --color-background: var(--paper);
   --color-foreground: hsl(0 0% 15%);        /* neutral-800 */
-  --color-card: hsl(0 0% 100%);
+  --color-card: var(--panel);
   --color-card-foreground: hsl(0 0% 9%);
   --color-secondary: hsl(0 0% 96.5%);      /* neutral-100 */
   --color-secondary-foreground: hsl(0 0% 9%);
@@ -16,18 +15,17 @@
   --color-accent-foreground: hsl(0 0% 9%);
   --color-border: hsl(0 0% 89.8%);         /* neutral-200 */
   --color-input: hsl(0 0% 89.8%);
-  --color-ring: #662f8e;                   /* brand purple focus ring */
+  --color-ring: var(--pulse-purple);                   /* brand purple focus ring */
 
-  /* Primary is near-black, like Plunk */
-  --color-primary: hsl(0 0% 3.9%);         /* neutral-950 */
+  --color-primary: var(--pulse-purple);         /* neutral-950 */
   --color-primary-foreground: hsl(0 0% 98%);
   --color-destructive: hsl(0 72% 51%);     /* red-600 */
   --color-destructive-foreground: hsl(0 0% 98%);
 
   /* Brand accents kept for logo moments */
-  --color-brand-blue: #4451a2;
-  --color-brand-purple: #662f8e;
-  --color-brand-red: #eb2027;
+  --color-brand-blue: var(--pulse-blue);
+  --color-brand-purple: var(--pulse-purple);
+  --color-brand-red: var(--pulse-red);
   --color-brand-ink: #0c0c13;
 
   --color-success: hsl(160 84% 39%);       /* emerald-600 */
@@ -152,7 +150,7 @@
   }
 
   .input {
-    @apply flex h-9 w-full rounded-md border border-border bg-transparent px-3 py-1 text-sm
+    @apply flex h-9 w-full rounded-xl border border-border bg-transparent px-3 py-1 text-sm
            text-foreground ring-offset-background placeholder:text-muted-foreground
            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0
            disabled:cursor-not-allowed disabled:opacity-50;
@@ -227,3 +225,10 @@
   .tiptap table { @apply w-full border-collapse; }
   .tiptap th, .tiptap td { border: 1px solid #e2e2e9; padding: 0.5rem; vertical-align: top; }
 }
+
+body{background:var(--paper);color:var(--ink)}
+.cookie{position:fixed;z-index:70;bottom:1rem;right:1rem;display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;max-width:calc(100% - 2rem);padding:.9rem 1rem;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel);color:var(--ink);box-shadow:0 4px 24px #0002}
+.cookie p{font-size:.8rem}.cookie button,.login-link{border-radius:var(--radius);min-height:44px;background:var(--pulse-purple);color:white;padding:.6rem .9rem;font-weight:650}.cookie button[data-consent=essential]{background:var(--panel);color:var(--ink);border:1px solid var(--line)}
+.staff-login{min-height:100svh;padding:0 var(--gutter);background:var(--paper);color:var(--ink)}.login-top{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);padding:1.5rem 0}.desk-brand{font:700 2.4rem/.95 var(--display);letter-spacing:-.07em}.desk-brand i,.staff-login h1 span{color:var(--accent)}.login-body{display:grid;grid-template-columns:1.1fr 1fr;align-items:center;gap:7%;padding:clamp(2rem,7vw,7rem) 0}.login-photo{min-height:48vh;background:center/cover url('/press/network.jpg')}.desk-kicker{font:700 .7rem var(--utility);letter-spacing:.14em;text-transform:uppercase;color:var(--accent)}.staff-login h1{font:500 clamp(3.5rem,8vw,8rem)/1 var(--display);letter-spacing:-.065em;margin:.75rem 0}.login-link{display:inline-flex;gap:1rem;margin-top:1.5rem}.staff-login [role=alert]{margin-top:1rem;color:var(--accent)}.staff-shell h1{font-family:var(--display);letter-spacing:-.04em}.staff-shell aside{background:var(--panel)}
+@media(max-width:680px){.login-body{grid-template-columns:1fr}.login-photo{min-height:22vh}.cookie p{flex-basis:100%}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}}
