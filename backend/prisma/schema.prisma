@@ -215,6 +215,7 @@ model NpEvent {
   articlePublished      Json?
   articleApprovedAt     DateTime?
   articleApprovedBy     String?
+  articleRegion         String?
   body          String?
   publishedAt   DateTime?
   canonicalUrl  String?

@@ -612,22 +612,16 @@ export default function PulseToday() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [publishFlag, briefingDetail, stateBriefingId, briefing?.id]);
 
-  // "In today's email" = today's desk-usable pieces (drafts + approved). The
-  // desk-usable endpoint returns manually-authored items plus items whose linked
-  // event was Accepted; we narrow to today by `createdAt` (now a real column on
-  // `publish_item` — see the publish_item_timestamps migration — so a piece can
-  // no longer linger in the list forever). A piece belongs to today when its
-  // Lagos day equals today.
-  // (The Briefing Desk's attach machinery still exists server-side; this minimal
-  // UI lists pieces directly — "Add to email" is what creates+attaches a piece.)
-  const { data: publishItems = [], refetch: refetchItems } = useAvailablePublishItems({ limit: 50 });
+  const emailItems = useMemo(
+    () => (briefingDetail?.sections ?? []).flatMap((section) =>
+      section.items.map((link) => link.publishItem).filter(Boolean)),
+    [briefingDetail],
+  );
 
-  const emailItems = useMemo(() => {
-    const key = dayKey;
-    return publishItems
-      .filter((it) => it.createdAt && lagosDayKey(it.createdAt) === key)
-      .sort((a, b) => (a.functionId ?? 0) - (b.functionId ?? 0));
-  }, [publishItems, dayKey]);
+  const { data: availableItems = [] } = useAvailablePublishItems();
+  const savedDrafts = availableItems.filter((item) =>
+    item.createdAt && lagosDayKey(item.createdAt) === dayKey &&
+    !emailItems.some((attached) => attached.id === item.id));
 
   // Pending DUPLICATE judgements count for the header button (hidden while 0).
   // Recommendations now live in the edition wizard (step 1), so the header badge
@@ -688,7 +682,7 @@ export default function PulseToday() {
           const created = await createBriefing.mutateAsync({ briefingDate: dayKey });
           briefingId = created.id;
         }
-        await attachItemToSection({
+        if (!emailItems.some((attached) => attached.id === item.id)) await attachItemToSection({
           briefingId,
           functionId: item.functionId ?? functionId,
           publishItemId: item.id,
@@ -702,7 +696,11 @@ export default function PulseToday() {
       }
 
       setWrite(null);
-      await refetchItems();
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['briefing'] }),
+        qc.invalidateQueries({ queryKey: ['briefings'] }),
+        qc.invalidateQueries({ queryKey: ['publish-items'] }),
+      ]);
     } catch (err) {
       setWriteError(err.message);
     }
@@ -764,7 +762,8 @@ export default function PulseToday() {
     setActionError(null);
     // Refetch the news + email lists from cache — a cheap re-read, no collection.
     qc.invalidateQueries({ queryKey: ['pulse-events'] });
-    qc.invalidateQueries({ queryKey: ['publish-items'] });
+    qc.invalidateQueries({ queryKey: ['briefing'] });
+    qc.invalidateQueries({ queryKey: ['briefings'] });
   };
 
   const onPullLatest = async () => {
@@ -1042,6 +1041,16 @@ export default function PulseToday() {
             </ul>
           )}
         </section>
+        {savedDrafts.length > 0 && (
+          <details className="mt-5 rounded-xl border bg-card p-4">
+            <summary className="cursor-pointer font-semibold">Available drafts ({savedDrafts.length})</summary>
+            {savedDrafts.map((item) => (
+              <Button key={item.id} variant="ghost" onClick={() => onOpenItem(item)}>
+                {parseSeedBody(item.body || '').headline || 'Untitled piece'}
+              </Button>
+            ))}
+          </details>
+        )}
       </div>
 
 

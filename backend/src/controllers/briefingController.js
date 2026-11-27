@@ -165,8 +165,7 @@ function bodyPreview(body) {
 /**
  * Compact summary of a publish item as it appears inside a section: identity,
  * pillar, derived status, a short body preview, and the sign-off timestamps.
- * The full body is deliberately not included — the publish-item endpoints serve
- * that.
+ * Staff use the complete body to edit the attached item from the newsroom.
  */
 function serializePublishItemSummary(item) {
   return {
@@ -175,6 +174,7 @@ function serializePublishItemSummary(item) {
     contentType: item.contentType,
     status: deriveStatus(item),
     bodyPreview: bodyPreview(item.body),
+    body: item.body,
     approvedAt: isoOrNull(item.approvedAt),
     publishedAt: isoOrNull(item.publishedAt),
   };

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { prisma } from '../src/utils/prisma.js';
-import { findNews } from '../src/services/publicNews.js';
+import { findNews, listNews } from '../src/services/publicNews.js';
 import { generateArticle, saveArticle } from '../src/services/articleReview.js';
 
 test('a new article is private until approval and later changes cannot overwrite a newer draft', async (t) => {
@@ -19,6 +19,7 @@ test('a new article is private until approval and later changes cannot overwrite
       functions: [],
       publishedAt: new Date(),
       isCybersecurity: true,
+      cyberRegion: 'AF',
       canonicalUrl: url,
       sources: { create: { rawDocumentId: raw.id } },
     },
@@ -54,12 +55,16 @@ test('a new article is private until approval and later changes cannot overwrite
     llm: () => ({ complete: async () => ({ ...article, sufficient: true }) }),
   });
   assert.equal(await findNews(id), null);
-  await saveArticle(id, 1, article, { publishBy: 'fixture-editor' });
+  await saveArticle(id, 1, article, { publishBy: 'fixture-editor', region: 'NG' });
   const publicCopy = await findNews(id);
   assert.equal(publicCopy.title, article.headline);
+  assert.equal(publicCopy.region, 'NG');
+  assert.ok((await listNews({ region: 'NG' })).items.some((item) => item.id === id));
+  assert.ok(!(await listNews({ region: 'AF' })).items.some((item) => item.id === id));
   assert.deepEqual(publicCopy.sections, article.sections);
   assert.equal(publicCopy.articleEvidence, undefined);
-  await saveArticle(id, 2, { ...article, headline: 'Another draft headline' });
+  await saveArticle(id, 2, { ...article, headline: 'Another draft headline' }, { region: 'GLOBAL' });
+  assert.equal((await findNews(id)).region, 'NG');
   assert.equal((await findNews(id)).title, article.headline);
   await assert.rejects(saveArticle(id, 2, article, { publishBy: 'fixture-editor' }), { statusCode: 409 });
 });

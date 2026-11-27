@@ -240,6 +240,12 @@ describe('briefing preview: parsing', () => {
     assert.equal(manual.source, 'NovrPulse');
     assert.equal(manual.sourceUrl, '');
     assert.equal(manual.headline, 'Just a body');
+    const url = 'https://pulse.cybernovr.com/news/test-article';
+    for (const label of ['Reference', 'Full story']) {
+      const linked = buildStory({ publishItem: { functionId: 8, body: 'Brief\n\nEdited copy.\n\n' + label + ': ' + url } });
+      assert.equal(linked.sourceUrl, url);
+      assert.equal(linked.body, 'Brief\n\nEdited copy.');
+    }
   });
 });
 

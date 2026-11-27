@@ -88,6 +88,8 @@ const staffFields = {
   title: true,
   publishedAt: true,
   articleVersion: true,
+  cyberRegion: true,
+  articleRegion: true,
   articleApprovedAt: true,
 };
 const sources = {
@@ -192,13 +194,16 @@ async function updateArticle(id, version, data) {
   return { version: version + 1 };
 }
 
-export async function saveArticle(id, version, article, { publishBy } = {}) {
+export async function saveArticle(id, version, article, { publishBy, region } = {}) {
   const row = await reviewRecord(id);
   if (row.articleVersion !== version) throw Conflict('The draft has changed. Reload before editing.');
   if (!row.articleEvidence || !row.articleDraft) throw Conflict('Prepare a source-backed draft first.');
+  const edition = region ?? row.articleDraft.region ?? row.articleRegion ?? row.cyberRegion;
+  if (edition != null && !['NG', 'AF', 'GLOBAL'].includes(edition)) throw BadRequest('Select a valid edition.');
   const content = validateArticle(article, row.articleEvidence);
   const draft = {
     ...content,
+    region: edition,
     sourceUrl: row.articleDraft.sourceUrl,
     sourceName: row.articleDraft.sourceName,
   };
@@ -207,6 +212,7 @@ export async function saveArticle(id, version, article, { publishBy } = {}) {
     ...(publishBy && {
       articlePublished: draft,
       articleApprovedBy: publishBy,
+      articleRegion: edition,
       articleApprovedAt: new Date(),
     }),
   });

@@ -1,5 +1,5 @@
 import { mediaUrl } from '../editionReview.js';
-import { safeUrl } from '../publicNews.js';
+import { publicOrigin, safeUrl } from '../publicNews.js';
 import { pillarLabel } from './pillars.js';
 /**
  * Briefing preview renderer.
@@ -203,20 +203,24 @@ export function buildStory(link) {
   const event = item?.event ?? null;
   const sourceName = event?.sources?.[0]?.rawDocument?.source?.name ?? null;
 
-  const parsed = parseComposedBody(body, functionId);
+  const referenceLine = /(?:^|\n)\s*(?:Reference|Full story):\s*(https?:\/\/\S+)\s*$/i.exec(body);
+  const reference = safeUrl(referenceLine?.[1]);
+  const copy = reference ? body.slice(0, referenceLine.index).trimEnd() : body;
+  const parsed = parseComposedBody(copy, functionId);
   const headline = parsed.headline || collapseWhitespace(event?.title) || 'Untitled';
-  const sourceUrl = event?.canonicalUrl ?? '';
+  const sourceUrl = reference || event?.canonicalUrl || '';
+  const pulseStory = sourceUrl.startsWith(publicOrigin + '/news/');
 
   return {
     functionId,
     headline,
-    source: sourceName || 'NovrPulse',
+    source: pulseStory ? 'Read the full story on NovrPulse' : sourceName || (reference ? new URL(reference).hostname : 'NovrPulse'),
     sourceUrl: safeUrl(sourceUrl) || '',
     imageUrl: mediaUrl(link.imageUrl),
     imageAlt: link.imageAlt || '',
     imageCredit: link.imageCredit || '',
     slots: parsed.slots,
-    body,
+    body: copy,
     // Carry the linked event so the 📅 Events mapping can read its region/venue.
     event,
   };
