@@ -133,31 +133,64 @@
 @layer components {
   /* Plunk-style primitives, defined as utilities so they compose with clsx */
 
-  .btn-primary {
-    @apply btn bg-primary text-primary-foreground hover:bg-brand-purple hover:text-white;
+  .btn-primary, .btn-secondary, .btn-ghost, .btn-danger {
+    @apply btn;
+    border: 1px solid var(--button-border, var(--control-border));
+    background: var(--button-fill, var(--control-fill));
+    color: var(--button-ink, var(--control-ink));
   }
-
-  .btn-secondary {
-    @apply btn border border-border bg-background hover:bg-accent hover:text-accent-foreground;
+  .btn-primary, .btn-secondary:is([aria-pressed="true"], [aria-checked="true"]) {
+    --button-fill: var(--action-fill);
+    --button-hover: var(--action-hover);
+    --button-pressed: var(--action-pressed);
+    --button-ink: var(--action-ink);
+    --button-border: transparent;
   }
-
   .btn-ghost {
-    @apply btn px-3 hover:bg-accent hover:text-accent-foreground;
+    --button-fill: transparent;
+    --button-border: transparent;
   }
-
   .btn-danger {
-    @apply btn bg-destructive text-destructive-foreground hover:bg-destructive/90;
+    --button-fill: var(--signal);
+    --button-hover: var(--danger-hover);
+    --button-pressed: var(--danger-pressed);
+    --button-ink: var(--on-signal);
+    --button-border: transparent;
   }
-
+  :is(.btn-primary, .btn-secondary, .btn-ghost, .btn-danger):enabled:hover {
+    background: var(--button-hover, var(--control-hover));
+    border-color: var(--button-border, var(--control-focus));
+  }
+  :is(.btn-primary, .btn-secondary, .btn-ghost, .btn-danger):enabled:active {
+    background: var(--button-pressed, var(--control-pressed));
+    border-color: var(--button-border, var(--control-focus));
+  }
+  :is(.btn-primary, .btn-secondary, .btn-ghost, .btn-danger, .input):focus-visible {
+    outline: 2px solid var(--control-focus);
+    outline-offset: 2px;
+  }
+  :is(.btn-primary, .btn-secondary, .btn-ghost, .btn-danger, .input):disabled {
+    background: var(--control-disabled-fill);
+    border-color: var(--control-disabled-border);
+    color: var(--control-disabled-ink);
+    cursor: not-allowed;
+    opacity: 1;
+  }
   .btn-sm {
     @apply h-8 px-3 text-xs;
   }
-
   .input {
-    @apply flex h-9 w-full rounded-xl border border-border bg-transparent px-3 py-1 text-sm
-           text-foreground ring-offset-background placeholder:text-muted-foreground
-           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0
-           disabled:cursor-not-allowed disabled:opacity-50;
+    @apply flex h-9 w-full rounded-xl border px-3 py-1 text-sm text-foreground placeholder:text-muted-foreground;
+    background-color: var(--field-fill);
+    border-color: var(--control-border);
+  }
+  .input:enabled:is(:hover, :focus-visible) {
+    border-color: var(--control-focus);
+  }
+
+  .input:enabled:is(:user-invalid, [aria-invalid="true"]) {
+    border-color: var(--signal);
+    outline-color: var(--signal);
   }
 
   .label {
@@ -231,7 +264,11 @@
 
 body{background:var(--paper);color:var(--ink)}
 .cookie{position:fixed;z-index:70;bottom:1rem;right:1rem;display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;max-width:calc(100% - 2rem);padding:.9rem 1rem;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel);color:var(--ink);box-shadow:0 4px 24px #0002}
-.cookie p{font-size:.8rem}.cookie button,.login-link{border-radius:var(--radius);min-height:44px;background:var(--pulse-purple);color:white;padding:.6rem .9rem;font-weight:650}.cookie button[data-consent=essential]{background:var(--panel);color:var(--ink);border:1px solid var(--line)}
+.cookie p{font-size:.8rem}.cookie button,.login-link{border-radius:var(--radius);min-height:44px;background:var(--pulse-purple);color:var(--inverse);padding:.6rem .9rem;font-weight:650}.cookie button[data-consent=essential]{background:var(--control-fill);color:var(--control-ink);border:1px solid var(--control-border)}
+.login-link:hover,.cookie button:not([data-consent]):hover{background:var(--brand-hover);color:var(--inverse)}
+.login-link:active,.cookie button:not([data-consent]):active{background:var(--brand-pressed)}
+.cookie button[data-consent=essential]:hover{background:var(--control-hover)}
+.cookie button[data-consent=essential]:active{background:var(--control-pressed)}
 .staff-login{min-height:100svh;padding:0 var(--gutter);background:var(--paper);color:var(--ink)}.login-top{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);padding:1.5rem 0}.desk-brand{font:700 2.4rem/.95 var(--display);letter-spacing:-.07em}.desk-brand i,.staff-login h1 span{color:var(--accent)}.login-body{display:grid;grid-template-columns:1.1fr 1fr;align-items:center;gap:7%;padding:clamp(2rem,7vw,7rem) 0}.login-photo{min-height:48vh;background:center/cover url('/press/network.jpg')}.desk-kicker{font:700 .7rem var(--utility);letter-spacing:.14em;text-transform:uppercase;color:var(--accent)}.staff-login h1{font:500 clamp(3.5rem,8vw,8rem)/1 var(--display);letter-spacing:-.065em;margin:.75rem 0}.login-link{display:inline-flex;gap:1rem;margin-top:1.5rem}.staff-login [role=alert]{margin-top:1rem;color:var(--accent)}.staff-shell h1{font-family:var(--display);letter-spacing:-.04em}.staff-shell aside{background:var(--panel)}
 @media(max-width:680px){.login-body{grid-template-columns:1fr}.login-photo{min-height:22vh}.cookie p{flex-basis:100%}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}}

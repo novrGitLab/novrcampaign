@@ -148,12 +148,7 @@ function ThreatIntelChip({ active, onToggle }) {
       aria-checked={active}
       onClick={() => onToggle(!active)}
       title="Threat intelligence about actors, campaigns and malware"
-      className={
-        'rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.04em] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ' +
-        (active
-          ? 'bg-primary text-primary-foreground'
-          : 'bg-secondary text-secondary-foreground hover:text-foreground')
-      }
+      className="btn-secondary rounded-full px-2.5 text-[11px] font-semibold uppercase tracking-[0.04em]"
     >
       Threat intel
     </button>
@@ -178,13 +173,7 @@ function PillarChips({ value, onSelect, enabledIds }) {
             title={isEnabled ? p.label : "This story doesn't fit this section"}
             disabled={!isEnabled}
             onClick={() => onSelect(p.functionId)}
-            className={
-              'inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ' +
-              (active
-                ? 'border-primary bg-primary text-primary-foreground shadow-sm'
-                : 'border-border bg-secondary text-muted-foreground hover:border-ring hover:text-foreground') +
-              (isEnabled ? '' : ' cursor-not-allowed opacity-40')
-            }
+            className="btn-secondary gap-2 px-3 text-xs font-semibold"
           >
             <PillarIcon functionId={p.functionId} className="h-3.5 w-3.5" />
             {sectionNumber(p.functionId)} {p.label}

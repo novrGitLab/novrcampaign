@@ -14,7 +14,7 @@ function Gate({ children }: { children: ReactNode }) {
   }, [loading, isAuthenticated, router]);
   if (!isAuthenticated)
     return (
-      <main className="p-8" role="status">
+      <main className="staff-loading p-8" role="status">
         {loading ? 'Opening the desk…' : 'Staff sign-in required.'}
       </main>
     );

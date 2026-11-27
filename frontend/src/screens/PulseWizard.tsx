@@ -667,12 +667,7 @@ function WriteOverlay({ open, section, onClose, onSave, busy, error }) {
                   role="radio"
                   aria-checked={active}
                   onClick={() => setFunctionId(p.functionId)}
-                  className={
-                    'inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ' +
-                    (active
-                      ? 'border-primary bg-primary text-primary-foreground shadow-sm'
-                      : 'border-border bg-secondary text-muted-foreground hover:border-ring hover:text-foreground')
-                  }
+                  className="btn-secondary gap-2 px-3 text-xs font-semibold"
                 >
                   <PillarIcon functionId={p.functionId} className="h-3.5 w-3.5" />
                   {sectionNumber(p.functionId)} {p.label}
