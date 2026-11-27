@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider, useAuth } from '../hooks/useAuth';
 import { ThemeProvider } from '../hooks/useTheme';
 import { Layout } from './Layout';
+import { PulseKingfisher } from './ui/PulseKingfisher';
 
 function Gate({ children }: { children: ReactNode }) {
   const { loading, isAuthenticated } = useAuth();
@@ -14,7 +15,8 @@ function Gate({ children }: { children: ReactNode }) {
   }, [loading, isAuthenticated, router]);
   if (!isAuthenticated)
     return (
-      <main className="staff-loading p-8" role="status">
+      <main className="staff-loading flex items-center gap-3 p-8" role="status">
+        <PulseKingfisher pose="flight" />
         {loading ? 'Opening the desk…' : 'Staff sign-in required.'}
       </main>
     );

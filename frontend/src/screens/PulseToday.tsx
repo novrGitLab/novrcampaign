@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { format, formatDistanceToNow } from 'date-fns';
 import { Check, ChevronDown, CloudDownload, RefreshCw, Sparkles, X } from '../components/ui/icons';
-import { Button, Input, EmptyState, Skeleton } from '../components/ui';
+import { Button, Input, EmptyState, Skeleton, StaffPageTitle } from '../components/ui';
 import { Modal } from '../components/ui/Modal';
 import AiJudgementCard from '../components/pulse/AiJudgementCard';
 import AiDraftNote, { warningMessage } from '../components/pulse/AiDraftNote';
@@ -797,7 +797,7 @@ export default function PulseToday() {
       <div className="mx-auto max-w-[1180px] px-4 sm:px-8 pb-28">
 
         <header className="mb-6 flex flex-wrap items-center gap-3 border-b border-border py-5">
-          <h1 className="desk-heading">Newsroom</h1>
+          <StaffPageTitle className="desk-heading">Newsroom</StaffPageTitle>
           <span className="text-[13px] font-semibold text-muted-foreground">{todayDateLabel()}</span>
           <div className="desk-actions ml-auto flex flex-wrap items-center gap-2">
             <Button

@@ -19,6 +19,7 @@
 
   --color-primary: var(--pulse-purple);         /* neutral-950 */
   --color-primary-foreground: hsl(0 0% 98%);
+  --text-color-destructive: var(--danger-ink);
   --color-destructive: var(--signal);
   --color-destructive-foreground: var(--on-signal);
 

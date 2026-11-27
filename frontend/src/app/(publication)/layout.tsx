@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { newsDate } from '@/lib/news';
 import { Newsletter } from '@/components/public/Newsletter';
+import { PulseKingfisher } from '@/components/ui/PulseKingfisher';
 import { PreferencesButton } from '@/components/ui/ReadingPreferences';
 import { RegionNav } from '@/components/public/RegionNav';
 import '../../../public/press/edition.css';
@@ -36,7 +37,7 @@ export default function Publication({ children }: { children: ReactNode }) {
       <footer id="newsletter">
         <div className="footer-inner">
           <div>
-            <p className="eyebrow">The newsletter</p>
+            <p className="eyebrow newsletter-signature"><PulseKingfisher pose="flight" />The newsletter</p>
             <h2>
               The Daily <i>Brief.</i>
             </h2>
