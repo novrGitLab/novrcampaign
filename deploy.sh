@@ -24,6 +24,7 @@ if missing:
 '
 getent ahostsv4 pulse.cybernovr.com | awk '{print $1}' | grep -Fx '213.136.94.10' >/dev/null || { echo 'Awaiting pulse.cybernovr.com DNS on the Pulse VPS' >&2; exit 1; }
 if [[ "${1:-}" == "--check" ]]; then exit 0; fi
+docker network inspect novrevents-edge >/dev/null 2>&1 || docker network create novrevents-edge >/dev/null
 docker network inspect novr-shared >/dev/null 2>&1 || docker network create novr-shared >/dev/null
 docker compose build backend frontend
 docker compose up -d db
