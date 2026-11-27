@@ -8,27 +8,13 @@ import {
   useSupportingEvents, useSupportingOpportunities, useSupportingForumTopics,
   useCreateSupporting, useDeleteSupporting,
 } from '../../hooks/briefingQueries';
-// ── Rendered-email preview modal ──────────────────────────────────────────────
-// The server renders the assembled briefing through the email template and
-// returns full HTML; we show it in a SANDBOXED iframe (`sandbox=""` blocks
-// scripts, forms, popups, top-navigation and same-origin access, so untrusted
-// article text cannot execute or reach the app).
-//
-// Two modes (owner requirement 2026-11-25, Publish → Preview → Send):
-//   * READ-ONLY (default): just shows the rendered email.
-//   * PUBLISH (`publishMode`): the same preview plus a send footer — "Send test
-//     to me" (one copy to the signed-in user) and "Send to subscribers →" (the real
-//     subscribers, behind a confirm step). A successful production send marks
-//     the briefing published (the caller's cache invalidation updates the pill).
 export function PulsePreviewModal({ open, onClose, briefing, publishMode = false, onPublished }) {
   const briefingId = briefing?.id;
   const preview = usePreviewBriefing(briefingId);
   const publish = usePublishBriefing(briefingId);
   const { mutate: runPreview, reset } = preview;
 
-  // The publish footer's local state. `confirmOpen` gates the real subscriber
-  // send behind an explicit confirm; `result`/`errorText` are the terminal
-  // messages; `testTo` remembers who a test went to.
+  const [testEmail, setTestEmail] = useState('');
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [result, setResult] = useState(null);
   const [errorText, setErrorText] = useState(null);
@@ -41,6 +27,7 @@ export function PulsePreviewModal({ open, onClose, briefing, publishMode = false
   // Reset the publish state every time the modal (re)opens or its briefing changes.
   useEffect(() => {
     setConfirmOpen(false);
+    setTestEmail('');
     setResult(null);
     setErrorText(null);
   }, [open, briefingId]);
@@ -51,11 +38,13 @@ export function PulsePreviewModal({ open, onClose, briefing, publishMode = false
   const hasContent = (briefing.itemCount ?? 0) > 0;
   const alreadyPublished = briefing.status === 'published';
 
-  const onSendTest = async () => {
+  const onSendTest = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     setErrorText(null);
     setResult(null);
+    const email = testEmail.trim();
     try {
-      const res = await publish.mutateAsync({ test: true });
+      const res = await publish.mutateAsync(email ? { test: true, email } : { test: true });
       setResult({ kind: 'test', to: res?.to });
     } catch (err) {
       setErrorText(err?.message || 'Could not send the test email.');
@@ -166,16 +155,24 @@ export function PulsePreviewModal({ open, onClose, briefing, publishMode = false
               </div>
             </div>
           ) : (
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="space-y-4">
+              <form onSubmit={onSendTest} className="flex flex-wrap items-end gap-2">
+                <Label htmlFor="briefing-test-address" className="grid gap-1">
+                  Test recipient
+                  <Input id="briefing-test-address" type="email" autoComplete="email"
+                    placeholder="Defaults to your staff email" value={testEmail}
+                    onChange={(e) => setTestEmail(e.target.value)} disabled={publish.isPending} />
+                </Label>
               <Button
+                type="submit"
                 variant="secondary"
                 size="sm"
-                onClick={onSendTest}
                 disabled={!hasContent || publish.isPending}
               >
                 {publish.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
-                Send staff test
+                Send test email
               </Button>
+              </form>
               <span className="inline-flex items-center gap-1">
                 <Button
                   size="sm"
