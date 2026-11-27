@@ -1,6 +1,7 @@
 type PanelProps={className?:string;children?:React.ReactNode};
 import { Info, ChevronLeft, ChevronRight } from './icons';
 import { cn } from '../../lib/utils';
+import { PulseKingfisher } from './PulseKingfisher';
 
 /**
  * Small hover/focus info tooltip. `content` is plain text (see lib/metrics.js
@@ -195,7 +196,10 @@ export function PageHeader({ title, description, actions }: {title:string;descri
   return (
     <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
       <div>
-        <h1 className="staff-page-title text-xl font-bold tracking-tight text-foreground">{title}</h1>
+        <h1 className="staff-page-title text-xl font-bold tracking-tight text-foreground">
+          <PulseKingfisher />
+          <span>{title}</span>
+        </h1>
         {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}

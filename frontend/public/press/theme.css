@@ -32,6 +32,7 @@
   --control-disabled-fill: #ebe7eb;
   --control-disabled-ink: #665e68;
   --control-disabled-border: #b7adb9;
+  --danger-ink: #a91627;
   --danger-hover: #961020;
   --danger-pressed: #790c1a;
   --signup-control-height: 3rem;
@@ -63,6 +64,7 @@
   --control-disabled-fill: #302c33;
   --control-disabled-ink: #aca4af;
   --control-disabled-border: #615864;
+  --danger-ink: #ffa4ae;
   --danger-hover: #ff9ea5;
   --danger-pressed: #ffb9bc;
   color-scheme: dark;
@@ -91,24 +93,59 @@
   --signal: #ff8791;
   --field-fill: #282d39;
 }
-.staff-page-title::before {
-  content: '';
-  display: inline-block;
-  width: 0.85em;
-  height: 0.15em;
-  margin-inline-end: 0.38em;
-  vertical-align: 0.27em;
-  border-radius: 1px;
-  background: var(--signal);
+.staff-page-title, .newsletter-signature {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
 }
-.staff-shell .desk-brand::after, .staff-login .desk-brand::after {
-  content: '';
+.pulse-kingfisher {
+  --bird-back: var(--pulse-purple);
+  --bird-crown: var(--pulse-blue);
+  --bird-beak: var(--pulse-red);
+  --bird-ink: #25213a;
+  --bird-edge: #302740;
+  --bird-paper: #fffdf8;
+  --bird-cheek: #ead9f0;
+  --bird-fold: #a2b0e8;
   display: inline-block;
-  width: 0.14em;
-  height: 0.14em;
-  margin-inline-start: 0.08em;
-  border-radius: 50%;
-  background: var(--signal);
+  flex: none;
+  width: 3.2rem;
+  height: auto;
+  overflow: visible;
+}
+:root[data-theme='dark'] .pulse-kingfisher, .footer-inner .pulse-kingfisher {
+  --bird-back: #ae81c9;
+  --bird-crown: #8495de;
+  --bird-beak: #ff6673;
+  --bird-edge: #e0dcf2;
+  --bird-cheek: #fbebf4;
+}
+.pulse-kingfisher .bird-back { fill: var(--bird-back); }
+.pulse-kingfisher .bird-crown { fill: var(--bird-crown); }
+.pulse-kingfisher .bird-cheek { fill: var(--bird-cheek); }
+.pulse-kingfisher .bird-paper, .pulse-kingfisher .bird-glint { fill: var(--bird-paper); }
+.pulse-kingfisher .bird-fold { fill: var(--bird-fold); }
+.pulse-kingfisher .bird-beak { fill: var(--bird-beak); }
+.pulse-kingfisher .bird-ink { fill: var(--bird-ink); }
+.pulse-kingfisher .bird-edge { stroke: var(--bird-edge); stroke-width: 1.6; }
+.pulse-kingfisher .bird-pen { stroke: var(--bird-beak); stroke-width: 3; }
+.pulse-kingfisher .bird-type, .pulse-kingfisher .bird-beak-line { stroke: var(--bird-ink); stroke-width: 1.8; }
+.pulse-kingfisher .bird-crest-line, .pulse-kingfisher .bird-crease { stroke: var(--bird-fold); stroke-width: 1.9; }
+.kingfisher-head { transform-origin: 58px 33px; }
+.kingfisher-wing { transform-origin: 55px 36px; }
+.pulse-kingfisher[data-pose='flight'] { width: 3.65rem; transform: rotate(-8deg); }
+.pulse-kingfisher[data-pose='flight'] .kingfisher-wing { transform: rotate(22deg); }
+@media (prefers-reduced-motion: no-preference) {
+  .kingfisher-head { transition: transform 200ms ease-out; }
+  .staff-page-title:hover .kingfisher-head { transform: rotate(-8deg); }
+  .newsletter-signature:hover .kingfisher-wing, .footer-inner:focus-within .kingfisher-wing {
+    animation: kingfisher-wingbeat 560ms ease-in-out 1;
+  }
+  @keyframes kingfisher-wingbeat {
+    0%, 100% { transform: rotate(22deg); }
+    42% { transform: rotate(44deg); }
+    76% { transform: rotate(14deg); }
+  }
 }
 @font-face {
   font-family: Inter;
