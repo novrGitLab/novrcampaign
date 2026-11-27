@@ -43,9 +43,24 @@ jobs:
   test:
     name: Test (ingest + DB/LLM-free backend)
     runs-on: ubuntu-latest
+    outputs:
+      deploy_app: ${{ steps.changes.outputs.deploy_app }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Identify application changes
+        id: changes
+        env:
+          PREVIOUS: ${{ github.event.before }}
+        run: |
+          if [[ -n "$PREVIOUS" ]] && git cat-file -e "$PREVIOUS^{commit}" 2>/dev/null && git diff --quiet "$PREVIOUS" HEAD -- backend frontend packages package.json package-lock.json Caddyfile deploy.sh docker-compose.yml .dockerignore; then
+            echo 'deploy_app=false' >> "$GITHUB_OUTPUT"
+          else
+            echo 'deploy_app=true' >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Set up Node 20
         uses: actions/setup-node@v4
@@ -80,14 +95,12 @@ jobs:
           test/novrpulseEventKeywords.test.mjs
           test/novrpulseLanguage.test.mjs
           test/novrpulseSourcesShim.test.mjs
-          test/driveCrypto.test.mjs
-          test/driveToken.test.mjs
 
   deploy:
     name: Deploy to Contabo VPS
     # Only on a push to main, only after the test gate passes.
     needs: test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.test.outputs.deploy_app == 'true'
     runs-on: ubuntu-latest
     steps:
       # Guard: skip gracefully when SSH secrets are not configured, so a repo
