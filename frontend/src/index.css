@@ -215,19 +215,18 @@
     }
   }
 
-  /* Tiptap rich email editor content — fixed light email canvas, immune to dark mode */
-  .tiptap { background-color: #ffffff; color: #1e1e26; }
+  .tiptap { background-color: var(--panel); color: var(--ink); }
   .tiptap p { @apply my-2 leading-relaxed; }
   .tiptap h1 { @apply my-3 text-2xl font-bold tracking-tight; }
   .tiptap h2 { @apply my-3 text-xl font-bold tracking-tight; }
   .tiptap h3 { @apply my-2 text-lg font-semibold; }
   .tiptap ul { @apply my-2 list-disc pl-6; }
   .tiptap ol { @apply my-2 list-decimal pl-6; }
-  .tiptap blockquote { margin: 0.5rem 0; border-left: 2px solid #e2e2e9; padding-left: 1rem; font-style: italic; color: #63637a; }
-  .tiptap a { color: #2b4bd3; text-decoration: underline; }
-  .tiptap hr { margin: 1rem 0; border-color: #e2e2e9; }
+  .tiptap blockquote { margin: 0.5rem 0; border-left: 2px solid var(--line); padding-left: 1rem; font-style: italic; color: var(--subtle); }
+  .tiptap a { color: var(--link); text-decoration: underline; }
+  .tiptap hr { margin: 1rem 0; border-color: var(--line); }
   .tiptap table { @apply w-full border-collapse; }
-  .tiptap th, .tiptap td { border: 1px solid #e2e2e9; padding: 0.5rem; vertical-align: top; }
+  .tiptap th, .tiptap td { border: 1px solid var(--line); padding: 0.5rem; vertical-align: top; }
 }
 
 body{background:var(--paper);color:var(--ink)}

@@ -461,7 +461,7 @@ function WriteOverlay({ open, onClose, mode, source, onSave, busy, error }) {
               Save draft
             </Button>
             <Button size="sm" onClick={() => submit(true)} disabled={!canAdd || busy}>
-              {busy ? 'Adding…' : 'Add to email →'}
+              {busy ? 'Adding…' : 'Add to email'}
             </Button>
           </div>
         </div>
@@ -961,7 +961,7 @@ export default function PulseToday() {
                         title={eligible.length === 0 ? 'This story fits no news section' : undefined}
                         onClick={() => onUse(event)}
                       >
-                        Use →
+                        Use
                       </Button>
                       <button
                         type="button"

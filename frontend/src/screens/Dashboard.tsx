@@ -7,12 +7,6 @@ import { formatNumber, formatRate, formatDate } from '../lib/utils';
 import { downloadCsv } from '../lib/exportCsv';
 import { TIP } from '../lib/metrics';
 
-function greeting() {
-  const h = new Date().getHours();
-  if (h < 12) return 'Good morning';
-  if (h < 18) return 'Good afternoon';
-  return 'Good evening';
-}
 
 export default function Dashboard() {
   const { data: campaigns = [], isLoading } = useCampaigns();
@@ -48,7 +42,7 @@ export default function Dashboard() {
     <div className="mx-auto max-w-5xl px-8 py-8">
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">{greeting()}</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">Audience overview</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             {formatNumber(totalSent)} emails sent across {sent.length} completed campaign{sent.length === 1 ? '' : 's'}.{' '}
             {formatNumber(totalContacts)} contacts in the address book.

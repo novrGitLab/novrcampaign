@@ -42,7 +42,7 @@ export function Newsletter() {
           required
         />
         <Button type="submit" disabled={busy}>
-          {busy ? 'Subscribing…' : 'Subscribe ↗'}
+          {busy ? 'Subscribing…' : 'Subscribe'}
         </Button>
       </div>
       <p aria-live="polite">{message}</p>

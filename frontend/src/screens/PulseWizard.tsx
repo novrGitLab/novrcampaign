@@ -717,7 +717,7 @@ function WriteOverlay({ open, section, onClose, onSave, busy, error }) {
           <div className="flex items-center justify-end gap-2 border-t border-border pt-4">
             <Button variant="ghost" size="sm" onClick={onClose} disabled={busy}>Cancel</Button>
             <Button size="sm" onClick={submit} disabled={!canAdd || busy}>
-              {busy ? 'Adding…' : 'Add piece →'}
+              {busy ? 'Adding…' : 'Add piece'}
             </Button>
           </div>
         </div>
@@ -1059,7 +1059,7 @@ export default function PulseWizard() {
               </span>
               <div className="ml-auto flex items-center gap-2">
                 <Button variant="ghost" size="sm" onClick={() => setStep(3)}>Skip step</Button>
-                <Button size="sm" onClick={() => setStep(2)}>Continue to drafts →</Button>
+                <Button size="sm" onClick={() => setStep(2)}>Continue to drafts</Button>
               </div>
             </div>
           </div>
@@ -1099,7 +1099,7 @@ export default function PulseWizard() {
               </span>
               <div className="ml-auto flex items-center gap-2">
                 <Button variant="ghost" size="sm" onClick={() => setStep(1)}>← Back</Button>
-                <Button size="sm" onClick={() => setStep(3)}>Continue to write →</Button>
+                <Button size="sm" onClick={() => setStep(3)}>Continue to write</Button>
               </div>
             </div>
           </div>
@@ -1122,7 +1122,7 @@ export default function PulseWizard() {
                   <li key={functionId} className="flex items-center gap-3 px-4 py-3.5">
                     <SectionCaption functionId={functionId} />
                     <Button variant="secondary" size="sm" className="ml-auto" onClick={() => openWrite(functionId)}>
-                      Write →
+                      Write
                     </Button>
                   </li>
                 ))}
@@ -1145,7 +1145,7 @@ export default function PulseWizard() {
               <Button variant="ghost" size="sm" onClick={() => setStep(2)}>← Back</Button>
               <div className="ml-auto">
                 <Button size="sm" onClick={onFinish} disabled={finishing}>
-                  {finishing ? 'Finishing…' : 'Finish → Preview & send'}
+                  {finishing ? 'Finishing…' : 'Finish and preview'}
                 </Button>
               </div>
             </div>

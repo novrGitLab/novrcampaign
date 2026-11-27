@@ -55,7 +55,7 @@ export default async function Article({ params }: Props) {
           </>
         )}
         <a className="read" href={story.sourceUrl}>
-          Read the original at {story.source} ↗
+          Read the original at {story.source}
         </a>
       </article>
       {related.length > 0 && (

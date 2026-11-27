@@ -28,7 +28,7 @@ export default function Publication({ children }: { children: ReactNode }) {
           from Nigeria and beyond.
         </p>
         <a className="subscribe-link" href="#newsletter">
-          Get the briefing ↗
+          Get the briefing
         </a>
       </header>
       <RegionNav />
