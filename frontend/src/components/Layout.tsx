@@ -1,3 +1,4 @@
+import { Wordmark } from './ui/Wordmark';
 import { Newsroom, ArticleReview, StaffAccess } from './ui/icons/Newsroom';
 import { ScrollArea } from './ui/ScrollArea';
 import { useEffect, useRef, useState } from 'react';
@@ -211,13 +212,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           )}
         >
           <a href="/pulse" className="desk-brand" aria-label="NovrPulse editorial desk">
-            {collapsed ? (
-              'N'
-            ) : (
-              <>
-                Novr<i>Pulse</i>
-              </>
-            )}
+            <Wordmark compact={collapsed} />
           </a>
           {!isMobile && (
             <button
@@ -410,7 +405,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <Menu className="h-4 w-4" />
           </button>
           <Link className="desk-brand" href="/pulse">
-            Novr<i>Pulse</i>
+            <Wordmark />
           </Link>
           <div className="flex-1" />
           <button

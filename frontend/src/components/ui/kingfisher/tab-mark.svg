@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 104 104" fill="none" stroke-linejoin="round" stroke-linecap="round">
+  <title>NovrPulse kingfisher</title>
+  <g transform="translate(1 12) rotate(-13 52 40)">
+    <g stroke="#eee9f7" stroke-width="3.4" paint-order="stroke">
+      <path fill="#4353a3" d="m37 44-14 18-19 3 12-12-8 1 13-10Z"/>
+      <path fill="#632d8a" d="M23 49c1-13 13-26 28-29 10-2 22 3 23 13 1 15-10 33-26 36-13 2-23-4-25-20Z"/>
+      <path fill="#4353a3" d="m39 26 7-10-8-1 12-4-6-5 12 2-2-6 13 6c8 1 13 8 13 16l-6 9-17 4Z"/>
+    </g>
+    <path fill="#ead9f0" d="M54 38c8-3 15-7 22-11-3 8-2 18-7 25-4 7-10 12-18 15 6-9 6-19 3-29Z"/>
+    <path fill="#fffdf8" d="M49 28c8-1 13-12 24-10l3 4c-9-2-11 8-22 11Z"/>
+    <circle cx="70" cy="20" r="3.7" fill="#25213a"/>
+    <g id="lower-bill" transform="rotate(0 75 28)">
+      <path fill="#af213b" stroke="#eee9f7" stroke-width="2.2" paint-order="stroke" d="m75 26 25-4-13 9-12 2Z"/>
+    </g>
+    <path fill="#e3192a" stroke="#eee9f7" stroke-width="1.8" paint-order="stroke" d="m75 23 26-3-13 7-13 2Z"/>
+    <g id="paper-wing" transform="rotate(0 53 38)">
+      <path fill="#4353a3" stroke="#302740" stroke-width="2.3" d="M56 36c-9-5-23-1-30 6L12 57l15-3-4 5c10-1 20-4 27-10 5-4 8-9 6-13Z"/>
+      <path fill="#fffdf8" stroke="#302740" stroke-width="2.2" d="m54 35-19 3-14 16 16-5 9 2Z"/>
+      <path fill="#a2b0e8" stroke="#302740" stroke-width="1.8" d="m54 35-8 16-8-5Z"/>
+      <path stroke="#4353a3" stroke-width="2.7" d="m32 44 9-3"/>
+    </g>
+  </g>
+</svg>

@@ -15,3 +15,5 @@ Purple identifies primary actions and selected filters. Cobalt identifies second
 
 ## Layout and media
 A wide opening spread gives the lead roughly two thirds of the width. At tablet width the rail moves below the lead. On a phone the photograph, headline and source form one reading sequence. Newsroom controls have soft corners and full labels. The public pages retain squared images, thin rules and generous headline spacing. Generic edition photography is captioned independently of news events. Story-specific photographs carry alternative text and a credit.
+
+The NovrPulse wordmark pairs bold upright Georgia with a lighter italic “Pulse” in lavender. The masthead, colophon and staff portal share the same lettering. A fine vertical rule separates the compact publisher credit from the footer wordmark.
