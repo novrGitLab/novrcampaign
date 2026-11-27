@@ -13,7 +13,7 @@
 #     integration suites run on the VPS / in dev, NOT in CI.
 #   * We DO run the backend files that are provably DB/LLM-free (pure modules):
 #     feed, novrpulseEventKeywords, novrpulseLanguage, novrpulseSourcesShim,
-#     driveCrypto, driveToken (71 tests). Each sets its own env inline and opens
+#     are included. The Prisma client is generated before tests.
 #     no DB/LLM connection.
 # If those pure files ever start needing external services, the gate degrades to
 # ingest-only; do not add secrets to make CI "green".
@@ -85,6 +85,9 @@ jobs:
       # ── Tests ───────────────────────────────────────────────────────────────
       - name: Test @novr/ingest (deterministic gate, 118 tests)
         run: npm -w @novr/ingest test
+
+      - name: Generate Prisma client used by backend tests
+        run: npm -w backend run build
 
       # DB/LLM-free backend subset only. No NP_LLM_API_KEY / DATABASE_URL needed.
       - name: Test backend (DB/LLM-free subset)
