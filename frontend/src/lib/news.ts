@@ -6,7 +6,10 @@ export interface Story {
   id: string;
   title: string;
   summary: string;
-  context: string;
+  context: string | null;
+  format: "article" | "brief";
+  sections: {heading:string; paragraphs:string[]}[];
+  updatedAt: string | null;
   publishedAt: string;
   href: string;
   image: { url: string; alt: string; credit: string | null } | null;

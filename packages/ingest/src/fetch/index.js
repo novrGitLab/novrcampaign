@@ -1,5 +1,7 @@
 import dns from 'node:dns/promises';
 import net from 'node:net';
+import { Agent } from 'undici';
+import ipaddr from 'ipaddr.js';
 
 /**
  * Generic, dependency-free HTTP fetch for ingestion with security by default.
@@ -21,8 +23,7 @@ const DEFAULT_TIMEOUT_MS = 15_000;
 const DEFAULT_MAX_BYTES = 5 * 1024 * 1024;
 const DEFAULT_MAX_ATTEMPTS = 3;
 const DEFAULT_MAX_REDIRECTS = 3;
-const DEFAULT_UA =
-  'NovrPulse-Ingest/0.1 (+https://novrpulse.example; contact: operator) Node';
+const DEFAULT_UA = 'NovrCollector/1.0 (+https://pulse.cybernovr.com)';
 
 /** Error carrying an HTTP status so retry logic can classify it. */
 export class FetchError extends Error {
@@ -36,28 +37,27 @@ export class FetchError extends Error {
 
 /** True for IPv4/IPv6 addresses that must never be fetched (SSRF guard). */
 export function isBlockedAddress(ip) {
-  const v = net.isIP(ip);
-  if (v === 4) {
-    const p = ip.split('.').map(Number);
-    if (p[0] === 10) return true; // 10.0.0.0/8
-    if (p[0] === 127) return true; // loopback
-    if (p[0] === 0) return true; // 0.0.0.0/8
-    if (p[0] === 169 && p[1] === 254) return true; // link-local + cloud metadata
-    if (p[0] === 172 && p[1] >= 16 && p[1] <= 31) return true; // 172.16/12
-    if (p[0] === 192 && p[1] === 168) return true; // 192.168/16
-    if (p[0] === 100 && p[1] >= 64 && p[1] <= 127) return true; // CGNAT
-    return false;
+  try {
+    return ipaddr.process(ip).range() !== 'unicast';
+  } catch {
+    return true;
   }
-  if (v === 6) {
-    const a = ip.toLowerCase();
-    if (a === '::1' || a === '::') return true; // loopback / unspecified
-    if (a.startsWith('fe80')) return true; // link-local
-    if (a.startsWith('fc') || a.startsWith('fd')) return true; // unique local
-    if (a.startsWith('::ffff:')) return isBlockedAddress(a.slice(7)); // v4-mapped
-    return false;
-  }
-  return false;
 }
+
+const publicDispatcher = new Agent({
+  connect: {
+    lookup(host, options, callback) {
+      dns.lookup(host, { family: options.family || 0, all: true }).then(records => {
+        if (!records.length || records.some(record => isBlockedAddress(record.address))) {
+          callback(new FetchError('Publisher address is unavailable', 400, 'EBADIP'));
+          return;
+        }
+        if (options.all) callback(null, records);
+        else callback(null, records[0].address, records[0].family);
+      }, callback);
+    },
+  },
+});
 
 /** Validate a URL for fetching: scheme + hostname, and resolve to a safe IP. */
 export async function assertFetchable(url) {
@@ -70,7 +70,8 @@ export async function assertFetchable(url) {
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
     throw new FetchError(`Blocked scheme: ${parsed.protocol}`, 400, 'EBADSCHEME');
   }
-  const host = parsed.hostname;
+  if (parsed.username || parsed.password) throw new FetchError('Publisher URL contains credentials', 400, 'EBADHOST');
+  const host = parsed.hostname.replace(/^\[|\]$/g, '');
   if (host === 'localhost' || host.endsWith('.localhost')) {
     throw new FetchError('Blocked host: localhost', 400, 'EBADHOST');
   }
@@ -140,6 +141,7 @@ export async function fetchText(url, opts = {}) {
     userAgent = DEFAULT_UA,
     logger,
     allowPrivate = false,
+    allowedHost,
   } = opts;
 
   let lastErr;
@@ -155,7 +157,11 @@ export async function fetchText(url, opts = {}) {
         // metadata) that the one-time pre-flight check never saw.
         let current = url;
         for (let hop = 0; ; hop += 1) {
+          if (allowedHost && new URL(current).hostname.toLowerCase().replace(/^www\./, '') !== allowedHost) {
+            throw new FetchError('Article moved outside its publisher', 400, 'EBADHOST');
+          }
           const res = await fetch(current, {
+            ...(!allowPrivate && { dispatcher: publicDispatcher }),
             method: 'GET',
             redirect: 'manual',
             signal: controller.signal,
@@ -168,6 +174,7 @@ export async function fetchText(url, opts = {}) {
 
           const location = res.status >= 300 && res.status < 400 ? res.headers.get('location') : null;
           if (location) {
+            await res.body?.cancel?.();
             if (hop >= maxRedirects) {
               throw new FetchError(`GET ${url} exceeded ${maxRedirects} redirects`, 400, 'ETOOMANYREDIRECTS');
             }

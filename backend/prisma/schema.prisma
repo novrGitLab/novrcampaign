@@ -209,6 +209,12 @@ model NpEvent {
   summary       String   @default("")
   whatItMeans   String   @default("")
   publicBriefAttemptedAt DateTime?
+  articleVersion        Int       @default(0)
+  articleDraft          Json?
+  articleEvidence       String?
+  articlePublished      Json?
+  articleApprovedAt     DateTime?
+  articleApprovedBy     String?
   body          String?
   publishedAt   DateTime?
   canonicalUrl  String?

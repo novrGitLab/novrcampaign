@@ -9,6 +9,8 @@ export const pageSize = 13;
 const orderBy = [{ publishedAt: 'desc' }, { id: 'desc' }];
 const select = {
   id: true,
+  articlePublished: true,
+  articleApprovedAt: true,
   title: true,
   summary: true,
   whatItMeans: true,
@@ -57,6 +59,10 @@ export function eligibility(region) {
   };
 }
 
+function visible(region) {
+  return { ...eligibility(region), articleApprovedAt: { not: null } };
+}
+
 export function publicStory(event) {
   if (
     !event?.title?.trim() ||
@@ -65,7 +71,7 @@ export function publicStory(event) {
   )
     return null;
   const source = event.sources[0]?.rawDocument;
-  const sourceUrl = safeUrl(event.canonicalUrl) || safeUrl(source?.url);
+  const sourceUrl = safeUrl(event.articlePublished?.sourceUrl) || safeUrl(event.canonicalUrl) || safeUrl(source?.url);
   if (!sourceUrl || !source?.source?.name) return null;
   const region = event.cyberRegion;
   const photo = event.publishItems
@@ -73,13 +79,16 @@ export function publicStory(event) {
     .find((item) => item.imageAlt && mediaUrl(item.imageUrl));
   return {
     id: event.id,
-    title: event.title,
-    summary: event.summary,
-    context: event.whatItMeans,
+    title: event.articlePublished?.headline || event.title,
+    summary: event.articlePublished?.standfirst || event.summary,
+    context: event.articlePublished ? null : event.whatItMeans,
+    sections: event.articlePublished?.sections || [],
+    format: event.articlePublished ? "article" : "brief",
+    updatedAt: event.articleApprovedAt?.toISOString() || null,
     publishedAt: event.publishedAt.toISOString(),
     href: '/news/' + encodeURIComponent(event.id),
     image: photo ? { url: mediaUrl(photo.imageUrl), alt: photo.imageAlt, credit: photo.imageCredit } : null,
-    source: source.source.name,
+    source: event.articlePublished?.sourceName || source.source.name,
     sourceUrl,
     region,
     desk: deskLabel[region] || 'Security',
@@ -95,7 +104,7 @@ export async function listNews({ region, after, limit = pageSize, exclude } = {}
   let cursor = after;
   while (items.length <= limit) {
     const rows = await prisma.npEvent.findMany({
-      where: { ...eligibility(region), ...(exclude ? { id: { not: exclude } } : {}) },
+      where: { ...visible(region), ...(exclude ? { id: { not: exclude } } : {}) },
       select,
       orderBy,
       take: Math.max(24, limit + 1),
@@ -114,17 +123,17 @@ export async function listNews({ region, after, limit = pageSize, exclude } = {}
 }
 
 export async function findNews(id) {
-  const event = await prisma.npEvent.findFirst({ where: { ...eligibility(), id }, select });
+  const event = await prisma.npEvent.findFirst({ where: { ...visible(), id }, select });
   return publicStory(event);
 }
 
 export const sitemapSize = 1000;
 export function sitemapCount() {
-  return prisma.npEvent.count({ where: eligibility() });
+  return prisma.npEvent.count({ where: visible() });
 }
 export async function sitemapStories(chunk) {
   const rows = await prisma.npEvent.findMany({
-    where: eligibility(),
+    where: visible(),
     orderBy: [{ publishedAt: 'asc' }, { id: 'asc' }],
     take: sitemapSize,
     skip: chunk * sitemapSize,

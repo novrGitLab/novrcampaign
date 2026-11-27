@@ -4,13 +4,13 @@
 
 @theme {
   --color-background: var(--paper);
-  --color-foreground: hsl(0 0% 15%);        /* neutral-800 */
+  --color-foreground: var(--ink);        /* neutral-800 */
   --color-card: var(--panel);
-  --color-card-foreground: hsl(0 0% 9%);
+  --color-card-foreground: var(--ink);
   --color-secondary: hsl(0 0% 96.5%);      /* neutral-100 */
   --color-secondary-foreground: hsl(0 0% 9%);
   --color-muted: hsl(0 0% 96.5%);
-  --color-muted-foreground: hsl(0 0% 45%); /* neutral-500 */
+  --color-muted-foreground: var(--subtle); /* neutral-500 */
   --color-accent: hsl(0 0% 96.5%);
   --color-accent-foreground: hsl(0 0% 9%);
   --color-border: hsl(0 0% 89.8%);         /* neutral-200 */
@@ -20,7 +20,7 @@
   --color-primary: var(--pulse-purple);         /* neutral-950 */
   --color-primary-foreground: hsl(0 0% 98%);
   --color-destructive: var(--signal);
-  --color-destructive-foreground: hsl(0 0% 98%);
+  --color-destructive-foreground: var(--on-signal);
 
   /* Brand accents kept for logo moments */
   --color-brand-blue: var(--pulse-blue);
@@ -62,17 +62,17 @@
 
   .dark {
     color-scheme: dark;
-    --color-background: hsl(0 0% 3.9%);
-    --color-foreground: hsl(0 0% 93%);
-    --color-card: hsl(0 0% 7%);
-    --color-card-foreground: hsl(0 0% 93%);
+    --color-background: var(--paper);
+    --color-foreground: var(--ink);
+    --color-card: var(--panel);
+    --color-card-foreground: var(--ink);
     --color-secondary: hsl(0 0% 10%);
     --color-secondary-foreground: hsl(0 0% 93%);
     --color-muted: hsl(0 0% 12%);
-    --color-muted-foreground: hsl(0 0% 60%);
+    --color-muted-foreground: var(--subtle);
     --color-accent: hsl(0 0% 13%);
     --color-accent-foreground: hsl(0 0% 93%);
-    --color-border: hsl(0 0% 16%);
+    --color-border: var(--line);
     --color-input: hsl(0 0% 20%);
     --color-ring: var(--accent);
     --color-success: #8adab9;
@@ -80,7 +80,7 @@
     --color-primary: var(--accent);
     --color-primary-foreground: hsl(0 0% 9%);
     --color-destructive: var(--signal);
-    --color-destructive-foreground: hsl(0 0% 98%);
+    --color-destructive-foreground: var(--on-signal);
   }
 
   /* v4 default border color is currentColor — restore the token */

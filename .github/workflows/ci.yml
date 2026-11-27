@@ -2,6 +2,15 @@ name: CI
 
 on:
   workflow_dispatch:
+    inputs:
+      collector:
+        description: Release the companion collector from its main branch
+        type: boolean
+        default: false
+      model_check:
+        description: Run five synthetic editorial cases on the configured NVIDIA model
+        type: boolean
+        default: false
   push:
     branches:
       - main
@@ -148,13 +157,15 @@ jobs:
         uses: appleboy/ssh-action@v1.2.0
         env:
           RELEASE_SHA: ${{ github.sha }}
+          INCLUDE_COLLECTOR: ${{ inputs.collector }}
+          MODEL_CHECK: ${{ inputs.model_check }}
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key_path: ${{ runner.temp }}/pulse-deploy-key
           fingerprint: ${{ secrets.VPS_HOST_FINGERPRINT }}
           port: ${{ secrets.VPS_PORT || 22 }}
-          envs: RELEASE_SHA
+          envs: RELEASE_SHA,INCLUDE_COLLECTOR,MODEL_CHECK
           command_timeout: 30m
           script: |
             set -eu
@@ -163,7 +174,8 @@ jobs:
             git fetch origin main
             test "$(git rev-parse origin/main)" = "$RELEASE_SHA" || { echo 'A newer release superseded this job'; exit 0; }
             git merge --ff-only "$RELEASE_SHA"
-            bash ./deploy.sh
+            if [ "${INCLUDE_COLLECTOR:-false}" = true ]; then bash ./deploy.sh --with-collector; else bash ./deploy.sh; fi
+            if [ "${MODEL_CHECK:-false}" = true ]; then docker compose exec -T backend node backend/scripts/newsroom-model-check.mjs; fi
       - name: Remove the temporary deployment key
         if: always()
         run: rm -f "$RUNNER_TEMP/pulse-deploy-key"

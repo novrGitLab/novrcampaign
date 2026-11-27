@@ -26,7 +26,7 @@ const fullFeed = `<?xml version="1.0"?><rss version="2.0"><channel><title>t</tit
 <item><title>B</title><link>${ARTICLE_URL}</link><pubDate>${daysAgo(1)}</pubDate><description><![CDATA[${'word '.repeat(200)}]]></description></item>
 </channel></rss>`;
 
-const src = (over = {}) => ({ id: 'test', enabled: true, type: 'rss', feedUrl: FEED_URL, ...over });
+const src = (over = {}) => ({ id: 'test', url: 'https://x.example', enabled: true, type: 'rss', feedUrl: FEED_URL, ...over });
 
 /** Build a fetch stub that serves the feed, counts article fetches, and can fail them. */
 function stubFetch(feedBody, articleBody, { failArticles = false } = {}) {
@@ -142,7 +142,7 @@ describe('fulltext: enrichItemFullText (always fetch, quality-gated on result)',
     assert.equal(out.contentHash, 'h');
   });
 
-  test('near-duplicate page (same first 200 chars) keeps the feed content, no swap', async () => {
+  test('a matching introduction does not discard a substantial new section', async () => {
     // The feed already carries the article body; the page repeats it with a few
     // extra trailing paragraphs. Swapping would only churn the hash.
     const common = 'the same opening paragraph text that both sources share. '.repeat(5); // > 200 chars
@@ -153,8 +153,8 @@ describe('fulltext: enrichItemFullText (always fetch, quality-gated on result)',
       cfg,
       budget: createFetchBudget(1),
     });
-    assert.equal(out.content, feedBody, 'near-duplicate page → keep the feed content unchanged');
-    assert.equal(out.contentHash, 'h');
+    assert.ok(out.content.includes('A much longer trailing section'));
+    assert.ok(out.content.length > feedBody.length);
   });
 
   test('fetch failure keeps the feed content, no throw', async () => {

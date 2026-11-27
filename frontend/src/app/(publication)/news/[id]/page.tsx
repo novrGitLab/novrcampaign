@@ -25,6 +25,7 @@ export default async function Article({ params }: Props) {
     mainEntityOfPage: site + story.href,
     publisher: { '@type': 'Organization', name: 'NovrPulse' },
     citation: story.sourceUrl,
+    ...(story.updatedAt && {dateModified:story.updatedAt}),
     articleSection: story.desk,
     description: story.summary,
     inLanguage: 'en',
@@ -42,9 +43,11 @@ export default async function Article({ params }: Props) {
           ← Front page
         </a>
         <Byline story={story} />
+        {story.format === "brief" && <p className="article-format">News brief</p>}
         <h1>{story.title}</h1>
         {story.image && <Photograph image={story.image} />}
         {story.summary && <p className="standfirst">{story.summary}</p>}
+        {story.sections?.map((section,i) => <section className="article-section" key={i}><h2>{section.heading}</h2>{section.paragraphs.map((p,j) => <p key={j}>{p}</p>)}</section>)}
         {story.context && story.context !== story.summary && (
           <>
             <h2>Why it matters</h2>

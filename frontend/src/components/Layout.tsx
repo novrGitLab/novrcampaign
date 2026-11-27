@@ -4,7 +4,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard, Users, Mail, LogOut, UsersRound, LayoutTemplate,
   Search, Sun, Moon, ShieldAlert, Menu, X, ChevronDown, Bell, AlertTriangle,
-  BarChart3, Rss, Radar, PanelLeftClose, PanelLeftOpen,
+  BarChart3, Rss, PanelLeftClose, PanelLeftOpen, Newspaper, ClipboardList, User,
 } from './ui/icons';
 import { cn } from '../lib/utils';
 import { useAuth } from '../hooks/useAuth';
@@ -16,31 +16,25 @@ import CommandPalette from './CommandPalette';
 // Desktop sidebar collapse state — persisted per browser so the choice sticks.
 const SIDEBAR_COLLAPSED_KEY = 'novr.sidebarCollapsed';
 
-const NAV = [
-  { to: '/admin', label: 'Dashboard', icon: LayoutDashboard, end: true },
-  { to: '/feed', label: 'Feed', icon: Rss },
-  { to: '/contacts', label: 'Contacts', icon: Users },
-  { to: '/segments', label: 'Segments', icon: UsersRound },
-  { to: '/analytics', label: 'Analytics', icon: BarChart3 },
-  { to: '/staff-access', label: 'Staff access', icon: UsersRound, adminOnly: true },
-  { to: '/suppressions', label: 'Suppressions', icon: ShieldAlert },
-];
-
-const AUTOMATIONS = [
-  { to: '/templates', label: 'Templates', icon: LayoutTemplate },
-];
-
-// Pulse is a grouped section. The minimal desk is ONE screen ("Today"), so the
-// group holds a single item; future surfaces slot in as additional children.
-const PULSE = {
-  label: 'Pulse',
-  items: [
-    { to: '/pulse', label: 'Newsroom', icon: Radar, end: true },
-  ],
-};
-
-const BOTTOM = [
-  { to: '/campaigns', label: 'Campaigns', icon: Mail, badge: 'failed' },
+type NavItemSpec = {to:string;label:string;icon:typeof Mail;badge?:string;adminOnly?:boolean};
+const NAV_GROUPS: {label:string;items:NavItemSpec[]}[] = [
+  { label: 'Editorial', items: [
+    { to: '/pulse', label: 'Newsroom', icon: Newspaper },
+    { to: '/articles', label: 'Article review', icon: ClipboardList },
+    { to: '/feed', label: 'Source feed', icon: Rss },
+    { to: '/admin', label: 'Overview', icon: LayoutDashboard },
+  ]},
+  { label: 'Publishing', items: [
+    { to: '/campaigns', label: 'Campaigns', icon: Mail, badge: 'failed' },
+    { to: '/templates', label: 'Templates', icon: LayoutTemplate },
+    { to: '/analytics', label: 'Analytics', icon: BarChart3 },
+  ]},
+  { label: 'Audience', items: [
+    { to: '/contacts', label: 'Contacts', icon: Users },
+    { to: '/segments', label: 'Segments', icon: UsersRound },
+    { to: '/suppressions', label: 'Suppressions', icon: ShieldAlert },
+    { to: '/staff-access', label: 'Staff access', icon: User, adminOnly: true },
+  ]},
 ];
 
 function NavItem({ to, label, icon: Icon, end=false, badge=undefined, collapsed, onClick }) {
@@ -49,6 +43,7 @@ function NavItem({ to, label, icon: Icon, end=false, badge=undefined, collapsed,
   return (
     <Link
       href={to}
+      aria-label={label}
       aria-current={isActive ? "page" : undefined}
       onClick={onClick}
       title={collapsed ? label : undefined}
@@ -58,15 +53,15 @@ function NavItem({ to, label, icon: Icon, end=false, badge=undefined, collapsed,
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1',
           collapsed && 'justify-center px-0',
           isActive
-            ? 'bg-brand-purple/10 text-highlight dark:bg-brand-purple/25'
-            : 'text-muted-foreground hover:bg-secondary/70 hover:text-foreground',
+            ? 'desk-link-active'
+            : 'desk-link-idle',
         )
       }
     >
 
         <>
           {isActive && (
-            <span className="absolute inset-y-1.5 left-0 w-1 rounded-full bg-linear-to-b from-brand-blue via-brand-purple to-brand-red" />
+            <span className="absolute inset-y-1.5 left-0 w-1 rounded-full bg-highlight" />
           )}
           <Icon className="h-4 w-4 shrink-0" />
           {!collapsed && <span className="flex-1">{label}</span>}
@@ -86,7 +81,7 @@ function FailedBadge({ collapsed }) {
     return <span className="ml-4 mt-[-16px] h-2 w-2 shrink-0 rounded-full bg-destructive" />;
   }
   return (
-    <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1.5 text-[10px] font-semibold tabular-nums text-white">
+    <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1.5 text-[10px] font-semibold tabular-nums text-destructive-foreground">
       {failed.length > 99 ? '99+' : failed.length}
     </span>
   );
@@ -122,6 +117,19 @@ export function Layout({children}: {children: React.ReactNode}) {
       return false;
     }
   });
+
+  const drawerRef = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const drawer = drawerRef.current;
+    if (mobileOpen && drawer && !drawer.open) drawer.showModal();
+    if (!mobileOpen && drawer?.open) drawer.close();
+  }, [mobileOpen]);
+  useEffect(() => {
+    const wide = matchMedia('(min-width: 1024px)');
+    const resize = () => { if (wide.matches) setMobileOpen(false); };
+    wide.addEventListener('change', resize);
+    return () => wide.removeEventListener('change', resize);
+  }, []);
 
   const bellRef = useRef(null);
   const menuRef = useRef(null);
@@ -167,8 +175,8 @@ export function Layout({children}: {children: React.ReactNode}) {
     return (
     <aside
       className={cn(
-        'flex h-dvh shrink-0 flex-col overflow-y-auto border-r border-border bg-background',
-        collapsed ? 'w-16' : 'w-60',
+        'desk-sidebar flex h-dvh shrink-0 flex-col border-r border-border bg-card',
+        collapsed ? 'w-16' : 'w-64 max-w-full',
       )}
     >
 
@@ -185,7 +193,7 @@ export function Layout({children}: {children: React.ReactNode}) {
             {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
           </button>
         )}
-        {!collapsed && (
+        {!collapsed && !isMobile && (
           <button
             onClick={() => setPaletteOpen(true)}
             aria-label="Search"
@@ -197,54 +205,17 @@ export function Layout({children}: {children: React.ReactNode}) {
       </div>
 
 
-      <div className={cn('mt-2 h-0.5 rounded-full bg-linear-to-r from-brand-blue via-brand-purple to-brand-red', collapsed ? 'mx-2' : 'mx-4')} />
-
-
-      {!collapsed && <p className="desk-kicker px-4 pt-4">Editorial desk</p>}
-
-
-      <nav className={cn('mt-4 flex-1 space-y-4 overflow-y-auto pb-4', collapsed ? 'px-2' : 'px-3')}>
-        <div className="space-y-0.5">
-          {NAV.filter(item => !item.adminOnly || user?.role === 'ADMIN').map((item) => (
+      <nav aria-label="Newsroom navigation" className={cn('desk-scroll mt-4 min-h-0 flex-1 space-y-4 overflow-y-auto pb-3', collapsed ? 'px-2' : 'px-3')}>
+        {NAV_GROUPS.map(group => <div key={group.label}>
+          {!collapsed && <p className="desk-group">{group.label}</p>}
+          {group.items.filter(item => !item.adminOnly || user?.role === 'ADMIN').map(item =>
             <NavItem key={item.to} {...item} collapsed={collapsed} onClick={isMobile ? () => setMobileOpen(false) : undefined} />
-          ))}
-        </div>
-
-        <div>
-          {!collapsed && (
-            <p className="mb-1 px-3 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/80">
-              {PULSE.label}
-            </p>
           )}
-          <div className="space-y-0.5">
-            {PULSE.items.map((item) => (
-              <NavItem key={item.to} {...item} collapsed={collapsed} onClick={isMobile ? () => setMobileOpen(false) : undefined} />
-            ))}
-          </div>
-        </div>
-
-        <div>
-          {!collapsed && (
-            <p className="mb-1 px-3 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/80">
-              Automations
-            </p>
-          )}
-          <div className="space-y-0.5">
-            {AUTOMATIONS.map((item) => (
-              <NavItem key={item.to} {...item} collapsed={collapsed} onClick={isMobile ? () => setMobileOpen(false) : undefined} />
-            ))}
-          </div>
-        </div>
-
-        <div className="space-y-0.5">
-          {BOTTOM.map((item) => (
-            <NavItem key={item.to} {...item} collapsed={collapsed} onClick={isMobile ? () => setMobileOpen(false) : undefined} />
-          ))}
-        </div>
+        </div>)}
       </nav>
 
 
-      <div className="border-t border-border p-3">
+      <div className="shrink-0 border-t border-border p-2">
         {health?.checks?.plunk && !collapsed && (
           <div className="mb-2 flex items-center justify-between rounded-lg bg-secondary px-3 py-1.5">
             <span className="text-xs font-medium text-muted-foreground">Delivery service</span>
@@ -267,7 +238,7 @@ export function Layout({children}: {children: React.ReactNode}) {
             <span className="relative">
               <Bell className="h-4 w-4" />
               {failed.length > 0 && (
-                <span className="absolute -right-1 -top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-destructive px-1 text-[9px] font-bold text-white">
+                <span className="absolute -right-1 -top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-destructive px-1 text-[9px] font-bold text-destructive-foreground">
                   {failed.length > 9 ? '9+' : failed.length}
                 </span>
               )}
@@ -275,7 +246,7 @@ export function Layout({children}: {children: React.ReactNode}) {
             {!collapsed && <span className="flex-1 text-left">Notifications</span>}
           </button>
           {bellOpen && (
-            <div className="absolute bottom-full left-2 right-2 mb-1 rounded-xl border border-border bg-card p-2 shadow-lg animate-fade-rise">
+            <div className="desk-popover absolute bottom-full left-0 mb-1 rounded-xl border border-border bg-card p-2 shadow-lg animate-fade-rise">
               <p className="px-2 pb-1 pt-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
                 Notifications
               </p>
@@ -325,7 +296,7 @@ export function Layout({children}: {children: React.ReactNode}) {
             )}
           </button>
           {menuOpen && (
-            <div className="absolute bottom-full left-2 right-2 mb-1 rounded-xl border border-border bg-card p-1.5 shadow-lg animate-fade-rise">
+            <div className="desk-popover absolute bottom-full left-0 mb-1 rounded-xl border border-border bg-card p-1.5 shadow-lg animate-fade-rise">
               <p className="truncate px-2 pb-1 pt-1.5 text-sm font-medium">{user?.name || user?.email}</p>
               <p className="truncate px-2 pb-2 text-xs text-muted-foreground">{user?.email}</p>
               <button
@@ -352,26 +323,18 @@ export function Layout({children}: {children: React.ReactNode}) {
 
   return (
     <div className="staff-shell flex h-dvh overflow-hidden bg-background">
-      <div className="hidden md:block">{sidebar(false)}</div>
-      {mobileOpen && (
-        <div className="fixed inset-0 z-40 md:hidden">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setMobileOpen(false)} />
-          <div className="relative h-full">
-            <button
-              onClick={() => setMobileOpen(false)}
-              aria-label="Close menu"
-              className="absolute right-3 top-3 z-10 rounded-lg p-1.5 text-muted-foreground hover:bg-secondary"
-            >
-              <X className="h-4 w-4" />
-            </button>
-            {sidebar(true)}
-          </div>
-        </div>
-      )}
+      <div className="hidden lg:block">{sidebar(false)}</div>
+      <dialog ref={drawerRef} className="desk-drawer" aria-label="Newsroom menu"
+        onClose={() => setMobileOpen(false)} onClick={e => {if (e.target === e.currentTarget) setMobileOpen(false);}}>
+        {mobileOpen && <div className="relative">
+          <button aria-label="Close menu" className="desk-close" onClick={() => setMobileOpen(false)}><X /></button>
+          {sidebar(true)}
+        </div>}
+      </dialog>
 
       <div className="flex h-dvh min-w-0 flex-1 flex-col overflow-hidden">
 
-        <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border bg-background px-4 md:hidden">
+        <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border bg-background px-4 lg:hidden">
           <button
             onClick={() => setMobileOpen(true)}
             aria-label="Open menu"
@@ -379,7 +342,7 @@ export function Layout({children}: {children: React.ReactNode}) {
           >
             <Menu className="h-4 w-4" />
           </button>
-          <img src="/cybernovr-logo.png" alt="CyberNovr" className="h-6 w-auto" />
+          <Link className="desk-brand" href="/pulse">Novr<i>Pulse</i></Link>
           <div className="flex-1" />
           <button
             onClick={() => setPaletteOpen(true)}
