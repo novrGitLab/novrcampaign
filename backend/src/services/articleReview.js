@@ -198,8 +198,8 @@ export async function saveArticle(id, version, article, { publishBy, region } = 
   const row = await reviewRecord(id);
   if (row.articleVersion !== version) throw Conflict('The draft has changed. Reload before editing.');
   if (!row.articleEvidence || !row.articleDraft) throw Conflict('Prepare a source-backed draft first.');
-  const edition = region ?? row.articleDraft.region ?? row.articleRegion ?? row.cyberRegion;
-  if (edition != null && !['NG', 'AF', 'GLOBAL'].includes(edition)) throw BadRequest('Select a valid edition.');
+  const edition = region ?? row.articleDraft.region ?? row.articleRegion ?? row.cyberRegion ?? null;
+  if (edition !== null && !['NG', 'AF', 'GLOBAL'].includes(edition)) throw BadRequest('Select a valid edition.');
   const content = validateArticle(article, row.articleEvidence);
   const draft = {
     ...content,
