@@ -6,7 +6,7 @@ The public newsroom and staff desk run on Next.js with TypeScript and Tailwind. 
 
 Use the authoritative DNS zone for cybernovr.com. At audit time the domain delegated to dns1.namecheaphosting.com and dns2.namecheaphosting.com. The hosting account's cPanel Zone Editor contains the `pulse` A record pointing to `213.136.94.10` with a 300-second TTL. Check for conflicting A, AAAA or CNAME records. Confirm the resolved name reaches this Contabo instance on 80 and 443.
 
-Register a server-based Zoho application, or an approved callback on an existing client for this relying party. Register exactly `https://pulse.cybernovr.com/api/auth/oidc/callback`. Put the client ID and secret in the VPS repository's untracked .env. The browser never receives the secret. The issuer and verified email domain must match the staff directory.
+Register a server-based Zoho application, or an approved callback on an existing client for this relying party. Register exactly `https://pulse.cybernovr.com/api/auth/oidc/callback`. Put the client ID and secret in the VPS repository's untracked .env. The browser never receives the secret. The issuer and verified email domain must match the staff directory. The first verified sign-in creates a staff profile using the Zoho subject, email and display name. Pulse links an existing account by its verified email and keeps its assigned role. Domain restrictions apply to returning staff as well.
 
 | Variable | Production value or purpose |
 | --- | --- |
@@ -16,7 +16,7 @@ Register a server-based Zoho application, or an approved callback on an existing
 | OIDC_CLIENT_ID, OIDC_CLIENT_SECRET | Registered server-based client |
 | OIDC_REDIRECT_URI | https://pulse.cybernovr.com/api/auth/oidc/callback |
 | OIDC_ALLOWED_EMAIL_DOMAINS | cybernovr.com |
-| PULSE_EDITOR_EMAILS | Explicit comma-separated initial administrators who have no existing Pulse account. Existing verified staff email matches retain their current role. |
+| OIDC_DEFAULT_ROLE | First sign-in role for verified staff in OIDC_ALLOWED_EMAIL_DOMAINS. The current policy assigns ADMIN. SENDER and VIEWER are also supported. Existing roles are preserved on every sign-in. |
 | JWT_SECRET | Existing high-entropy signing secret for the temporary OIDC flow |
 | PLUNK_API_KEY, NP_PULSE_SEGMENT | Existing Plunk secret key and the static newsletter audience segment |
 | PEXELS_API_KEY | Optional free Pexels photo search. Uploads work independently. |
