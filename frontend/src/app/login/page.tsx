@@ -16,7 +16,7 @@ export default async function Login({ searchParams }: { searchParams: Promise<{ 
         </p>
       )}
       <a className="login-link" href="/api/auth/oidc/start">
-        Continue with Zoho <span aria-hidden="true">↗</span>
+        Continue with Zoho
       </a>
     </StaffEntry>
   );

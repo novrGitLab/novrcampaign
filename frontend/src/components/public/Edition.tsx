@@ -69,7 +69,7 @@ function Spread({ items }: { items: Edition['items'] }) {
         <div>
           <h2>No stories in this edition yet.</h2>
           <a className="read" href="#newsletter">
-            Get the briefing ↗
+            Get the briefing
           </a>
         </div>
       </div>
@@ -85,7 +85,7 @@ function Spread({ items }: { items: Edition['items'] }) {
           </h2>
           {lead.summary && <p className="standfirst">{lead.summary}</p>}
           <a className="read" href={lead.href}>
-            Read story <span aria-hidden="true">↗</span>
+            Read story
           </a>
         </article>
         {rest.length > 0 && (
@@ -122,7 +122,7 @@ export async function EditionPage({ desk = '', after = '' }: { desk?: string; af
       <Spread items={edition.items} />
       {edition.next && (
         <a className="read older" href={'?after=' + edition.next}>
-          Earlier stories →
+          Earlier stories
         </a>
       )}
     </>

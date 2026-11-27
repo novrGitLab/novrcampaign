@@ -51,6 +51,12 @@
   .desk-nav,
   main,
   .footer-inner,
+  .signup button:is(:hover, :focus-visible) {
+    background: var(--inverse);
+    color: var(--pulse-purple);
+    text-decoration: underline;
+    text-underline-offset: 0.18em;
+  }
   .colophon {
     padding-inline: var(--gutter);
   }
@@ -325,7 +331,9 @@
     gap: 2rem;
     padding-block: 3rem;
   }
-  .footer-inner h2, .footer-inner label { color: var(--inverse); }
+  .footer-inner :is(h2, h2 i, p, label) {
+    color: var(--inverse);
+  }
   .footer-inner h2 {
     font: 500 clamp(2.7rem, 5vw, 5rem)/1 var(--display);
     letter-spacing: -0.05em;
@@ -343,7 +351,15 @@
     gap: 0.5rem;
     margin-top: 0.45rem;
   }
-  .footer-inner :focus-visible { outline-color: var(--inverse); }
+  .signup :is(input, button) {
+    height: var(--signup-control-height);
+    min-height: var(--signup-control-height);
+    line-height: 1.25;
+  }
+  .footer-inner :focus-visible {
+    outline: 3px solid var(--inverse);
+    outline-offset: 3px;
+  }
   .signup input {
     border: 1px solid var(--inverse);
     border-radius: var(--radius);

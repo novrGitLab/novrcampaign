@@ -183,7 +183,7 @@ export function PulsePreviewModal({ open, onClose, briefing, publishMode = false
                   disabled={!hasContent || !segmentConfigured || !briefing.reviewComplete || alreadyPublished || publish.isPending}
                 >
                   <Send className="h-4 w-4" />
-                  Send to subscribers →
+                  Send to subscribers
                 </Button>
                 {!segmentConfigured && (
                   <InfoTip content="Select a newsletter audience in the delivery settings." label="No segment configured" />
