@@ -6,11 +6,13 @@
 #   git pull -> build -> up -d -> migrate -> health check -> status.
 #
 # Usage (from the app repo root on the VPS):
-#   ./deploy.sh                 # app stack only (no collector)
-#   ./deploy.sh --with-collector# also start the collector profile
+#   ./deploy.sh                 # app stack only
+#   ./deploy.sh --with-collector# also (re)build + up the standalone collector stack
 #
-# Prereqs: Docker Engine + Compose plugin; a filled .env in this directory;
-# for --with-collector, the novr-collection repo cloned at ${COLLECTOR_CONTEXT:-../novr-collection}.
+# Prereqs: Docker Engine + Compose plugin; a filled .env in this directory.
+# The collector is a SEPARATE stack in the novr-collection repo; it is deployed
+# from that repo. `--with-collector` is a convenience that also drives it, and
+# requires the novr-collection repo cloned at ${COLLECTOR_CONTEXT:-../novr-collection}.
 
 set -euo pipefail
 
@@ -25,35 +27,48 @@ die()  { printf '%s[error]%s %s\n' "$RED" "$RST" "$*" >&2; exit 1; }
 WITH_COLLECTOR=0
 [[ "${1:-}" == "--with-collector" ]] && WITH_COLLECTOR=1
 
+COLLECTOR_DIR="${COLLECTOR_CONTEXT:-../novr-collection}"
+
 COMPOSE=(docker compose)
-PROFILE_ARGS=()
-if [[ "$WITH_COLLECTOR" == "1" ]]; then
-  PROFILE_ARGS=(--profile collector)
-  if [[ ! -d "${COLLECTOR_CONTEXT:-../novr-collection}" ]]; then
-    die "collector profile requested but ${COLLECTOR_CONTEXT:-../novr-collection} not found (clone novr-collection or set COLLECTOR_CONTEXT)"
-  fi
-fi
 
 # ── 0. Preconditions ──────────────────────────────────────────────────────────
 command -v docker >/dev/null 2>&1 || die "docker not installed"
 docker compose version >/dev/null 2>&1 || die "docker compose plugin not installed"
 [[ -f .env ]] || die ".env not found — copy .env.production.example to .env and fill it"
 
+# The app and the standalone collector share an external network. Create it once;
+# both `docker compose up` invocations require it to exist.
+if ! docker network inspect novr-shared >/dev/null 2>&1; then
+  log "Creating shared network novr-shared"
+  docker network create novr-shared >/dev/null
+fi
+
+if [[ "$WITH_COLLECTOR" == "1" ]]; then
+  [[ -d "$COLLECTOR_DIR" ]] || die "collector requested but $COLLECTOR_DIR not found (clone novr-collection or set COLLECTOR_CONTEXT)"
+  [[ -f "$COLLECTOR_DIR/.env" ]] || die "$COLLECTOR_DIR/.env not found — copy .env.example to .env and fill it"
+fi
+
 # ── 1. Update source ──────────────────────────────────────────────────────────
 log "Pulling latest source"
 git pull --ff-only
 if [[ "$WITH_COLLECTOR" == "1" ]]; then
   log "Pulling collector source"
-  ( cd "${COLLECTOR_CONTEXT:-../novr-collection}" && git pull --ff-only )
+  ( cd "$COLLECTOR_DIR" && git pull --ff-only )
 fi
 
 # ── 2. Build images ───────────────────────────────────────────────────────────
 log "Building images"
-"${COMPOSE[@]}" "${PROFILE_ARGS[@]}" build
+"${COMPOSE[@]}" build
 
 # ── 3. Start / update containers ──────────────────────────────────────────────
 log "Starting containers"
-"${COMPOSE[@]}" "${PROFILE_ARGS[@]}" up -d
+"${COMPOSE[@]}" up -d
+
+# ── 3b. Standalone collector stack ────────────────────────────────────────────
+if [[ "$WITH_COLLECTOR" == "1" ]]; then
+  log "Building + starting collector (standalone stack)"
+  ( cd "$COLLECTOR_DIR" && "${COMPOSE[@]}" up -d --build )
+fi
 
 # ── 4. Migrate ────────────────────────────────────────────────────────────────
 # The backend entrypoint already runs `prisma migrate deploy` on start; this
@@ -71,7 +86,7 @@ for i in $(seq 1 30); do
   fi
   if [[ "$i" == "30" ]]; then
     warn "API did not report healthy via $HEALTH_URL — showing logs"
-    "${COMPOSE[@]}" "${PROFILE_ARGS[@]}" logs --tail=40 backend || true
+    "${COMPOSE[@]}" logs --tail=40 backend || true
     die "health check failed"
   fi
   sleep 2
@@ -79,7 +94,11 @@ done
 
 # ── 6. Status ─────────────────────────────────────────────────────────────────
 log "Stack status"
-"${COMPOSE[@]}" "${PROFILE_ARGS[@]}" ps
+"${COMPOSE[@]}" ps
+if [[ "$WITH_COLLECTOR" == "1" ]]; then
+  log "Collector status"
+  ( cd "$COLLECTOR_DIR" && "${COMPOSE[@]}" ps )
+fi
 
 echo
 ok "Deploy complete."

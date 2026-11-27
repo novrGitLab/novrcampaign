@@ -1,29 +1,35 @@
 # Deploying NovrCampaign on a Contabo Ubuntu VPS
 
 Single-VPS Docker Compose deployment: PostgreSQL, the Node API, the static SPA
-(nginx), Caddy (reverse proxy + automatic TLS), and optionally the standalone
-`novr-collection` service. Deployed by `git pull` on the server — no registry, no CI.
+(nginx), Caddy (reverse proxy + automatic TLS), and — when used — the standalone
+`novr-collection` service as a **separate compose stack from its own repo**.
+Deployed by `git pull` on the server — no registry, no CI.
 
 ## Topology
 
+Two compose stacks share one **external** Docker network, `novr-shared`:
+
 ```
-                       ┌────────────────────────── VPS ──────────────────────────┐
-  Internet             │                                                         │
-  :80 / :443  ───────► │  caddy ──►  /            ──► frontend (nginx :80)       │
-                       │        └─►  /api/*        ──► backend  (:4000)          │
-                       │                                   │                     │
-                       │                                   ├─► db (postgres:16)  │
-                       │                                   └─► collector (:4100) │
-                       │                                       (optional profile) │
-                       │  all app containers on the internal `novr` bridge net   │
-                       │  only `caddy` publishes host ports (80/443)             │
-                       └─────────────────────────────────────────────────────────┘
+                        ┌────────────────────────── VPS ───────────────────────────┐
+  Internet              │   stack A: ~/novr/novrcampaign                            │
+  :80 / :443  ────────► │  caddy ──►  /       ──► frontend (nginx :80)              │
+                        │        └─►  /api/*  ──► backend  (:4000)                  │
+                        │                            └─► db (postgres:16)           │
+                        │                                                           │
+                        │   stack B: ~/novr/novr-collection  (own repo, own up)     │
+                        │  collector (:4100)  ◄── backend calls http://collector:4100│
+                        │                                                           │
+                        │  both stacks join the external network `novr-shared`      │
+                        │  only `caddy` publishes host ports (80/443)               │
+                        └───────────────────────────────────────────────────────────┘
 ```
 
-- `db` and `collector` are **never** published to the host — internal network only.
+- `db` and `collector` are **never** published to the host — shared network only.
 - The backend reaches the collector at `http://collector:4100` over their HMAC API.
 - The browser reaches the API at `/api` (same origin), proxied by Caddy. `VITE_API_URL=/api`
   is inlined into the SPA at build time.
+- The collector is **not** part of `novrcampaign/docker-compose.yml`. It is started
+  from its own repo, independently of the app's deploy.
 
 ## 1. Prerequisites
 
@@ -67,10 +73,7 @@ sudo ufw enable
 
 Only 22/80/443 are exposed. PostgreSQL and the collector have no host ports.
 
-## 4. Clone BOTH repos side by side
-
-The compose `collector` service resolves its build context to `../novr-collection`
-(overridable via `COLLECTOR_CONTEXT`). Cloning them side by side makes that resolve.
+## 4. Clone BOTH repos + create the shared network
 
 ```bash
 mkdir -p ~/novr && cd ~/novr
@@ -79,10 +82,14 @@ git clone <collector-repo-url> novr-collection
 # Result:
 #   ~/novr/novrcampaign
 #   ~/novr/novr-collection
+
+# The external network both stacks join (create ONCE; survives compose down):
+docker network create novr-shared
 ```
 
-If the collector lives elsewhere, skip its clone and instead export
-`COLLECTOR_CONTEXT=/path/to/novr-collection` when running `deploy.sh`.
+If the collector runs on a different host (see §12 "Lift to its own VPS"), it does
+not need to be cloned here and the shared network is not used — point
+`NP_COLLECTION_BASE_URL` at that host instead.
 
 ## 5. Configure `.env`
 
@@ -103,7 +110,20 @@ Fill every `<...>` placeholder. Minimum for a first boot:
 | Email | `PLUNK_API_KEY`, `PLUNK_WEBHOOK_SECRET` |
 | LLM | `NP_LLM_API_KEY`, `NP_BULK_MODEL`, `NP_FRONTIER_MODEL` |
 | Cron | `NP_COLLECT_CRON_SECRET` |
-| Collector (only if used) | `NP_COLLECTION_SECRET` = `NOVR_COLLECTION_KEY_PULSE_2026_01`, `NP_COLLECTION_ENABLED` |
+| Collector (only if used) | `NP_COLLECTION_SECRET`, `NP_COLLECTION_ENABLED` |
+
+Then configure the collector's own `.env` (separate file, separate repo):
+
+```bash
+cd ~/novr/novr-collection
+cp .env.example .env
+chmod 600 .env
+nano .env
+```
+
+Set `NOVR_COLLECTION_KEY_PULSE_2026_01` to the **same value** as the app's
+`NP_COLLECTION_SECRET`. They are the two halves of the shared HMAC secret; a
+mismatch fails closed with 401.
 
 Generate secrets without committing them:
 
@@ -116,19 +136,26 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))" #
 > `DOMAIN=<vps-ip>` and `CADDY_SITE_ADDRESS=:80` (plain HTTP).
 > When the domain is ready, see §10.
 
-## 6. First deploy
+## 6. Deploy the two stacks
 
 ```bash
+# 1) App stack (db, backend, frontend, caddy):
 cd ~/novr/novrcampaign
-# Without the collector:
 ./deploy.sh
-# With the standalone collector:
-./deploy.sh --with-collector
+
+# 2) Collector stack (from its OWN repo):
+cd ~/novr/novr-collection
+docker compose up -d --build
 ```
 
-`deploy.sh` runs: `git pull` → `docker compose build` → `up -d` → `prisma migrate deploy`
-→ `curl /api/health` → `compose ps`. The backend image's entrypoint also runs
-`prisma migrate deploy` on every start, so first boot and upgrades both migrate.
+`./deploy.sh` runs: `git pull` → `docker compose build` → `up -d` → `prisma migrate
+deploy` → `curl /api/health` → `compose ps`. It also creates `novr-shared` if
+missing. The backend image's entrypoint also runs `prisma migrate deploy` on every
+start, so first boot and upgrades both migrate.
+
+> `./deploy.sh --with-collector` is a convenience that also drives the collector
+> stack (it requires `../novr-collection` with a filled `.env`). The collector can
+> always be started directly from its own repo regardless.
 
 ### Seed the admin user
 
@@ -138,6 +165,26 @@ docker compose run --rm --no-deps backend sh -c "cd backend && node prisma/seed.
 
 This upserts `SEED_EMAIL` (default `admin@novrcampaign.local`) with `SEED_PASSWORD`.
 **Log in and change that password immediately.**
+
+### Cut over to the collector
+
+Once both stacks are up, enable the backend's collector client:
+
+```bash
+cd ~/novr/novrcampaign
+sed -i 's/^NP_COLLECTION_ENABLED=.*/NP_COLLECTION_ENABLED=true/' .env
+docker compose up -d backend          # re-reads .env
+```
+
+Verify the collector is reachable and healthy:
+
+```bash
+cd ~/novr/novr-collection
+docker compose ps                      # collector should be "healthy"
+docker compose logs -f collector       # follow logs
+# From the app's network, the backend resolves it as collector:4100:
+docker run --rm --network novr-shared curlimages/curl -fsS http://collector:4100/healthz
+```
 
 ## 7. Daily collection cron (host cron — recommended)
 
@@ -162,20 +209,37 @@ secret in the crontab, which is only readable by the `deploy` user):
 0 5 * * * set -a; . /home/deploy/novr/novrcampaign/.env; set +a; curl -fsS -X POST -H "Authorization: Bearer $NP_COLLECT_CRON_SECRET" http://127.0.0.1/api/pulse/collect/run >> /var/log/novr-collect.log 2>&1
 ```
 
+The log lands in `/var/log/novr-collect.log`; verify a run by tailing it after the
+scheduled time, and by checking the collector received the call:
+
+```bash
+tail -f /var/log/novr-collect.log
+cd ~/novr/novr-collection && docker compose logs --since 10m collector
+```
+
 ## 8. Operations
 
 ```bash
+# App stack
 cd ~/novr/novrcampaign
-
 docker compose ps                                   # status
 docker compose logs -f backend                      # follow API logs
 docker compose logs -f caddy                        # TLS / access logs
 docker compose restart backend                      # restart one service
 docker compose up -d --build                        # rebuild after a change
-docker compose --profile collector up -d --build    # with the collector
 docker compose down                                 # stop (keeps volumes)
-docker compose down -v                              # stop AND delete data (destructive)
+
+# Collector stack (own repo)
+cd ~/novr/novr-collection
+docker compose ps
+docker compose logs -f collector
+docker compose up -d --build                        # rebuild after a change
+docker compose down                                 # stop the collector only
 ```
+
+`docker network create novr-shared` is a one-time step; both `down` commands leave
+the external network intact. The two stacks are otherwise independent.
+
 
 ## 9. Rollback
 
@@ -238,23 +302,60 @@ gunzip -c ~/backups/novr-2026-11-26.sql.gz | docker compose exec -T db psql -U n
 
 ## 12. Collector placement — decision
 
-The collector is a **separate repository** and runs as an **optional Compose profile**
-(`profiles: ["collector"]`) inside this stack's compose file, rather than a separate
-compose project. Rationale:
+The collector is a **separate repository** and runs as its **own compose stack**
+(`novr-collection/docker-compose.yml`), startable from its own folder:
 
-- **Shared network without duplication.** The backend already needs to reach
-  `http://collector:4100`; putting it in the same compose file makes it a first-class
-  member of the `novr` network with one `up`.
-- **Still optional and standalone.** The profile keeps it off by default, so the app
-  runs (in-app collector) with no collector repo present. It is its own container,
-  own port, own repo, own lifecycle — satisfying "still a separate service".
-- **Relocatable.** The build context is `COLLECTOR_CONTEXT` (default
-  `../novr-collection`), so the repo can be cloned anywhere.
+```bash
+cd ~/novr/novr-collection && docker compose up -d
+```
 
-**Alternative (documented, not chosen):** a separate `docker-compose.collector.yml`
-with an `external: true` shared network. Use this only if the collector must be
-deployed and versioned fully independently of the app; it costs an extra network
-bootstrap step and a second `up`. For a single VPS, the profile is simpler.
+The two stacks are joined by an **external** Docker network, `novr-shared`, which
+both composes declare as `external: true`. The collector attaches to it and does
+**not** publish port 4100 to the host; the app's backend resolves it as
+`http://collector:4100` (a container-DNS name on the shared network). The port is
+reachable only by containers on that network.
+
+Rationale:
+
+- **Fully standalone, owner-initiated.** The collector is not owned by the app's
+  compose and is not merely a profile of it. You can start, stop, rebuild, or redeploy
+  the collector without touching the app stack (and vice versa).
+- **One network, no duplication.** The shared external network is created once
+  (`docker network create novr-shared`) and survives `compose down` on either side.
+  Container DNS on a user-defined network provides the `collector` name the backend
+  needs — no `links`, no published ports.
+- **Relocatable with zero app change.** Moving the collector to its own VPS later is
+  a clone + `up` + repointing `NP_COLLECTION_BASE_URL`; nothing in the app's source
+  changes.
+
+### Lift the collector to its own VPS later
+
+The collector is already independent, so relocation is the same flow on another box:
+
+```bash
+# On the collector VPS:
+mkdir -p ~/novr && cd ~/novr
+git clone <collector-repo-url> novr-collection
+cd novr-collection
+cp .env.example .env && chmod 600 .env
+nano .env                       # set the matching NOVR_COLLECTION_KEY_PULSE_2026_01
+docker compose up -d --build
+```
+
+Then, in the **app's** `.env` on the app VPS, point the backend at the collector
+host instead of the shared network, and restart only the backend:
+
+```bash
+cd ~/novr/novrcampaign
+# e.g. a private address or a TLS-fronted hostname:
+NP_COLLECTION_BASE_URL=https://collector.example.com
+docker compose up -d backend
+```
+
+There is **no app code change** — only the base URL (and, if the collector host uses
+a different LLM/secret, the shared secret value kept in both `.env` files). When the
+collector is remote, `novr-shared` is not needed by the collector; leave it in place
+for the app stack (harmless) or remove the collector's `networks` block.
 
 ## 13. First-deploy command sequence (owner)
 
@@ -262,30 +363,52 @@ bootstrap step and a second `up`. For a single VPS, the profile is simpler.
 # 1. as root: install docker (§2), create deploy user (§3), firewall (§3)
 su - deploy
 
-# 2. clone both repos side by side (§4)
+# 2. clone both repos + create the shared network (§4)
 mkdir -p ~/novr && cd ~/novr
 git clone <app-repo-url> novrcampaign
 git clone <collector-repo-url> novr-collection
+docker network create novr-shared
 
 # 3. configure env (§5)
 cd ~/novr/novrcampaign
 cp .env.production.example .env && chmod 600 .env
 nano .env                       # fill DOMAIN, POSTGRES_*, JWT_SECRET, PLUNK_*, LLM, NP_COLLECT_CRON_SECRET
+cd ~/novr/novr-collection
+cp .env.example .env && chmod 600 .env
+nano .env                       # set NOVR_COLLECTION_KEY_PULSE_2026_01 = NP_COLLECTION_SECRET
 
-# 4. deploy (§6)
-./deploy.sh --with-collector
+# 4. deploy the app stack (§6)
+cd ~/novr/novrcampaign
+./deploy.sh
 
-# 5. seed admin, then change the password (§6)
+# 5. deploy the collector stack from its own repo (§6)
+cd ~/novr/novr-collection
+docker compose up -d --build
+
+# 6. cut the backend over to the collector (§6)
+cd ~/novr/novrcampaign
+sed -i 's/^NP_COLLECTION_ENABLED=.*/NP_COLLECTION_ENABLED=true/' .env
+docker compose up -d backend
+
+# 7. seed admin, then change the password (§6)
 docker compose run --rm --no-deps backend sh -c "cd backend && node prisma/seed.js"
 
-# 6. schedule cron (§7, §11)
+# 8. schedule cron (§7, §11)
 crontab -e
 
-# 7. visit http://<vps-ip>/ , log in, change the seeded password
+# 9. visit http://<vps-ip>/ , log in, change the seeded password
 ```
 
 ## 14. Risks / must-test on the real VPS
 
+- **Network creation order.** `novr-shared` must exist before EITHER stack starts
+  (both composes declare it `external: true`); `docker compose up` fails fast if it
+  is missing. `deploy.sh` creates it if absent; the collector's manual `up` does not
+  — run `docker network create novr-shared` first when deploying the collector alone.
+- **Container DNS is per-network.** The backend resolves `collector` only because both
+  are attached to the same user-defined network. If the collector is later moved to
+  another host, `http://collector:4100` no longer resolves — repoint
+  `NP_COLLECTION_BASE_URL` (see §12).
 - **Path for `git pull --ff-only`** in `deploy.sh` assumes the working tree is clean
   and on a tracking branch; a dirty checkout aborts the deploy (by design).
 - **First `docker build` needs outbound network** (npm registry, Prisma engines).
@@ -298,8 +421,10 @@ crontab -e
 - **The collector is untested end-to-end against the app** in this environment — run
   one manual `POST /api/pulse/collect/run` with `NP_COLLECTION_ENABLED=true` and confirm
   HMAC acceptance before enabling the cron.
-- **Collector secret parity**: `NP_COLLECTION_SECRET` (app) MUST equal
-  `NOVR_COLLECTION_KEY_PULSE_2026_01` (collector). A mismatch fails closed.
+- **Collector secret parity**: `NP_COLLECTION_SECRET` (app `.env`) MUST equal
+  `NOVR_COLLECTION_KEY_PULSE_2026_01` (collector `.env`). A mismatch fails closed (401).
+- **Single-instance constraint**: the collector keeps its run store, replay-nonce store,
+  and cursor key in process memory — it MUST run as exactly one replica. Do not scale it.
 - **DNS/TLS**: automatic HTTPS needs correct DNS and open port 80; verify the
   certificate issued before switching clients to `https://`.
 - **Backups restored** must be validated (restore into a scratch DB) before relying on them.
