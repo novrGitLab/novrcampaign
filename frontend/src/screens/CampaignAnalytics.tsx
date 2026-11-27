@@ -40,9 +40,9 @@ const FUNNEL = [
 ];
 
 const LOSSES = [
-  { key: 'bouncedCount', label: 'Bounced', icon: AlertTriangle, color: 'text-amber-600', tip: 'bounced' },
-  { key: 'unsubscribedCount', label: 'Unsubscribed', icon: UserX, color: 'text-gray-600', tip: 'unsubscribed' },
-  { key: 'complainedCount', label: 'Spam complaints', icon: ShieldAlert, color: 'text-red-600', tip: 'complained' },
+  { key: 'bouncedCount', label: 'Bounced', icon: AlertTriangle, color: 'text-warning', tip: 'bounced' },
+  { key: 'unsubscribedCount', label: 'Unsubscribed', icon: UserX, color: 'text-muted-foreground', tip: 'unsubscribed' },
+  { key: 'complainedCount', label: 'Spam complaints', icon: ShieldAlert, color: 'text-destructive', tip: 'complained' },
 ];
 
 export default function CampaignAnalytics() {
@@ -139,7 +139,7 @@ export default function CampaignAnalytics() {
       )}
 
       {resendResult && (
-        <Card className="mb-6 border-blue-200 bg-blue-50/50 dark:border-blue-900 dark:bg-blue-950/20">
+        <Card className="mb-6 border-info/30 bg-info/50 dark:border-info/30 dark:bg-info/15">
           <CardContent className="p-6">
             {resendResult.unsentCount === 0 ? (
               <p className="text-sm">
@@ -262,7 +262,7 @@ export default function CampaignAnalytics() {
                   return (
                     <div className="rounded-md border p-4">
                       <div className="flex items-center gap-2">
-                        <AlertTriangle className="h-4 w-4 text-rose-600" />
+                        <AlertTriangle className="h-4 w-4 text-destructive" />
                         <p className="flex items-center gap-1 text-sm font-medium text-muted-foreground">
                           Error rate
                           <InfoTip content={TIP.errorRate} />
@@ -277,7 +277,7 @@ export default function CampaignAnalytics() {
                 })()}
               </div>
               {Number(stats?.complainedCount ?? 0) > 0 && (
-                <p className="mt-4 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">
+                <p className="mt-4 rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
                   Spam complaints above ~0.1% of sends put sender reputation at risk. Review this campaign's
                   audience and content.
                 </p>

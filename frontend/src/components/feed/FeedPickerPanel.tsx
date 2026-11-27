@@ -4,39 +4,7 @@ import { Badge, Button, EmptyState, SourcePill, WeekNavigator } from '../ui';
 import { useFeedEntries } from '../../hooks/queries';
 import { addWeeks, weekLabel, weekStartIso } from '../../lib/feedWeek';
 
-// Escape text for safe embedding in HTML (email body).
-export function escapeHtml(s) {
-  return String(s ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
-// Email-safe (table-based, inline styles) HTML block for one feed entry: the
-// summary plus a "Source: {sourceName} — link" line. Snapshot — later edits to
-// the entry do not change text already inserted.
-export function renderFeedBlock(entry) {
-  const summary = escapeHtml(entry.summary);
-  const sourceName = escapeHtml(entry.sourceName);
-  const href = escapeHtml(entry.url);
-  const linkText = escapeHtml(entry.url);
-  return (
-    `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" ` +
-    `style="border-collapse:collapse;margin:0 0 16px 0;">` +
-    `<tr>` +
-    `<td style="padding:12px 14px;border-left:3px solid #662F8E;background:#F6F1FB;` +
-    `font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:22px;color:#0C0C13;">` +
-    `<p style="margin:0 0 8px 0;">${summary}</p>` +
-    `<p style="margin:0;font-size:12px;line-height:18px;color:#4E4E61;">` +
-    `Source: ${sourceName} — <a href="${href}" style="color:#4451A2;text-decoration:underline;">${linkText}</a>` +
-    `</p>` +
-    `</td>` +
-    `</tr>` +
-    `</table>`
-  );
-}
+export { renderFeedBlock, escapeHtml } from '../../lib/feedEmail';
 
 /**
  * Right-side collapsible picker inside CampaignBuilder. Lists the week's feed
@@ -89,7 +57,7 @@ export default function FeedPickerPanel({ onInsert, insertingId, insertedIds = [
                 <SourcePill sourceType={entry.sourceType} />
                 <Badge status={entry.status.toUpperCase()}>{entry.status}</Badge>
                 {inserted && (
-                  <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">Inserted</span>
+                  <span className="text-xs font-medium text-success">Inserted</span>
                 )}
               </div>
               <p className="text-sm font-medium text-foreground">{entry.title}</p>

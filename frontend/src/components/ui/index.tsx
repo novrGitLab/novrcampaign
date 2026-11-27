@@ -62,37 +62,37 @@ export function CardContent({ className, children }: PanelProps) {
 /* Soft, Plunk-style status pills */
 const STATUS_STYLES = {
   // Campaign statuses
-  DRAFT: 'bg-neutral-100 text-neutral-600 ring-neutral-200 dark:bg-white/10 dark:text-white/70 dark:ring-white/10',
-  SCHEDULED: 'bg-blue-50 text-blue-700 ring-blue-600/20 dark:bg-blue-950/40 dark:text-blue-300 dark:ring-blue-400/20',
-  SENDING: 'bg-amber-50 text-amber-700 ring-amber-600/20 dark:bg-amber-950/40 dark:text-amber-300 dark:ring-amber-400/20',
-  SENT: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-400/20',
-  CANCELLED: 'bg-neutral-100 text-neutral-600 ring-neutral-200 dark:bg-white/10 dark:text-white/70 dark:ring-white/10',
-  FAILED: 'bg-rose-50 text-rose-700 ring-rose-600/20 dark:bg-rose-950/40 dark:text-rose-300 dark:ring-rose-400/20',
+  DRAFT: 'bg-muted text-muted-foreground ring-border dark:bg-white/10 dark:text-white/70 dark:ring-white/10',
+  SCHEDULED: 'bg-info/10 text-info ring-info/20 dark:bg-info/15 dark:ring-info/30',
+  SENDING: 'bg-warning/10 text-warning ring-warning/20 dark:bg-warning/15 dark:ring-warning/30',
+  SENT: 'bg-success/10 text-success ring-success/20 dark:bg-success/15 dark:ring-success/30',
+  CANCELLED: 'bg-muted text-muted-foreground ring-border dark:bg-white/10 dark:text-white/70 dark:ring-white/10',
+  FAILED: 'bg-destructive/10 text-destructive ring-destructive/20 dark:bg-destructive/15 dark:ring-destructive/30',
   // Feed entry statuses
-  READY: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-400/20',
-  ARCHIVED: 'bg-neutral-100 text-neutral-500 ring-neutral-200 dark:bg-white/10 dark:text-white/50 dark:ring-white/10',
+  READY: 'bg-success/10 text-success ring-success/20 dark:bg-success/15 dark:ring-success/30',
+  ARCHIVED: 'bg-muted text-muted-foreground ring-border dark:bg-white/10 dark:text-white/50 dark:ring-white/10',
   // Contact states
-  ACTIVE: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-400/20',
-  SUBSCRIBED: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-400/20',
-  UNSUBSCRIBED: 'bg-rose-50 text-rose-700 ring-rose-600/20 dark:bg-rose-950/40 dark:text-rose-300 dark:ring-rose-400/20',
-  BOUNCED: 'bg-amber-50 text-amber-700 ring-amber-600/20 dark:bg-amber-950/40 dark:text-amber-300 dark:ring-amber-400/20',
-  COMPLAINED: 'bg-rose-50 text-rose-700 ring-rose-600/20 dark:bg-rose-950/40 dark:text-rose-300 dark:ring-rose-400/20',
-  SUPPRESSED: 'bg-neutral-100 text-neutral-600 ring-neutral-200 dark:bg-white/10 dark:text-white/70 dark:ring-white/10',
+  ACTIVE: 'bg-success/10 text-success ring-success/20 dark:bg-success/15 dark:ring-success/30',
+  SUBSCRIBED: 'bg-success/10 text-success ring-success/20 dark:bg-success/15 dark:ring-success/30',
+  UNSUBSCRIBED: 'bg-destructive/10 text-destructive ring-destructive/20 dark:bg-destructive/15 dark:ring-destructive/30',
+  BOUNCED: 'bg-warning/10 text-warning ring-warning/20 dark:bg-warning/15 dark:ring-warning/30',
+  COMPLAINED: 'bg-destructive/10 text-destructive ring-destructive/20 dark:bg-destructive/15 dark:ring-destructive/30',
+  SUPPRESSED: 'bg-muted text-muted-foreground ring-border dark:bg-white/10 dark:text-white/70 dark:ring-white/10',
   // Health
-  connected: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-400/20',
-  valid: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-400/20',
-  not_configured: 'bg-neutral-100 text-neutral-600 ring-neutral-200 dark:bg-white/10 dark:text-white/70 dark:ring-white/10',
-  invalid: 'bg-rose-50 text-rose-700 ring-rose-600/20 dark:bg-rose-950/40 dark:text-rose-300 dark:ring-rose-400/20',
+  connected: 'bg-success/10 text-success ring-success/20 dark:bg-success/15 dark:ring-success/30',
+  valid: 'bg-success/10 text-success ring-success/20 dark:bg-success/15 dark:ring-success/30',
+  not_configured: 'bg-muted text-muted-foreground ring-border dark:bg-white/10 dark:text-white/70 dark:ring-white/10',
+  invalid: 'bg-destructive/10 text-destructive ring-destructive/20 dark:bg-destructive/15 dark:ring-destructive/30',
   // Template types
-  STATIC: 'bg-neutral-100 text-neutral-600 ring-neutral-200 dark:bg-white/10 dark:text-white/70 dark:ring-white/10',
-  DYNAMIC: 'bg-blue-50 text-blue-700 ring-blue-600/20 dark:bg-blue-950/40 dark:text-blue-300 dark:ring-blue-400/20',
-  MARKETING: 'bg-blue-50 text-blue-700 ring-blue-600/20 dark:bg-blue-950/40 dark:text-blue-300 dark:ring-blue-400/20',
-  TRANSACTIONAL: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-400/20',
-  HEADLESS: 'bg-neutral-100 text-neutral-600 ring-neutral-200 dark:bg-white/10 dark:text-white/70 dark:ring-white/10',
+  STATIC: 'bg-muted text-muted-foreground ring-border dark:bg-white/10 dark:text-white/70 dark:ring-white/10',
+  DYNAMIC: 'bg-info/10 text-info ring-info/20 dark:bg-info/15 dark:ring-info/30',
+  MARKETING: 'bg-info/10 text-info ring-info/20 dark:bg-info/15 dark:ring-info/30',
+  TRANSACTIONAL: 'bg-success/10 text-success ring-success/20 dark:bg-success/15 dark:ring-success/30',
+  HEADLESS: 'bg-muted text-muted-foreground ring-border dark:bg-white/10 dark:text-white/70 dark:ring-white/10',
 };
 
 export function Badge({ status, className, children }: PanelProps & {status?:string}) {
-  const style = STATUS_STYLES[status] || 'bg-neutral-100 text-neutral-600 ring-neutral-200 dark:bg-white/10 dark:text-white/70 dark:ring-white/10';
+  const style = STATUS_STYLES[status] || 'bg-muted text-muted-foreground ring-border dark:bg-white/10 dark:text-white/70 dark:ring-white/10';
   return <span className={cn('badge', style, className)}>{children ?? status}</span>;
 }
 
@@ -155,9 +155,9 @@ export function EmptyState({ icon, title, description, action }: {icon?:React.Re
 
 /* CyberNovr logo accent tints (red / blue / purple) for icon tiles */
 const ACCENTS = {
-  blue: 'bg-brand-blue/10 text-brand-blue dark:bg-brand-blue/20 dark:text-blue-300',
-  purple: 'bg-brand-purple/10 text-brand-purple dark:bg-brand-purple/25 dark:text-purple-300',
-  red: 'bg-brand-red/10 text-brand-red dark:bg-brand-red/15 dark:text-red-400',
+  blue: 'bg-brand-blue/10 text-brand-blue dark:bg-brand-blue/20',
+  purple: 'bg-brand-purple/10 text-highlight dark:bg-brand-purple/25',
+  red: 'bg-brand-red/10 text-brand-red dark:bg-brand-red/15',
 };
 
 /* Plunk stat card: label + icon tile, big value, hint */
@@ -237,10 +237,10 @@ export function WeekNavigator({ label, onPrev, onNext, onToday, className }: {la
 /* Source-type pill for feed entries (x / news / regulator / other). Reuses the
    badge classes; distinct colors per type, no new tokens. */
 const SOURCE_STYLES = {
-  x: 'bg-neutral-900 text-white ring-neutral-900/20 dark:bg-white/15 dark:text-white dark:ring-white/10',
-  news: 'bg-blue-50 text-blue-700 ring-blue-600/20 dark:bg-blue-950/40 dark:text-blue-300 dark:ring-blue-400/20',
-  regulator: 'bg-amber-50 text-amber-700 ring-amber-600/20 dark:bg-amber-950/40 dark:text-amber-300 dark:ring-amber-400/20',
-  other: 'bg-neutral-100 text-neutral-600 ring-neutral-200 dark:bg-white/10 dark:text-white/70 dark:ring-white/10',
+  x: 'bg-foreground text-white ring-foreground/20 dark:bg-white/15 dark:text-white dark:ring-white/10',
+  news: 'bg-info/10 text-info ring-info/20 dark:bg-info/15 dark:ring-info/30',
+  regulator: 'bg-warning/10 text-warning ring-warning/20 dark:bg-warning/15 dark:ring-warning/30',
+  other: 'bg-muted text-muted-foreground ring-border dark:bg-white/10 dark:text-white/70 dark:ring-white/10',
 };
 
 const SOURCE_LABELS = { x: 'X', news: 'News', regulator: 'Regulator', other: 'Other' };

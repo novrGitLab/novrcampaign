@@ -104,8 +104,8 @@ function DeltaChip({ value }) {
     <span className={cn(
       'inline-flex items-center rounded-full px-1.5 py-0.5 text-xs font-medium ring-1 ring-inset',
       up
-        ? 'bg-emerald-50 text-emerald-700 ring-emerald-600/20 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-400/20'
-        : 'bg-rose-50 text-rose-700 ring-rose-600/20 dark:bg-rose-950/40 dark:text-rose-300 dark:ring-rose-400/20',
+        ? 'bg-success/10 text-success ring-success/20 dark:bg-success/15 dark:ring-success/30'
+        : 'bg-destructive/10 text-destructive ring-destructive/20 dark:bg-destructive/15 dark:ring-destructive/30',
     )}>
       {up ? '▲' : '▼'} {Math.abs(value)}%
     </span>
@@ -502,7 +502,7 @@ export default function Analytics() {
                       className={cn(
                         'rounded-full border px-3 py-1.5 text-xs font-medium transition-colors',
                         active
-                          ? 'border-brand-purple/40 bg-brand-purple/10 text-brand-purple dark:border-purple-400/40 dark:bg-purple-500/15 dark:text-purple-200'
+                          ? 'border-brand-purple/40 bg-brand-purple/10 text-brand-purple dark:border-highlight/30 dark:bg-highlight/15 dark:text-highlight'
                           : 'border-border text-muted-foreground hover:bg-accent hover:text-foreground',
                       )}
                     >
@@ -546,7 +546,7 @@ export default function Analytics() {
                             {values.map((v, i) => (
                               <td key={chosenFinal[i].id} className={cn('text-right tabular-nums', v === best && chosenFinal.length > 1 && 'font-semibold')}>
                                 {formatNumber(v)}
-                                {v === best && chosenFinal.length > 1 && <span className="ml-1.5 text-[10px] font-semibold text-emerald-600">BEST</span>}
+                                {v === best && chosenFinal.length > 1 && <span className="ml-1.5 text-[10px] font-semibold text-success">BEST</span>}
                               </td>
                             ))}
                           </tr>
@@ -573,7 +573,7 @@ export default function Analytics() {
                             {values.map((v, i) => (
                               <td key={chosenFinal[i].id} className={cn('text-right tabular-nums', v === best && chosenFinal.length > 1 && 'font-semibold')}>
                                 {v.toFixed(2)}%
-                                {v === best && chosenFinal.length > 1 && <span className="ml-1.5 text-[10px] font-semibold text-emerald-600">BEST</span>}
+                                {v === best && chosenFinal.length > 1 && <span className="ml-1.5 text-[10px] font-semibold text-success">BEST</span>}
                               </td>
                             ))}
                           </tr>
@@ -623,7 +623,7 @@ export default function Analytics() {
                                 {formatNumber(unsubs)} unsubscribed · {rate.toFixed(2)}% rate · {formatDate(c.sentAt)}
                               </span>
                             </span>
-                            <span className="shrink-0 text-sm font-semibold tabular-nums text-rose-600 dark:text-rose-400">
+                            <span className="shrink-0 text-sm font-semibold tabular-nums text-destructive">
                               {formatNumber(unsubs)}
                             </span>
                           </Link>

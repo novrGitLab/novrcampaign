@@ -121,18 +121,18 @@ export default function Dashboard() {
             <CardTitle>Quick start</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="rounded-lg border border-emerald-600/20 bg-emerald-50 p-4 dark:bg-emerald-950/30">
+            <div className="rounded-lg border border-success/20 bg-success/10 p-4 dark:bg-success/15">
               <div className="flex items-start gap-3">
-                <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-600/15 text-emerald-700 dark:bg-emerald-600/25 dark:text-emerald-300">
+                <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-success/15 text-success dark:bg-success/15">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="h-3.5 w-3.5">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
                   </svg>
                 </span>
                 <div>
-                  <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-100">
+                  <p className="text-sm font-semibold text-success">
                     {isLoading ? 'Checking workspace…' : 'Workspace ready'}
                   </p>
-                  <p className="mt-0.5 text-xs text-emerald-700 dark:text-emerald-300">
+                  <p className="mt-0.5 text-xs text-success">
                     {isLoading
                       ? 'Loading delivery status.'
                       : `${formatNumber(totalContacts)} contacts imported. Create a campaign when you're ready to send.`}
@@ -298,7 +298,7 @@ export default function Dashboard() {
                         </td>
                         <td className="text-right tabular-nums">
                           {unsubs > 0 ? (
-                            <span className="font-medium text-rose-600 dark:text-rose-400">
+                            <span className="font-medium text-destructive">
                               {formatNumber(unsubs)}
                             </span>
                           ) : (
@@ -307,7 +307,7 @@ export default function Dashboard() {
                         </td>
                         <td className="text-right tabular-nums">
                           {unsubs > 0 ? (
-                            <span className="font-medium text-rose-600 dark:text-rose-400">
+                            <span className="font-medium text-destructive">
                               {formatRate(unsubs, c.sentCount)}
                             </span>
                           ) : (
@@ -316,7 +316,7 @@ export default function Dashboard() {
                         </td>
                         <td className="text-right tabular-nums">
                           {c.bouncedCount > 0 ? (
-                            <span className="font-medium text-amber-600 dark:text-amber-400">
+                            <span className="font-medium text-warning">
                               {formatNumber(c.bouncedCount)}
                             </span>
                           ) : (
