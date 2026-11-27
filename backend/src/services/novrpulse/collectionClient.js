@@ -273,7 +273,13 @@ export function createCollectionClient(cfg = config.novrpulse?.collection, deps 
     });
 
     try {
-      if (!isLoopbackUrl(base)) await assertFetchable(base);
+      // The base URL is OPERATOR-configured (NP_COLLECTION_BASE_URL), not user
+      // input. Loopback is always allowed. A private/internal address (e.g. a
+      // sibling Docker container) is allowed ONLY when the operator explicitly
+      // opts in via NP_COLLECTION_ALLOW_INTERNAL_BASE_URL=true; otherwise the
+      // SSRF guard applies. This never relaxes guards for request-derived URLs.
+      const allowInternal = cfg.allowInternalBaseUrl === true;
+      if (!isLoopbackUrl(base) && !allowInternal) await assertFetchable(base);
     } catch (err) {
       throw new CollectionTransportError(`Unsafe collection baseUrl: ${err.message}`, { cause: err, configError: true });
     }

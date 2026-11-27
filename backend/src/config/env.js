@@ -273,6 +273,13 @@ export const config = {
       apiKey: 'NP_COLLECTION_SECRET',
       timeoutMs: asInt('NP_COLLECTION_TIMEOUT_MS', 15_000),
 
+      // Opt-in: allow the OPERATOR-configured collection baseUrl to be a
+      // private/internal address (e.g. a sibling Docker container on a private
+      // network, `http://collector:4100` -> 172.x.x.x). Default false so the
+      // SSRF guard still applies. This only relaxes the guard for the base URL
+      // set via config — never for request-derived URLs (source links, etc.).
+      allowInternalBaseUrl: (process.env.NP_COLLECTION_ALLOW_INTERNAL_BASE_URL ?? 'false').toLowerCase() === 'true',
+
       // Bearer secret Vercel sends to the collection cron endpoint
       // (/api/pulse/collect/run). When empty the secret path is closed and
       // only an ADMIN session may trigger a run — fail closed either way.
