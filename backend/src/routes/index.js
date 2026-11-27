@@ -11,6 +11,7 @@ import feedRoutes from './feedRoutes.js';
 import publishRoutes from './publishRoutes.js';
 import pulseRoutes from './pulseRoutes.js';
 import pulseCollectRoutes from './pulseCollectRoutes.js';
+import pulseMaintenanceRoutes from './pulseMaintenanceRoutes.js';
 import briefingRoutes from './briefingRoutes.js';
 import aiJudgementRoutes from './aiJudgementRoutes.js';
 import aiRoutes from './aiRoutes.js';
@@ -27,6 +28,10 @@ router.use('/auth', authRoutes);
 // must be mounted BEFORE the `requireAuth`-wrapped `/pulse` mount below (a
 // Vercel cron has no session). Its own guard is the single decision point.
 router.use('/pulse/collect', pulseCollectRoutes);
+
+// Pulse retention purge — same guard shape as the collection trigger, mounted
+// OUTSIDE `requireAuth` for the same reason (a cron has no session).
+router.use('/pulse/maintenance', pulseMaintenanceRoutes);
 
 // Authenticated dashboard endpoints (these carry the Plunk secret server-side)
 router.use('/contacts', requireAuth, contactRoutes);

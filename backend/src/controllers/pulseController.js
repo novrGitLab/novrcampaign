@@ -4,6 +4,7 @@ import { prisma } from '../utils/prisma.js';
 import { BadRequest, NotFound, Unauthorized } from '../utils/AppError.js';
 import { deriveStatus } from './publishController.js';
 import { runCollection } from '../services/novrpulse/ingest.js';
+import { purgeStaleNews } from '../services/novrpulse/retention.js';
 import { classifyEvents, isConfigured as isClassifyConfigured } from '../services/novrpulse/classify.js';
 import { timingSafeEqualString } from '../utils/timingSafe.js';
 import { config } from '../config/env.js';
@@ -137,6 +138,14 @@ const reviewSchema = Joi.object({
 // far back the collector looks; it is validated to a sane positive range.
 const collectSchema = Joi.object({
   maxAgeDays: Joi.number().integer().min(1).max(30).default(3),
+});
+
+// Body schema for the retention purge endpoint. `retentionDays` defaults to 1
+// (owner decision: previous days' unpublished news is purged once a new day's
+// collection lands). `dryRun` defaults to TRUE so a stray call can never delete.
+const purgeSchema = Joi.object({
+  retentionDays: Joi.number().integer().min(1).max(30).default(1),
+  dryRun: Joi.boolean().truthy('true').falsy('false').default(true),
 });
 
 /**
@@ -641,4 +650,39 @@ export async function runPulseCollection(req, res) {
   return res.json(classified === undefined ? summary : { ...summary, classified });
 }
 
-export { listSchema, reviewSchema, collectSchema, serializeCard, excerptOf, EXCERPT_LENGTH };
+/**
+ * POST /api/pulse/maintenance/purge — purge collected news older than the
+ * retention window, keeping published events (and their source documents)
+ * forever.
+ *
+ * Auth (fail-closed, exactly the same two accepted callers as the collection
+ * trigger): the `NP_COLLECT_CRON_SECRET` bearer token (constant-time compare) OR
+ * an authenticated ADMIN session. No session and no/incorrect secret → 401.
+ *
+ * Body `{ retentionDays?: number (default 1), dryRun?: boolean (default TRUE) }`.
+ * `dryRun` defaults TRUE so a stray call never deletes; pass `dryRun:false` to
+ * perform the purge. `req._purgeStaleNews` is an injectable seam for tests ONLY;
+ * production never sets it, so the real service runs.
+ */
+export async function purgePulseRetention(req, res) {
+  await attachOptionalUser(req);
+
+  if (!isPulseCollectAuthorized(req)) {
+    throw Unauthorized('Unauthorized');
+  }
+
+  let body;
+  try {
+    body = await purgeSchema.validateAsync(req.body ?? {}, { convert: true, stripUnknown: true });
+  } catch (err) {
+    if (err.isJoi) throw BadRequest(err.message);
+    throw err;
+  }
+
+  const purger = req._purgeStaleNews ?? purgeStaleNews;
+  const summary = await purger({ retentionDays: body.retentionDays, dryRun: body.dryRun });
+
+  return res.json(summary);
+}
+
+export { listSchema, reviewSchema, collectSchema, purgeSchema, serializeCard, excerptOf, EXCERPT_LENGTH };

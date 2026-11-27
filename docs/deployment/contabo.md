@@ -219,6 +219,19 @@ secret in the crontab, which is only readable by the `deploy` user):
 0 5 * * * set -a; . /home/deploy/novr/novrcampaign/.env; set +a; curl -fsS -X POST -H "Authorization: Bearer $NP_COLLECT_CRON_SECRET" http://127.0.0.1/api/pulse/collect/run >> /var/log/novr-collect.log 2>&1
 ```
 
+### Retention purge (10 minutes after collection)
+
+Un-published collected news is purged daily so the store does not grow without
+bound: `POST /api/pulse/maintenance/purge` deletes collected events older than
+the retention window (default **1 day**) that were **never published** — anything
+referenced by a publish item, or by the AI judgement ledger, is kept, and every
+published briefing keeps its source citations. It is DRY-RUN by default; the cron
+line below passes `dryRun:false` explicitly.
+
+```cron
+10 5 * * * set -a; . /home/deploy/novr/novrcampaign/.env; set +a; curl -fsS -X POST -H "Content-Type: application/json" -H "Authorization: Bearer $NP_COLLECT_CRON_SECRET" -d '{"retentionDays":1,"dryRun":false}' http://127.0.0.1/api/pulse/maintenance/purge >> /var/log/novr-collect.log 2>&1
+```
+
 The log lands in `/var/log/novr-collect.log`; verify a run by tailing it after the
 scheduled time, and by checking the collector received the call:
 

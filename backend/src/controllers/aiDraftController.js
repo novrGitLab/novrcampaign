@@ -1,5 +1,5 @@
 import Joi from 'joi';
-import { BadRequest, Forbidden } from '../utils/AppError.js';
+import { BadRequest, Forbidden, BadGateway, AppError } from '../utils/AppError.js';
 import { rewriteEventToDraft, recommendEvents } from '../services/novrpulse/aiDraft.js';
 import { NEWS_DERIVED_PILLARS } from '../services/novrpulse/pillarShapes.js';
 
@@ -84,9 +84,16 @@ export async function recommend(req, res) {
 
   const { functionIds, limit } = await validate(recommendSchema, req.body ?? {});
 
-  const result = await recommendEvents({ functionIds, limit });
-
-  return res.json(result);
+  try {
+    const result = await recommendEvents({ functionIds, limit });
+    return res.json(result);
+  } catch (err) {
+    // The service degrades per-section on a provider hiccup, so anything that
+    // still throws is a hard failure — surface it as 502 (provider) rather than
+    // a bare 500, unless it is already a typed AppError (e.g. 503 unconfigured).
+    if (err instanceof AppError) throw err;
+    throw BadGateway(`AI recommendation failed: ${err.message}`);
+  }
 }
 
 export { rewriteSchema, recommendSchema, requireEditor };

@@ -79,6 +79,13 @@ const RECOMMEND_MAX_EVENTS = 200;
 const RECOMMEND_SUMMARY_CHARS = 300;
 /** The window (hours back from now) the recommend layer scans. */
 const RECOMMEND_WINDOW_HOURS = 168;
+/**
+ * How many candidates are actually SENT to the model. A small bulk model
+ * (nemotron-3.5-bolt-e4b) returns non-JSON / times out on very large prompts,
+ * so we rank only the most recent N (they arrive newest-first). The full
+ * candidate list is still recorded in the judgement scenario for provenance.
+ */
+const RECOMMEND_LLM_MAX_CANDIDATES = 40;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // LLM client (same construction as the understanding orchestrator / dedup)
@@ -701,22 +708,39 @@ export async function recommendEvents({ functionIds = NEWS_DERIVED_PILLARS, limi
   const client = llm || getLlm();
   const model = modelName(client, 'bulk');
 
+  // Only the most recent N candidates go to the model (newest-first order from
+  // recommendCandidates). The full set is kept for the judgement scenario.
+  const forModel = candidates.slice(0, RECOMMEND_LLM_MAX_CANDIDATES);
+  const prompt = buildRecommendPrompt(forModel);
+
   const recommendations = [];
   for (const functionId of functionIds) {
-    const out = await client.complete({
-      tier: 'bulk',
-      system: buildRecommendSystem(functionId, limit),
-      prompt: buildRecommendPrompt(candidates),
-      schema: RECOMMEND_SCHEMA,
-    });
+    let picks = [];
+    try {
+      const out = await client.complete({
+        tier: 'bulk',
+        system: buildRecommendSystem(functionId, limit),
+        prompt,
+        schema: RECOMMEND_SCHEMA,
+      });
+      const rawPicks = Array.isArray(out?.picks) ? out.picks.slice(0, limit) : [];
+      // NG-first: re-order the model's picks so NG candidates sort before AF then
+      // GLOBAL among equal fit scores (a stable secondary sort — never a filter).
+      picks = orderPicksNigeriaFirst(rawPicks, forModel);
+    } catch (err) {
+      // A provider hiccup (non-JSON, timeout) must NOT 500 the whole request —
+      // return the section with no picks plus a typed error the UI can show.
+      logger.warn(
+        { functionId, message: err?.message ?? String(err) },
+        'recommend: section failed, returning empty picks',
+      );
+      recommendations.push({ functionId, judgements: [], error: 'AI_PROVIDER_ERROR' });
+      continue;
+    }
 
-    const rawPicks = Array.isArray(out?.picks) ? out.picks.slice(0, limit) : [];
-    // NG-first: re-order the model's picks so NG candidates sort before AF then
-    // GLOBAL among equal fit scores (a stable secondary sort — never a filter).
-    const picks = orderPicksNigeriaFirst(rawPicks, candidates);
     const judgements = [];
     for (const pick of picks) {
-      const candidate = candidates[Number(pick.index) - 1];
+      const candidate = forModel[Number(pick.index) - 1];
       if (!candidate) continue;
       const row = await recordJudgement({
         kind: 'recommend',
@@ -740,6 +764,7 @@ export async function recommendEvents({ functionIds = NEWS_DERIVED_PILLARS, limi
 
   return { recommendations };
 }
+
 
 /** Shape one recommendation judgement for the response. */
 function serializeRecommendation(candidate, row) {
