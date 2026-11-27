@@ -7,7 +7,6 @@ import campaignRoutes from './campaignRoutes.js';
 import templateRoutes from './templateRoutes.js';
 import segmentRoutes from './segmentRoutes.js';
 import webhookRoutes from './webhookRoutes.js';
-import driveRoutes from './driveRoutes.js';
 import feedRoutes from './feedRoutes.js';
 import publishRoutes from './publishRoutes.js';
 import pulseRoutes from './pulseRoutes.js';
@@ -23,9 +22,6 @@ const router = Router();
 router.use('/health', healthRoutes);
 router.use('/webhooks', webhookRoutes);
 router.use('/auth', authRoutes);
-
-// Encrypted file drive — password-only, separate session, DRIVE_ENABLED-gated.
-router.use('/drive', driveRoutes);
 
 // Pulse collection trigger — cron/ADMIN-guarded INSIDE the controller, so it
 // must be mounted BEFORE the `requireAuth`-wrapped `/pulse` mount below (a
