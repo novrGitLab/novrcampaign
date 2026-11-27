@@ -1,4 +1,5 @@
 'use client';
+import { Sun, Moon } from './icons';
 import { useEffect, useState } from 'react';
 export function cookie(name: string) {
   return document.cookie
@@ -31,8 +32,9 @@ export function ThemeButton() {
     return () => window.removeEventListener('reading-theme', sync);
   }, []);
   return (
-    <button aria-label="Change reading theme" onClick={() => applyTheme(dark ? 'light' : 'dark')}>
-      {dark ? 'Light' : 'Dark'} mode
+    <button className="reading-toggle" aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'} onClick={() => applyTheme(dark ? 'light' : 'dark')}>
+      {dark ? <Sun size={18} /> : <Moon size={18} />}
+      <span>{dark ? 'Light' : 'Dark'} mode</span>
     </button>
   );
 }

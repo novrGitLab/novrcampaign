@@ -32,3 +32,10 @@ Use a local database, a test OIDC issuer and a local Plunk substitute to exercis
 - [Contabo operating history, backups and cron](docs/deployment/contabo.md)
 - [Editorial design and source research](DESIGN.md)
 - [Motion and accessibility](MOTION.md)
+
+
+### Rejected stories
+
+In the staff portal, open **Article review → Rejected stories** to search retained stories that screening excluded or an editor dismissed. New screening decisions include the recorded rationale and confidence where available. Older records contain only the verdict. The existing daily retention policy applies to unreferenced rejected stories.
+
+Administrators can choose Nigeria, Africa or World and restore an eligible story. Restoration records the editor and time, protects the edition from later classification passes and returns the article to private review. Publishing requires a separate editorial approval. Publisher restrictions and the Breaking News review for arrest and accusation coverage still apply.

@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { newsDate } from '@/lib/news';
+import { PublisherLogo } from '@/components/ui/PublisherLogo';
 import { Newsletter } from '@/components/public/Newsletter';
 import { PulseKingfisher } from '@/components/ui/PulseKingfisher';
 import { PreferencesButton } from '@/components/ui/ReadingPreferences';
@@ -13,7 +14,7 @@ export default function Publication({ children }: { children: ReactNode }) {
       </a>
       <div className="topline">
         <span>
-          CYBERNOVR <b>/</b> JOURNAL
+          <PublisherLogo /> <b>/</b> JOURNAL
         </span>
         <time>{newsDate(new Date(), true)}</time>
       </div>
@@ -46,8 +47,10 @@ export default function Publication({ children }: { children: ReactNode }) {
           <Newsletter />
         </div>
         <div className="colophon">
-          <b>NovrPulse</b>
-          <span>A CyberNovr publication</span>
+          <div className="publication-credit">
+            <b>NovrPulse</b>
+            <em>A <PublisherLogo /> publication</em>
+          </div>
           <a href="mailto:info@cybernovr.com">Contact the desk</a>
           <PreferencesButton />
         </div>

@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { Button, Input, PageHeader } from '@/components/ui';
+import { EditionChoice } from '@/components/ui/EditionChoice';
 import { useAuth } from '@/hooks/useAuth';
 
 type Article = {
@@ -101,17 +102,7 @@ export default function StoryEditor({ params }: { params: Promise<{ id: string }
           )}
           {draft && (
             <fieldset disabled={!canEdit || busy} className="review-fields">
-              <div role="group" aria-label="Public edition" className="space-y-2">
-                <span className="label">Public edition</span>
-                <div className="flex flex-wrap gap-2">
-                  {Object.entries({ NG: 'Nigeria', AF: 'Africa', GLOBAL: 'World' }).map(([value, name]) => (
-                    <Button key={value} type="button" size="sm" aria-pressed={region === value}
-                      variant={region === value ? 'primary' : 'secondary'} onClick={() => setRegion(value)}>
-                      {name}
-                    </Button>
-                  ))}
-                </div>
-              </div>
+              <EditionChoice value={region} onChange={setRegion} />
               <label className="label">
                 Headline
                 <Input

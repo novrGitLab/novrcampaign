@@ -1,3 +1,4 @@
+import { PublisherLogo } from '@/components/ui/PublisherLogo';
 import { StaffEntry } from '@/components/StaffEntry';
 export const metadata = { title: 'Staff sign-in | NovrPulse', robots: { index: false, follow: false } };
 export default async function Login({ searchParams }: { searchParams: Promise<{ sso?: string }> }) {
@@ -7,7 +8,7 @@ export default async function Login({ searchParams }: { searchParams: Promise<{ 
       <h1>
         Staff sign-in<span>.</span>
       </h1>
-      <p>Sign in with your CyberNovr account. First-time visitors can request newsroom access.</p>
+      <p>Sign in with your <PublisherLogo /> account. First-time visitors can request newsroom access.</p>
       {sso && (
         <p role="alert">
           {sso === 'unavailable'

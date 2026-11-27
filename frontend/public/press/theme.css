@@ -388,3 +388,25 @@
   width: 5px;
   background: var(--accent);
 }
+
+
+.publisher-logo {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+  border-radius: .2rem;
+  padding: .22em .28em;
+}
+.publisher-logo img {
+  display: block;
+  height: .92em;
+  width: auto;
+  max-width: none;
+}
+:root[data-theme='dark'] .publisher-logo {
+  background: var(--inverse);
+}
+.publisher-logo:focus-visible {
+  outline: 2px solid var(--control-focus);
+  outline-offset: 3px;
+}
