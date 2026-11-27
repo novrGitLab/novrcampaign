@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
-import { Rss, Plus } from '../components/ui/icons';
+import { Rss, Plus, Search } from '../components/ui/icons';
 import { format } from 'date-fns';
-import { Button, EmptyState, PageHeader, PillButton, WeekNavigator } from '../components/ui';
+import { Button, EmptyState, PageHeader, PillButton, SearchInput, WeekNavigator } from '../components/ui';
 import { Modal } from '../components/ui/Modal';
 import FeedEntryRow from '../components/feed/FeedEntryRow';
 import FeedEntryFormModal from '../components/feed/FeedEntryFormModal';
@@ -119,16 +119,18 @@ export default function Feed() {
           onNext={() => setWeekAnchor((d) => addWeeks(d, 1))}
           onToday={() => setWeekAnchor(new Date())}
         />
-        <input
+        <SearchInput
+          icon={<Search className="h-4 w-4" />}
+          aria-label="Search updates"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search title or summary…"
-          className="input max-w-xs"
+          className="max-w-xs"
         />
       </div>
 
       <div className="mb-6 flex flex-wrap items-center gap-2">
-        <div className="flex gap-1">
+        <div role="group" aria-label="Update status" className="flex flex-wrap gap-1.5">
           {[
             { value: 'all', label: 'All' },
             { value: 'draft', label: 'Draft' },
@@ -140,8 +142,8 @@ export default function Feed() {
             </PillButton>
           ))}
         </div>
-        <span className="mx-1 h-5 w-px bg-border" />
-        <div className="flex gap-1">
+        <span aria-hidden="true" className="mx-1 hidden h-5 w-px bg-border md:block" />
+        <div role="group" aria-label="Update source" className="flex flex-wrap gap-1.5">
           {[
             { value: 'all', label: 'All sources' },
             { value: 'x', label: 'X' },

@@ -108,37 +108,29 @@ export function Label({ className, children, ...props }: React.LabelHTMLAttribut
   );
 }
 
-/* Search field with leading icon — Plunk toolbar pattern */
+/* Search field with optional leading icon */
 export function SearchInput({ icon, className, ...props }: React.InputHTMLAttributes<HTMLInputElement> & {icon?:React.ReactNode}) {
   return (
     <div className={cn('relative w-full', className)}>
       {icon && (
-        <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-muted-foreground">
+        <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-info">
           {icon}
         </span>
       )}
       <input
         type="search"
-        className={cn('input rounded-lg pl-9', icon ? 'pl-9' : 'pl-3')}
+        className={cn('input rounded-lg', icon && 'pl-9')}
         {...props}
       />
     </div>
   );
 }
 
-/* Outline filter pill used in Plunk toolbars */
 export function PillButton({ active, className, children, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & {active?:boolean}) {
   return (
-    <button
-      className={cn(
-        'btn-secondary h-9 rounded-lg px-3 text-sm font-medium',
-        active && 'bg-accent text-foreground',
-        className,
-      )}
-      {...props}
-    >
+    <Button type="button" variant="secondary" aria-pressed={Boolean(active)} className={cn('px-3', className)} {...props}>
       {children}
-    </button>
+    </Button>
   );
 }
 
@@ -203,7 +195,7 @@ export function PageHeader({ title, description, actions }: {title:string;descri
   return (
     <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
       <div>
-        <h1 className="text-xl font-bold tracking-tight text-foreground">{title}</h1>
+        <h1 className="staff-page-title text-xl font-bold tracking-tight text-foreground">{title}</h1>
         {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
@@ -219,7 +211,7 @@ export function Skeleton({ className }: {className?:string}) {
    arrows. Used by the Feed page and the campaign picker so both stay in step. */
 export function WeekNavigator({ label, onPrev, onNext, onToday, className }: {label:string;onPrev:()=>void;onNext:()=>void;onToday:()=>void;className?:string}) {
   return (
-    <div className={cn('flex items-center gap-1', className)}>
+    <div className={cn('flex flex-wrap items-center gap-1.5', className)}>
       <Button variant="secondary" size="sm" onClick={onPrev} aria-label="Previous week">
         <ChevronLeft className="h-4 w-4" />
       </Button>
@@ -227,7 +219,7 @@ export function WeekNavigator({ label, onPrev, onNext, onToday, className }: {la
       <Button variant="secondary" size="sm" onClick={onNext} aria-label="Next week">
         <ChevronRight className="h-4 w-4" />
       </Button>
-      <Button variant="ghost" size="sm" onClick={onToday}>
+      <Button variant="secondary" size="sm" onClick={onToday}>
         This week
       </Button>
     </div>

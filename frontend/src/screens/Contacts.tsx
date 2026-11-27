@@ -6,9 +6,9 @@ import { Upload, Search, Users, CheckCircle2, XCircle, UserPlus, ClipboardList }
 import { useContacts, useSegments } from '../hooks/queries';
 import { useBulkContactAction, useCreateContact, useImportContacts } from '../hooks/mutations';
 import api from '../lib/api';
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, EmptyState, Input, Label } from '../components/ui';
+import { PillButton, Badge, Button, Card, CardContent, CardHeader, CardTitle, EmptyState, Input, Label } from '../components/ui';
 import { Modal } from '../components/ui/Modal';
-import { formatNumber, cn } from '../lib/utils';
+import { formatNumber } from '../lib/utils';
 
 const PAGE_SIZE = 25;
 
@@ -154,22 +154,11 @@ export default function Contacts() {
         <Button type="submit" variant="secondary">
           Search
         </Button>
-        <div className="ml-auto inline-flex w-fit gap-1 rounded-lg border border-border bg-secondary/60 p-1">
+        <div role="group" aria-label="Contact status" className="ml-auto flex flex-wrap gap-1.5">
           {FILTERS.map((f) => (
-            <button
-              key={f.value}
-              type="button"
-              onClick={() => changeFilter(f.value)}
-              aria-pressed={filter === f.value}
-              className={cn(
-                'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
-                filter === f.value
-                  ? 'bg-background text-foreground shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground',
-              )}
-            >
+            <PillButton key={f.value} active={filter === f.value} onClick={() => changeFilter(f.value)}>
               {f.label}
-            </button>
+            </PillButton>
           ))}
         </div>
       </form>

@@ -17,6 +17,7 @@ import {
   AlignRight, Minus, Eraser, Code, Eye, PenLine, User, BellOff, TriangleAlert, Trash2,
 } from './ui/icons';
 import { cn } from '../lib/utils';
+import { PillButton } from './ui';
 
 const BLOCK_TAGS = new Set([
   'html', 'head', 'body', 'table', 'thead', 'tbody', 'tfoot', 'tr', 'td', 'th',
@@ -264,20 +265,12 @@ export default function RichEmailEditor({ value, onChange, disabled=false, inser
   return (
     <div>
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex shrink-0 gap-1 rounded-md border bg-secondary/60 p-1">
+        <div role="group" aria-label="Editor view" className="flex flex-wrap gap-1">
           {tabs.map(({ id, label, icon: Icon }) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => goView(id)}
-              className={cn(
-                'flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium',
-                view === id ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground',
-              )}
-            >
+            <PillButton key={id} active={view === id} onClick={() => goView(id)} className="gap-1.5 px-2.5 text-xs">
               <Icon className="h-3.5 w-3.5" />
               {label}
-            </button>
+            </PillButton>
           ))}
         </div>
         <div className="flex shrink-0 gap-1">

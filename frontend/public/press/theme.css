@@ -14,6 +14,26 @@
   --inverse: #fff;
   --display: Georgia, 'Times New Roman', serif;
   --utility: Inter, Arial, sans-serif;
+  --field-fill: #fff;
+  --control-fill: #e9edf9;
+  --control-hover: #dce3f6;
+  --control-pressed: #c8d3ef;
+  --control-ink: var(--pulse-blue);
+  --control-border: #7882a1;
+  --control-focus: var(--pulse-blue);
+  --brand-hover: #542276;
+  --brand-pressed: #42185f;
+  --on-brand-hover: #f0e3f6;
+  --on-brand-pressed: #dfc8eb;
+  --action-fill: var(--pulse-purple);
+  --action-hover: var(--brand-hover);
+  --action-pressed: var(--brand-pressed);
+  --action-ink: var(--inverse);
+  --control-disabled-fill: #ebe7eb;
+  --control-disabled-ink: #665e68;
+  --control-disabled-border: #b7adb9;
+  --danger-hover: #961020;
+  --danger-pressed: #790c1a;
   --signup-control-height: 3rem;
   --radius: 0.7rem;
   --gutter: clamp(1rem, 4.5vw, 5rem);
@@ -29,7 +49,66 @@
   --link: #adb9ff;
   --signal: #ff8791;
   --on-signal: #201016;
+  --field-fill: #28242c;
+  --control-fill: #2c3245;
+  --control-hover: #37405b;
+  --control-pressed: #444f70;
+  --control-ink: #c9d3ff;
+  --control-border: #8490b2;
+  --control-focus: var(--link);
+  --action-fill: var(--accent);
+  --action-hover: #e2baf6;
+  --action-pressed: #efcef9;
+  --action-ink: #291332;
+  --control-disabled-fill: #302c33;
+  --control-disabled-ink: #aca4af;
+  --control-disabled-border: #615864;
+  --danger-hover: #ff9ea5;
+  --danger-pressed: #ffb9bc;
   color-scheme: dark;
+}
+:root:has(.staff-shell, .staff-login, .staff-loading) {
+  --paper: #f5f7fb;
+  --panel: #fff;
+  --ink: #202431;
+  --subtle: #525b6d;
+  --line: #d1d7e1;
+  --signal: var(--pulse-red);
+  --color-secondary: var(--control-fill);
+  --color-secondary-foreground: var(--control-ink);
+  --color-accent: var(--control-hover);
+  --color-accent-foreground: var(--control-ink);
+  --color-border: var(--line);
+  --color-input: var(--control-border);
+  --color-ring: var(--control-focus);
+}
+:root[data-theme='dark']:has(.staff-shell, .staff-login, .staff-loading) {
+  --paper: #161920;
+  --panel: #20242e;
+  --ink: #eef1f7;
+  --subtle: #b2bbcb;
+  --line: #414959;
+  --signal: #ff8791;
+  --field-fill: #282d39;
+}
+.staff-page-title::before {
+  content: '';
+  display: inline-block;
+  width: 0.85em;
+  height: 0.15em;
+  margin-inline-end: 0.38em;
+  vertical-align: 0.27em;
+  border-radius: 1px;
+  background: var(--signal);
+}
+.staff-shell .desk-brand::after, .staff-login .desk-brand::after {
+  content: '';
+  display: inline-block;
+  width: 0.14em;
+  height: 0.14em;
+  margin-inline-start: 0.08em;
+  border-radius: 50%;
+  background: var(--signal);
 }
 @font-face {
   font-family: Inter;

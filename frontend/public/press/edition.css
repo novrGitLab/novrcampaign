@@ -112,6 +112,13 @@
     padding: 0.65rem 1.15rem;
     font-weight: 650;
   }
+  .subscribe-link:hover, .cookie button:not([data-consent]):hover {
+    background: var(--brand-hover);
+    color: var(--inverse);
+  }
+  .subscribe-link:active, .cookie button:not([data-consent]):active {
+    background: var(--brand-pressed);
+  }
   .subscribe-link {
     margin-left: auto;
   }
@@ -364,15 +371,17 @@
     flex: 1;
   }
   .signup button {
-    background: var(--paper);
-    color: var(--ink);
-  }
-  .signup button:is(:hover, :focus-visible) {
     background: var(--inverse);
+    color: var(--pulse-purple);
+  }
+  .signup button:enabled:is(:hover, :focus-visible) {
+    background: var(--on-brand-hover);
     color: var(--pulse-purple);
     text-decoration: underline;
     text-underline-offset: 0.18em;
   }
+  .signup button:enabled:active { background: var(--on-brand-pressed); }
+  .signup button:disabled { background: var(--control-disabled-fill); color: var(--control-disabled-ink); }
   .colophon {
     display: flex;
     gap: 1.5rem;
@@ -411,10 +420,12 @@
     padding: 0.4rem 0.65rem;
   }
   .cookie [data-consent='essential'] {
-    background: transparent;
-    color: var(--ink);
-    border: 1px solid var(--line);
+    background: var(--control-fill);
+    color: var(--control-ink);
+    border: 1px solid var(--control-border);
   }
+  .cookie [data-consent='essential']:hover { background: var(--control-hover); }
+  .cookie [data-consent='essential']:active { background: var(--control-pressed); }
   @keyframes ink-in {
     from {
       opacity: 0.65;
