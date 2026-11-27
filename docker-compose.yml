@@ -38,7 +38,7 @@ services:
       retries: 5
       start_period: 30s
     networks:
-      - novr-shared
+      - novr
     # Not published — reachable only by other services on the shared network.
 
   # ── Backend API (Node, Prisma) ───────────────────────────────────────────────
@@ -55,17 +55,21 @@ services:
       - .env
     environment:
       # Force the API onto the internal network and disable the backend's
-      # built-in static SPA serving (Caddy serves the SPA; VERCEL=1 is the app's
-      # own flag to skip express.static — no source change required).
+      # built-in static SPA serving (Caddy serves the SPA).
       NODE_ENV: production
       PORT: "4000"
-      VERCEL: "1"
+      SERVE_STATIC: "false"
       # Collector wiring (only honoured when NP_COLLECTION_ENABLED=true in .env
       # AND the standalone collector stack is running on `novr-shared`).
       NP_COLLECTION_BASE_URL: ${NP_COLLECTION_BASE_URL:-http://collector:4100}
     expose:
       - "4000"
     networks:
+      # The app runs on its OWN private network; it only additionally joins the
+      # shared network so it can reach the standalone collector. If the collector
+      # is not deployed, `novr-shared` need not exist for the app to work — see
+      # NP_COLLECTION_ENABLED in .env.
+      - novr
       - novr-shared
 
   # ── Frontend (Vite static, served by nginx) ──────────────────────────────────
@@ -79,7 +83,7 @@ services:
     image: novrcampaign-frontend:local
     restart: unless-stopped
     networks:
-      - novr-shared
+      - novr
 
   # ── Reverse proxy + automatic TLS (Caddy) ────────────────────────────────────
   caddy:
@@ -102,14 +106,19 @@ services:
       - caddy_data:/data
       - caddy_config:/config
     networks:
-      - novr-shared
+      - novr
 
 networks:
-  # Shared with the standalone collector stack (novr-collection). Created once:
-  #   docker network create novr-shared
-  # `external: true` means compose will NOT create or delete it.
+  # Private network owned by this stack — the app works on it alone. (Not
+  # `internal` — caddy needs outbound for ACME TLS and the backend fetches
+  # sources / calls the LLM over the internet.)
+  novr:
+  # Shared with the standalone collector stack (novr-collection). A named
+  # network (NOT external): whichever stack starts first creates it, and the
+  # other attaches to it. Only the backend joins it, so the app still boots
+  # fine when the collector stack is not deployed.
   novr-shared:
-    external: true
+    name: novr-shared
 
 volumes:
   pgdata:
