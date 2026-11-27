@@ -38,6 +38,86 @@ collector also share a second named network, `novr-shared`:
 - The collector is **not** part of `novrcampaign/docker-compose.yml`. It is started
   from its own repo, independently of the app's deploy.
 
+## CI/CD (GitHub Actions)
+
+Two workflows, one per repository. `main` auto-deploys; pull requests only run CI.
+
+| Repo | Workflow | Triggers | What it does |
+| --- | --- | --- | --- |
+| `novrcampaign` | `.github/workflows/ci.yml` | `push` to `main`/`feature/**`/`fix/**`, `pull_request` to `main` | `test` job always; `deploy` job only on push to `main` |
+| `novr-collection` | `.github/workflows/ci.yml` | `push` to `main`/`feature/**`/`fix/**`, `pull_request` to `main` | `test` job only — no deploy |
+
+The **app pipeline is the single deploy entrypoint**. On push to `main` it SSHes to the
+VPS, hard-resets the app checkout to `origin/main`, runs `./deploy.sh`
+(build → up → `prisma migrate deploy` → health check), then hard-resets and rebuilds the
+standalone collector stack, then probes `http://127.0.0.1/api/health` and fails the job
+on a non-200. The collector repo has **no** deploy job: its build is driven by the app
+pipeline, so there is one deploy path and one set of SSH secrets.
+
+### Required GitHub secrets
+
+Set these in **novrcampaign → Settings → Secrets and variables → Actions → New repository secret**.
+They are referenced only as `${{ secrets.* }}`; no secret value is ever committed.
+
+| Secret | Required | Purpose |
+| --- | --- | --- |
+| `VPS_HOST` | yes | VPS hostname or IP |
+| `VPS_USER` | yes | the non-root `deploy` user (§3) |
+| `VPS_SSH_KEY` | yes | **private** SSH key for `deploy` (contents of its private key file) |
+| `VPS_PORT` | no | SSH port; defaults to `22` when unset |
+
+If `VPS_HOST`, `VPS_USER`, or `VPS_SSH_KEY` is missing, the deploy job **skips
+gracefully** (a warning, not a red build) — so a fork or a repo without secrets still
+shows green CI.
+
+### Create the SSH deploy key on the VPS
+
+Use a **dedicated** key pair for CI. Do all of this as the `deploy` user on the VPS:
+
+```bash
+# On the VPS, as the deploy user:
+su - deploy
+mkdir -p ~/.ssh && chmod 700 ~/.ssh
+
+# Option A — generate the pair ON the VPS and copy the private key to GitHub:
+ssh-keygen -t ed25519 -C "github-actions-deploy" -f ~/.ssh/gh_actions_deploy -N ""
+cat ~/.ssh/gh_actions_deploy.pub >> ~/.ssh/authorized_keys
+chmod 600 ~/.ssh/authorized_keys
+cat ~/.ssh/gh_actions_deploy          # copy this PRIVATE key into the VPS_SSH_KEY secret
+```
+
+Do **not** copy the private key off the VPS any way other than the secret field; never
+write it to a tracked file. `authorized_keys` on the `deploy` user is what the CI key
+authenticates against. The `deploy` user must be in the `docker` group (§3) so it can run
+`docker compose`.
+
+### What runs in CI (honest gate)
+
+The CI **test** job is the deterministic gate:
+
+- `@novr/ingest` — lint + 118 tests (pure, offline). **The primary gate.**
+- `backend` — lint (strict, `--max-warnings 0`) + a **DB/LLM-free subset**
+  (`feed`, `novrpulseEventKeywords`, `novrpulseLanguage`, `novrpulseSourcesShim`,
+  `driveCrypto`, `driveToken`; 71 tests). These pure files set their own env inline and
+  open no database or LLM connection.
+- `novr-collection` — lint + 95 tests (`node --test`, no network, no DB).
+
+**Not run in CI (by design):** the backend *integration* suites under `backend/test/`
+that call a live **LLM** (`NP_LLM_API_KEY` / NVIDIA) and/or **PostgreSQL**
+(`DATABASE_URL`). They are slow, flaky, and need secrets that must not live in CI, so
+they run on the VPS / in development, not in the GitHub gate. Do not add those secrets
+to CI to "make it pass" — the gate is intentionally scoped.
+
+### Manual fallback
+
+CI is optional by design — the same deploy is a one-liner on the VPS (and is what the
+workflow invokes):
+
+```bash
+cd ~/novr/novrcampaign && ./deploy.sh
+cd ~/novr/novr-collection && docker compose up -d --build
+```
+
 ## 1. Prerequisites
 
 - Contabo Ubuntu 22.04/24.04 VPS, root or sudo access.

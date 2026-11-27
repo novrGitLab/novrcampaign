@@ -48,7 +48,6 @@ export function validatedSecret(key, { minLength = 32, fallback = '', allowInsec
   if (!present) {
     if (allowInsecure) {
       if (warn) {
-        // eslint-disable-next-line no-console
         console.error(
           `[config] ${key} is not set; using an insecure development fallback. This is refused in production.`,
         );
@@ -71,7 +70,6 @@ export function validatedSecret(key, { minLength = 32, fallback = '', allowInsec
   if (placeholder || value.length < minLength || distinct < 5) {
     if (allowInsecure) {
       if (warn) {
-        // eslint-disable-next-line no-console
         console.error(
           `[config] ${key} is weak (placeholder, shorter than ${minLength} chars, or low entropy). Allowed only outside production.`,
         );

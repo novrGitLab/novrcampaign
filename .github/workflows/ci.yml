@@ -1,0 +1,167 @@
+# CI/CD for novrcampaign
+#
+# Two jobs, gated by event:
+#   test   — runs on every push (main, feature/**) and every PR to main.
+#   deploy — runs only on push to main, after test passes, via SSH to the VPS.
+#
+# ── HONEST CI-GATE SCOPE ───────────────────────────────────────────────────────
+# The required gate is the DETERMINISTIC suites. Extracting the reasoning:
+#   * @novr/ingest (118 tests) is pure and offline — the primary gate.
+#   * The backend suite is NOT run in full: most of backend/test/*.mjs needs a
+#     live LLM key (NP_LLM_API_KEY / NVIDIA) and/or a live PostgreSQL
+#     (DATABASE_URL) and would be slow, flaky, or fail without secrets. Those
+#     integration suites run on the VPS / in dev, NOT in CI.
+#   * We DO run the backend files that are provably DB/LLM-free (pure modules):
+#     feed, novrpulseEventKeywords, novrpulseLanguage, novrpulseSourcesShim,
+#     driveCrypto, driveToken (71 tests). Each sets its own env inline and opens
+#     no DB/LLM connection.
+# If those pure files ever start needing external services, the gate degrades to
+# ingest-only; do not add secrets to make CI "green".
+# ──────────────────────────────────────────────────────────────────────────────
+
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - "feature/**"
+      - "fix/**"
+  pull_request:
+    branches:
+      - main
+
+# Cancel superseded runs on the same ref.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test (ingest + DB/LLM-free backend)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install (npm ci, workspaces)
+        run: npm ci
+
+      # ── Lint: the deterministic workspaces ──────────────────────────────────
+      # ingest lint is clean. backend lint runs strictly: the two pre-existing
+      # unused-eslint-disable warnings in backend/src/config/env.js were removed
+      # (a one-line-each, provably safe cleanup), so --max-warnings 0 passes.
+      - name: Lint @novr/ingest
+        run: npm -w @novr/ingest run lint
+
+      - name: Lint backend
+        run: npm -w backend run lint
+
+      # ── Tests ───────────────────────────────────────────────────────────────
+      - name: Test @novr/ingest (deterministic gate, 118 tests)
+        run: npm -w @novr/ingest test
+
+      # DB/LLM-free backend subset only. No NP_LLM_API_KEY / DATABASE_URL needed.
+      - name: Test backend (DB/LLM-free subset)
+        working-directory: backend
+        run: >-
+          node --test
+          test/feed.test.mjs
+          test/novrpulseEventKeywords.test.mjs
+          test/novrpulseLanguage.test.mjs
+          test/novrpulseSourcesShim.test.mjs
+          test/driveCrypto.test.mjs
+          test/driveToken.test.mjs
+
+  deploy:
+    name: Deploy to Contabo VPS
+    # Only on a push to main, only after the test gate passes.
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      # Guard: skip gracefully when SSH secrets are not configured, so a repo
+      # without them stays green instead of failing red. Configure the three
+      # secrets (VPS_HOST, VPS_USER, VPS_SSH_KEY) to enable auto-deploy.
+      - name: Check deploy secrets
+        id: guard
+        env:
+          # Bound to env (not interpolated into the command) so secret values
+          # never appear in the shell text. Only their empty/non-empty state is used.
+          HAS_HOST: ${{ secrets.VPS_HOST }}
+          HAS_USER: ${{ secrets.VPS_USER }}
+          HAS_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          if [ -z "${HAS_HOST}" ] || [ -z "${HAS_USER}" ] || [ -z "${HAS_KEY}" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::VPS_* secrets not set — skipping auto-deploy. Set VPS_HOST, VPS_USER, VPS_SSH_KEY to enable."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Deploy over SSH
+        if: steps.guard.outputs.configured == 'true'
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          script_stop: true
+          command_timeout: 20m
+          script: |
+            set -euo pipefail
+
+            APP_DIR="$HOME/novr/novrcampaign"
+            COLLECTOR_DIR="$HOME/novr/novr-collection"
+
+            # ── App stack ────────────────────────────────────────────────────
+            cd "$APP_DIR"
+            git fetch --prune origin main
+            # Hard-reset to the remote tip. The VPS checkout is a DEPLOY TARGET,
+            # never a place for local commits or edits; discarding local changes
+            # is intended (see docs/deployment/contabo.md §14 "dirty tree").
+            git checkout -B main origin/main
+            git reset --hard origin/main
+
+            # deploy.sh: build -> up -d -> prisma migrate deploy -> health check.
+            ./deploy.sh
+
+            # ── Collector stack (separate repo, own compose) ─────────────────
+            if [ -d "$COLLECTOR_DIR/.git" ]; then
+              cd "$COLLECTOR_DIR"
+              git fetch --prune origin main
+              git checkout -B main origin/main
+              git reset --hard origin/main
+              docker compose up -d --build
+            else
+              echo "[warn] $COLLECTOR_DIR not found — skipping collector rebuild"
+            fi
+
+            # ── Explicit host health check (fail the job on non-200) ─────────
+            cd "$APP_DIR"
+            HEALTH_URL="http://127.0.0.1/api/health"
+            for i in $(seq 1 30); do
+              if curl -fsS "$HEALTH_URL" >/dev/null 2>&1; then
+                echo "[ok] API healthy at $HEALTH_URL"
+                exit 0
+              fi
+              sleep 2
+            done
+            echo "[error] API health check failed at $HEALTH_URL" >&2
+            docker compose logs --tail=60 backend || true
+            exit 1
+
+      - name: Deploy skipped (no secrets)
+        if: steps.guard.outputs.configured != 'true'
+        run: 'echo "Auto-deploy skipped - VPS_HOST / VPS_USER / VPS_SSH_KEY are not configured for this repository."'
