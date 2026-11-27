@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { format, formatDistanceToNow } from 'date-fns';
 import { Check, ChevronDown, CloudDownload, RefreshCw, Sparkles, X } from '../components/ui/icons';
-import { Button, EmptyState, Skeleton } from '../components/ui';
+import { Button, Input, EmptyState, Skeleton } from '../components/ui';
 import { Modal } from '../components/ui/Modal';
 import AiJudgementCard from '../components/pulse/AiJudgementCard';
 import AiDraftNote, { warningMessage } from '../components/pulse/AiDraftNote';
@@ -885,14 +885,14 @@ export default function PulseToday() {
 
 
         <section aria-labelledby="newsHead" className="mt-8">
-          <div className="flex items-center gap-3 border-b border-border pb-3">
+          <div className="flex flex-wrap items-center gap-3 border-b border-border pb-3">
             <h2 id="newsHead" className="font-serif text-3xl tracking-tight text-foreground">
               The news wire <span className="ml-0.5 text-primary">({newsCount})</span>
             </h2>
             <div className="flex flex-wrap items-center gap-3">
               <CyberTierChips value={cyberTier} onSelect={value=>{setPage(1);setCyberTier(value);}} />
               <ThreatIntelChip active={threatIntelOnly} onToggle={value=>{setPage(1);setThreatIntelOnly(value);}} />
-              <input
+              <Input
                 type="search"
                 value={query}
                 onChange={(e) => {setPage(1);setQuery(e.target.value);}}

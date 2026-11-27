@@ -712,7 +712,7 @@ export async function editPublishItem(req, res) {
 
   const { body, regulatoryImpact, eventDate } = await validate(editSchema, req.body ?? {});
 
-  const item = await prisma.publishItem.findUnique({ where: { id: req.params.id } });
+  const item = await prisma.publishItem.findUnique({ where: { id: req.params.id }, include:{sectionItems:{select:{section:{select:{id:true,briefing:{select:{publishedAt:true,sendingAt:true}}}}}}} });
   if (!item) throw NotFound('Publish item not found');
   if (item.publishedAt) {
     throw Conflict('Cannot edit a published item — use the corrections path');
@@ -729,10 +729,10 @@ export async function editPublishItem(req, res) {
     throw BadRequest('Provide at least one field to update (body, regulatoryImpact, or eventDate)');
   }
 
-  const locked = await prisma.briefingSectionItem.findFirst({where:{publishItemId:item.id,section:{briefing:{OR:[{sendingAt:{not:null}},{publishedAt:{not:null}}]}}},select:{id:true}});
-  if (locked) throw Conflict('This story belongs to a closed edition.');
-  const [updated] = await prisma.$transaction([prisma.publishItem.update({where:{id:item.id},data}),prisma.briefingSection.updateMany({where:{items:{some:{publishItemId:item.id}}},data:{state:'awaiting'}})]);
-
+  const sections=(item.sectionItems ?? []).map(link=>link.section);
+  if(sections.some(section=>section.briefing.publishedAt || section.briefing.sendingAt)) throw Conflict('This story belongs to a closed edition.');
+  const save=prisma.publishItem.update({where:{id:item.id},data});
+  const updated=sections.length ? (await prisma.$transaction([save, prisma.briefingSection.updateMany({where:{id:{in:sections.map(section=>section.id)}},data:{state:'awaiting'}})]))[0] : await save;
   return res.json({ item: serializeItem(updated) });
 }
 

@@ -80,6 +80,7 @@ function makeStore({ events = [], documents = [], publishItems = [], publishItem
     async findMany({ where }) {
       return state.events
         .filter((e) => !where.publishedAt?.lt || e.publishedAt < where.publishedAt.lt)
+        .filter((e) => !where.OR || where.OR.some(filter=>Object.entries(filter).every(([key,value])=>(e[key] ?? null)===value)))
         .filter((e) => !where.id?.notIn || !where.id.notIn.includes(e.id))
         .map((e) => ({ id: e.id }));
     },
@@ -210,6 +211,13 @@ describe('retention: dryRun', () => {
     });
   });
 
+  test('keeps archived public stories and their source documents', async () => {
+    store.state.publishItems=[];
+    Object.assign(store.state.events.find(row=>row.id==='e-old'),{isCybersecurity:true,reviewStatus:'new'});
+    const summary=await withStore(store,()=>purgeStaleNews({now:NOW,dryRun:false}));
+    assert.equal(summary.eventsDeleted,0);
+    assert.equal(store.state.documents.length,1);
+  });
   test('dryRun:false deletes the unanswered old event and its orphaned doc', async () => {
     await withStore(store, async () => {
       // Remove the protection so e-old becomes a genuine candidate.

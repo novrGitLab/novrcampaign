@@ -278,7 +278,7 @@ describe('manual publish: denied paths', () => {
     const bad = [
       { headline: 'H', text: 'T' }, // missing functionId
       { functionId: 0, headline: 'H', text: 'T' }, // out of range
-      { functionId: 9, headline: 'H', text: 'T' },
+      { functionId: 11, headline: 'H', text: 'T' },
       { functionId: 3, headline: '', text: 'T' }, // blank headline
       { functionId: 3, headline: 'H', text: '' }, // blank text
       { functionId: 3, headline: 'H' }, // missing text

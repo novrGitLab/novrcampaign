@@ -128,6 +128,8 @@ export async function purgeStaleNews({ retentionDays = 1, now = new Date(), dryR
   const cutoff = computeCutoff(retentionDays, now);
 
   const protectedIds = await collectProtectedEventIds();
+  // Eligible cybersecurity stories have stable public URLs in the archive.
+  const notInArchive = { OR: [{ isCybersecurity: null }, { isCybersecurity: false }, { reviewStatus: 'dismissed' }] };
 
   // 1. Candidate events: older than the cutoff and not referenced by any
   //    editorial/training record.
@@ -135,6 +137,7 @@ export async function purgeStaleNews({ retentionDays = 1, now = new Date(), dryR
     where: {
       publishedAt: { lt: cutoff },
       id: { notIn: protectedIds },
+      ...notInArchive,
     },
     select: { id: true },
   });
@@ -166,7 +169,7 @@ export async function purgeStaleNews({ retentionDays = 1, now = new Date(), dryR
   //    purge can never leave dangling source links.
   const result = await prisma.$transaction(async (tx) => {
     const eventsDeleted = candidateIds.length
-      ? (await tx.npEvent.deleteMany({ where: { id: { in: candidateIds } } })).count
+      ? (await tx.npEvent.deleteMany({ where: { id: { in: candidateIds }, ...notInArchive } })).count
       : 0;
 
     // Orphaned = no surviving np_event_source still points at the document.

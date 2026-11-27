@@ -58,11 +58,12 @@ function fakeRes() {
  * call so tests can assert the controller invoked it exactly once with the
  * right options.
  */
-function makeReq({ authorization, body, user, calls } = {}) {
+function makeReq({ authorization, body, user, calls, cookies } = {}) {
   const headers = {};
   if (authorization !== undefined) headers.authorization = authorization;
   const req = {
     headers,
+    cookies,
     body,
     get: (h) => headers[h.toLowerCase()],
     user,
@@ -77,21 +78,21 @@ function makeReq({ authorization, body, user, calls } = {}) {
 }
 
 async function withUser(record, fn) {
-  const had = Object.prototype.hasOwnProperty.call(prisma, 'user');
-  Object.defineProperty(prisma, 'user', {
-    value: { findUnique: async () => record },
+  const had = Object.prototype.hasOwnProperty.call(prisma, 'staffSession');
+  Object.defineProperty(prisma, 'staffSession', {
+    value: { findFirst: async () => ({user:record}) },
     configurable: true,
     writable: true,
   });
   try {
     return await fn();
   } finally {
-    if (!had) delete prisma.user;
+    if (!had) delete prisma.staffSession;
   }
 }
 
 after(() => {
-  delete prisma.user;
+  delete prisma.staffSession;
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -184,15 +185,14 @@ describe('pulse collect: controller auth and run', () => {
     });
   });
 
-  test('an ADMIN session (a valid JWT) → 200 and runCollection runs', async () => {
+  test('an ADMIN session (a valid staff cookie) → 200 and runCollection runs', async () => {
     const calls = [];
-    const jwt = (await import('jsonwebtoken')).default;
     await withSecret('', async () => {
       await withUser({ id: 'u1', email: 'a@b.c', name: 'Admin', role: 'ADMIN' }, async () => {
-        const token = jwt.sign({ sub: 'u1' }, config.jwt.secret, { algorithm: 'HS256' });
+        const cookies = { pulse_staff: 'test-session' };
         const res = fakeRes();
         await runPulseCollection(
-          makeReq({ authorization: `Bearer ${token}`, body: {}, calls }),
+          makeReq({ cookies, body: {}, calls }),
           res,
         );
         assert.equal(res.statusCode, 200);
@@ -201,14 +201,13 @@ describe('pulse collect: controller auth and run', () => {
     });
   });
 
-  test('a non-admin session (valid JWT, VIEWER) → 401 with no run', async () => {
+  test('a non-admin session (valid staff cookie, VIEWER) → 401 with no run', async () => {
     const calls = [];
-    const jwt = (await import('jsonwebtoken')).default;
     await withSecret('', async () => {
       await withUser({ id: 'u2', email: 'v@b.c', name: 'Viewer', role: 'VIEWER' }, async () => {
-        const token = jwt.sign({ sub: 'u2' }, config.jwt.secret, { algorithm: 'HS256' });
+        const cookies = { pulse_staff: 'test-session' };
         await assert.rejects(
-          () => runPulseCollection(makeReq({ authorization: `Bearer ${token}`, body: {}, calls }), fakeRes()),
+          () => runPulseCollection(makeReq({ cookies, body: {}, calls }), fakeRes()),
           (err) => {
             assert.equal(err.statusCode, 401);
             return true;
@@ -306,21 +305,10 @@ describe('pulse collect: route wiring', () => {
     );
   });
 
-  test('vercel.json schedules the collection cron at 05:00 UTC', async () => {
-    const { readFile } = await import('node:fs/promises');
-    const { fileURLToPath } = await import('node:url');
-    const path = fileURLToPath(new URL('../../vercel.json', import.meta.url));
-    const json = JSON.parse(await readFile(path, 'utf8'));
-    const entry = (json.crons ?? []).find((c) => c.path === '/api/pulse/collect/run');
-    assert.ok(entry, 'the /api/pulse/collect/run cron entry must exist');
-    assert.equal(entry.schedule, '0 5 * * *');
-    // The existing drive cron must be untouched.
-    assert.ok(
-      (json.crons ?? []).find(
-        (c) => c.path === '/api/drive/maintenance' && c.schedule === '0 3 * * *',
-      ),
-      'the 3 AM drive cron must remain',
-    );
+  test('the VPS schedule calls the authenticated collector at 05:00 UTC',async()=>{
+    const {readFile}=await import('node:fs/promises');
+    const instructions=await readFile(new URL('../../docs/deployment/contabo.md',import.meta.url),'utf8');
+    assert.match(instructions,/0 5 [^\n]+NP_COLLECT_CRON_SECRET[^\n]+\/api\/pulse\/collect\/run/);
   });
 });
 

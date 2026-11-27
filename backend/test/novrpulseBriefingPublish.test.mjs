@@ -50,6 +50,11 @@ function makeStore(seed = {}) {
         .map(withItems);
       return { ...row, sections: secs };
     },
+    async updateMany({ where, data }) {
+      const row=briefings.find(b=>b.id===where.id && b.publishedAt===null && (where.sendingAt!==null || !b.sendingAt));
+      if(!row)return {count:0};
+      Object.assign(row,data);return {count:1};
+    },
     async update({ where, data }) {
       const row = briefings.find((b) => b.id === where.id);
       if (!row) throw new Error('record not found');
@@ -199,7 +204,7 @@ function seededStore(briefingOverrides = {}) {
   const s7 = sectionWithItem({ functionId: 7, body: 'A breaking item\n\nWHAT HAPPENED\nIt happened.' });
   return makeStore({
     briefings: [{ id: 'br-1', briefingDate: new Date('2026-11-25T00:00:00Z'), title: null, status: 'draft', publishedAt: null, ...briefingOverrides }],
-    sections: [s8.section, s7.section],
+    sections: [s8.section, s7.section, ...[1,2,3,4,5,6,9,10].map(functionId=>({id:'empty-'+functionId,briefingId:'br-1',functionId,position:functionId,state:'no_updates'}))],
     sectionItems: [s8.item, s7.item],
     publishItems: [s8.publish, s7.publish],
   });

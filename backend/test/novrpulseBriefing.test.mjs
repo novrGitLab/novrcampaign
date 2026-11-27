@@ -381,9 +381,9 @@ after(() => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('briefing: pillars', () => {
-  test('exactly eight pillars, ids 1..8, in order, with labels', () => {
-    assert.equal(PILLARS.length, 8);
-    assert.deepEqual(PILLARS.map((p) => p.functionId), [1, 2, 3, 4, 5, 6, 7, 8]);
+  test('exactly ten pillars, ids 1..10, in order, with labels', () => {
+    assert.equal(PILLARS.length, 10);
+    assert.deepEqual(PILLARS.map((p) => p.functionId), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
     assert.equal(pillarLabel(1), 'Regulatory Impact');
     assert.equal(pillarLabel(8), 'CyberIntel');
     assert.equal(pillarLabel(99), null);
@@ -391,24 +391,24 @@ describe('briefing: pillars', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 1. Create — auto-seeds the eight sections; duplicate date conflicts.
+// 1. Create — auto-seeds the ten sections; duplicate date conflicts.
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('briefing: create', () => {
-  test('auto-seeds exactly 8 sections, position=functionId, state empty', async () => {
+  test('auto-seeds exactly 10 sections, position=functionId, state empty', async () => {
     const store = makeStore();
     const { statusCode, payload } = await withPrisma(store, () =>
       callController(createBriefing, { user: { id: 'u-1' }, body: { briefingDate: '2026-11-19' } }),
     );
 
     assert.equal(statusCode, 201);
-    assert.equal(payload.briefing.sections.length, 8);
-    assert.deepEqual(payload.briefing.sections.map((s) => s.functionId), [1, 2, 3, 4, 5, 6, 7, 8]);
-    assert.deepEqual(payload.briefing.sections.map((s) => s.position), [1, 2, 3, 4, 5, 6, 7, 8]);
+    assert.equal(payload.briefing.sections.length, 10);
+    assert.deepEqual(payload.briefing.sections.map((s) => s.functionId), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    assert.deepEqual(payload.briefing.sections.map((s) => s.position), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
     assert.ok(payload.briefing.sections.every((s) => s.state === 'empty'));
 
     // Persisted: 8 section rows exist in the store.
-    assert.equal(store.sections.length, 8);
+    assert.equal(store.sections.length, 10);
   });
 
   test('a duplicate briefing date is refused with 409', async () => {
@@ -426,11 +426,11 @@ describe('briefing: create', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 2. Get — eight sections in order with their items and supporting counts.
+// 2. Get — ten sections in order with their items and supporting counts.
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('briefing: get', () => {
-  test('returns the 8 sections ordered, with items and supporting counts', async () => {
+  test('returns the 10 sections ordered, with items and supporting counts', async () => {
     const store = makeStore({
       publishItems: [{ id: 'pi-x', functionId: 7, contentType: 'briefing', body: 'Breaking news body', tier: 'public', templateVersion: 'manual@1.0.0' }],
       supportingEvents: [{ id: 'se-1', title: 'Event', description: 'd', organiser: 'o', startsAt: new Date('2026-11-20T00:00:00Z') }],
@@ -456,7 +456,7 @@ describe('briefing: get', () => {
     );
 
     const sections = payload.briefing.sections;
-    assert.deepEqual(sections.map((s) => s.functionId), [1, 2, 3, 4, 5, 6, 7, 8]);
+    assert.deepEqual(sections.map((s) => s.functionId), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
 
     const s7 = sections.find((s) => s.functionId === 7);
     assert.equal(s7.items.length, 1);
@@ -701,8 +701,8 @@ describe('briefing: list', () => {
     const { payload } = await withPrisma(store, () => callController(listBriefings, { query: {} }));
     assert.equal(payload.briefings.length, 2);
     assert.deepEqual(payload.briefings.map((b) => b.briefingDate.slice(0, 10)), ['2026-11-19', '2026-11-18']);
-    assert.equal(payload.briefings[0].sectionTotal, 8);
-    assert.equal(payload.briefings[0].sectionCounts.empty, 8);
+    assert.equal(payload.briefings[0].sectionTotal, 10);
+    assert.equal(payload.briefings[0].sectionCounts.empty, 10);
   });
 });
 

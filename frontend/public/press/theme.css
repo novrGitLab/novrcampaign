@@ -49,3 +49,5 @@
     min-height: 40px;
   }
 }
+
+@media (max-width: 420px) { .newspaper .mast .subscribe-link { white-space:nowrap;font-size:.71rem; padding:.45rem .6rem } .newspaper .mast .wordmark {font-size:clamp(2.85rem,13vw,3.6rem)} }

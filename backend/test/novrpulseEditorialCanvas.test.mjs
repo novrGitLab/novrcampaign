@@ -265,7 +265,7 @@ describe('canvas: validation and not-found', () => {
   });
 
   test('an out-of-range functionId is a 400 and writes nothing', async () => {
-    for (const functionId of [0, 9, 'seven']) {
+    for (const functionId of [0, 11, 'seven']) {
       const store = makeStore({ events: [benignEvent()] });
       const { error } = await withPrisma(store, () =>
         callController(createItemFromEvent, { user: { id: 'e' }, body: { eventId: 'evt-ok', functionId } }),

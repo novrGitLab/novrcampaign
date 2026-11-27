@@ -187,7 +187,7 @@ function slotValue(slots, label) {
 /**
  * Derive a story's display fields from a briefing section item (any pillar).
  *
- *  - headline: linked event title, else the first line of the item body.
+ *  - Headline uses the edited copy, with the linked title as a fallback.
  *  - source: the linked event's source name, else 'NovrPulse'.
  *  - sourceUrl: the linked event's canonical URL, else ''.
  *
@@ -531,7 +531,9 @@ export function buildTokenMap(vm) {
     const blocks=stories.map(story=>{
       const lines=String(story.body || '').trim().split(/\r?\n/);
       if(lines[0]?.trim()===story.headline)lines.shift();
-      const paragraphs=lines.join('\n').trim().split(/\n\s*\n/).filter(Boolean).map(p=>'<p style="font:16px/1.6 Georgia,serif;margin:12px 0">'+escapeHtml(p).replaceAll('\n','<br>')+'</p>').join('');
+      const slotTitles={SUMMARY:'Summary',IMPACT:'Impact','WHY IT MATTERS':'Why It Matters','KEY DETAILS':'Key Details',AFFECTED:'Who is affected','WHAT HAPPENED':'What happened',SOURCE:'Source'};
+      const structured=Object.entries(story.slots).filter(([label,value])=>value && label !== story.headline);
+      const paragraphs=structured.length ? structured.map(([name,value])=>'<p style="font:16px/1.6 Georgia,serif"><strong>'+escapeHtml(slotTitles[name] || name[0]+name.slice(1).toLowerCase())+'</strong><br>'+escapeHtml(value)+'</p>').join('') : lines.join('\n').trim().split(/\n\s*\n/).filter(Boolean).map(p=>'<p style="font:16px/1.6 Georgia,serif;margin:12px 0">'+escapeHtml(p).replaceAll('\n','<br>')+'</p>').join('');
       const photo=story.imageUrl?'<img width="540" style="display:block;width:100%;height:auto" src="'+escapeHtml(story.imageUrl)+'" alt="'+escapeHtml(story.imageAlt)+'"><p style="font:12px Arial;color:#5e5a59">'+escapeHtml(story.imageCredit)+'</p>':'';
       const link=safeUrl(story.sourceUrl);
       return '<h3 style="font: bold 25px/1.15 Georgia,serif;margin:12px 0">'+escapeHtml(story.headline)+'</h3>'+photo+paragraphs+(link?'<p><a style="color:#4353a3" href="'+escapeHtml(link)+'">'+escapeHtml(story.source)+'</a></p>':'');

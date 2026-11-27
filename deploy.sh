@@ -9,7 +9,11 @@ import json, sys
 services = json.load(sys.stdin)["services"]
 settings = services["backend"]["environment"]
 site = "https://pulse.cybernovr.com"
-required = ["OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET", "JWT_SECRET", "PLUNK_API_KEY", "NP_PULSE_SEGMENT"]
+required = ["JWT_SECRET", "DATABASE_URL", "DIRECT_URL"]
+for feature, names in {"staff SSO": ["OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET"], "newsletter": ["PLUNK_API_KEY","NP_PULSE_SEGMENT"]}.items():
+    unset = [name for name in names if not str(settings.get(name) or "").strip()]
+    if unset:
+        print("Pending " + feature + " configuration: " + ", ".join(unset), file=sys.stderr)
 missing = [name for name in required if not str(settings.get(name) or "").strip()]
 expected = {"OIDC_REDIRECT_URI": site + "/api/auth/oidc/callback", "PUBLIC_SITE_URL": site, "FRONTEND_URL": site}
 missing += [name for name, value in expected.items() if settings.get(name) != value]
