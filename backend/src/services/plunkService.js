@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { config } from '../config/env.js';
 import { withRetry, sleep } from '../utils/backoff.js';
 import { AppError } from '../utils/AppError.js';
@@ -726,6 +727,20 @@ export default {
   refreshSegment,
   computeSegment,
 };
+
+export async function sendBriefingProof(to, subject, html) {
+  const delivery = await plunkRequest('/v1/send', {
+    method: 'POST',
+    retry: false,
+    idempotencyKey: 'pulse-proof-' + randomUUID(),
+    body: { to, subject: '[Test] ' + subject, body: html, from: { name: 'NovrPulse', email: SENDER.from }, reply: SENDER.replyTo },
+  });
+  const recipients = delivery?.emails;
+  if (recipients?.length !== 1 || !['queued', 'sent', 'delivered'].includes(recipients[0].status)) {
+    throw new Error('The provider did not confirm a queued proof copy. Check delivery history before retrying.');
+  }
+  return recipients[0].email;
+}
 
 export async function sendStaffNotice(email, content, id) {
   try {

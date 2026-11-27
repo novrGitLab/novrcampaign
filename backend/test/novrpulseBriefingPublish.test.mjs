@@ -268,26 +268,23 @@ describe('briefing publish: guards', () => {
 describe('briefing publish: test send', () => {
   test('sends ONE transactional test to the given address and records a test row', async () => {
     const store = seededStore();
-    const created = { id: 'cmp-1' };
     stubFetch((path) => {
-      if (path === '/campaigns' ) return created;
-      if (path === '/campaigns/cmp-1/test') return { success: true, data: { ok: true } };
-      if (path === '/campaigns/cmp-1') return {};
-      throw new Error(`unexpected path ${path}`);
+      assert.equal(path, '/v1/send');
+      return { success: true, data: { emails: [{ email: 'proof-id', status: 'queued' }] } };
     });
 
     const { statusCode, payload } = await withPrisma(store, () =>
-      call(publishBriefing, { user: { id: 'u', email: 'admin@novrcampaign.local' }, params: { id: 'br-1' }, body: { test: true, email: 'admin@novrcampaign.local' } }),
+      call(publishBriefing, { user: { id: 'u', email: 'editor@novrcampaign.local' }, params: { id: 'br-1' }, body: { test: true, email: 'admin@novrcampaign.local' } }),
     );
 
     assert.equal(statusCode, 200);
     assert.deepEqual(payload, { sent: true, test: true, to: 'admin@novrcampaign.local' });
 
-    // The real Plunk endpoints used: create draft → test → delete draft. NO send.
-    const paths = calls.map((c) => c.path);
-    assert.ok(paths.includes('/campaigns'), 'creates a transitive draft');
-    assert.ok(paths.includes('/campaigns/cmp-1/test'), 'sends a single test copy');
-    assert.ok(!paths.includes('/campaigns/cmp-1/send'), 'never sends to a segment');
+    assert.deepEqual(calls.map((c) => c.path), ['/v1/send']);
+    assert.equal(calls[0].body.to, 'admin@novrcampaign.local');
+    assert.equal(calls[0].body.subscribed, undefined);
+    assert.match(calls[0].body.subject, /^\[Test\]/);
+    assert.equal(store.publications[0].recipientSummary.providerId, 'proof-id');
 
     // Audit row written, kind 'test'; briefing NOT marked published.
     assert.equal(store.publications.length, 1);
@@ -301,11 +298,10 @@ describe('briefing publish: test send', () => {
   test('defaults the test recipient to the caller when `email` is omitted', async () => {
     const store = seededStore();
     stubFetch((path) => {
-      if (path === '/campaigns') return { id: 'cmp-9' };
-      if (path === '/campaigns/cmp-9/test') return {};
-      if (path === '/campaigns/cmp-9') return {};
-      throw new Error(`unexpected ${path}`);
+      assert.equal(path, '/v1/send');
+      return { success: true, data: { emails: [{ email: 'proof-id', status: 'queued' }] } };
     });
+
     const { payload } = await withPrisma(store, () =>
       call(publishBriefing, { user: { id: 'u', email: 'me@x.io' }, params: { id: 'br-1' }, body: { test: true } }),
     );

@@ -490,7 +490,7 @@ async function recordPublication(briefingId, { kind, html, segments, recipientSu
  *  2. Guard: 400 when the briefing has no items ("Nothing to publish"); 409 when
  *     it is already published.
  *  3. `test: true` → send ONE email to `email` (defaults to the caller's own
- *     address) via the campaign test-send primitive; write a `kind: 'test'`
+ *     address) via transactional delivery; write a `kind: 'test'`
  *     publication row for audit; return `{ sent: true, test: true, to }`.
  *  4. production → segments are `body.segments` or `[NP_PULSE_SEGMENT]`; when
  *     neither is configured, 400 `NO_SEGMENT_CONFIGURED`. Send via the campaign
@@ -522,33 +522,18 @@ export async function publishBriefing(req, res) {
     const to = value.email || req.user?.email;
     if (!to) throw BadRequest('No email to send the test to — pass `email` in the body');
 
-    let lastError;
+    let providerId;
     try {
-      // Reuse the campaign primitives: create a TRANSACTIONAL draft, then send a
-      // single test copy. Nothing is transmitted to a segment.
-      const campaign = await plunk.createCampaign({
-        name: `Briefing test · ${formatBriefingDate(briefing.briefingDate)}`,
-        subject,
-        body: html,
-        type: 'TRANSACTIONAL',
-        audienceType: 'ALL',
+      providerId = await plunk.sendBriefingProof(to, subject, html);
+    } catch (error) {
+      throw BadGateway('Could not send the test email: ' + error.message, {
+        provider: 'plunk',
+        status: error.status ?? null,
       });
-      await plunk.testCampaign(campaign.id, to);
-      // The throwaway test campaign is deleted so it never appears as a draft.
-      await plunk.deleteCampaign(campaign.id).catch(() => {});
-    } catch (err) {
-      lastError = err;
     }
-
-    if (lastError) {
-      throw BadGateway(
-        `Could not send the test email: ${lastError.message}`,
-        { provider: 'plunk', status: lastError.status ?? null },
-      );
-    }
-
-    // Audit row (kind 'test'). Never marks the briefing published.
-    await recordPublication(briefing.id, { kind: 'test', segments: [], recipientSummary: { test: true, to } });
+    await recordPublication(briefing.id, {
+      kind: 'test', segments: [], recipientSummary: { test: true, to, providerId },
+    });
 
     return res.json({ sent: true, test: true, to });
   }
