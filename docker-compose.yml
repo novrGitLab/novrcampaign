@@ -114,12 +114,13 @@ networks:
   # `internal` — caddy needs outbound for ACME TLS and the backend fetches
   # sources / calls the LLM over the internet.)
   novr:
-  # Shared with the standalone collector stack (novr-collection). A named
-  # network (NOT external): whichever stack starts first creates it, and the
-  # other attaches to it. Only the backend joins it, so the app still boots
-  # fine when the collector stack is not deployed.
+  # Shared with the standalone collector stack (novr-collection). Declared
+  # `external: true` so the app ATTACHES to the network the collector creates,
+  # without Compose warning about a name clash. deploy.sh runs
+  # `docker network create novr-shared || true` first, so the app never fails
+  # for lack of it (and only the backend joins it).
   novr-shared:
-    name: novr-shared
+    external: true
 
 volumes:
   pgdata:

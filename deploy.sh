@@ -62,7 +62,7 @@ log "Building images"
 
 # ── 3. Start / update containers ──────────────────────────────────────────────
 log "Starting containers"
-"${COMPOSE[@]}" up -d
+"${COMPOSE[@]}" up -d --remove-orphans
 
 # ── 3b. Standalone collector stack ────────────────────────────────────────────
 if [[ "$WITH_COLLECTOR" == "1" ]]; then
