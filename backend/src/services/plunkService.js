@@ -49,7 +49,7 @@ function unwrap(payload) {
  * @param {{ method?: string, query?: Record<string,string|number>, body?: object }} [opts]
  * @returns {Promise<any>}
  */
-async function plunkRequest(path, { method = 'GET', query = {}, body, retry = true } = {}) {
+async function plunkRequest(path, { method = 'GET', query = {}, body, retry = true, idempotencyKey } = {}) {
   const call = async () => {
     // 1. Honour an active lockout
     const lockMs = await getLockoutMs();
@@ -79,7 +79,9 @@ async function plunkRequest(path, { method = 'GET', query = {}, body, retry = tr
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
+        ...(idempotencyKey && { 'Idempotency-Key': idempotencyKey }),
       },
+      ...(idempotencyKey && { signal: AbortSignal.timeout(15000) }),
       body: body ? JSON.stringify(body) : undefined,
     });
 
@@ -110,6 +112,7 @@ async function plunkRequest(path, { method = 'GET', query = {}, body, retry = tr
       const err = new Error(message);
       err.status = apiError.statusCode || (res.status >= 400 ? res.status : 500);
       err.code = apiError.code;
+      err.originalStatus = apiError.details?.originalStatusCode;
       err.requestId = apiError.requestId;
       err.details = apiError.errors;
       throw err;
@@ -724,9 +727,19 @@ export default {
   computeSegment,
 };
 
+export async function sendStaffNotice(email, content, id) {
+  try {
+    return await plunkRequest('/v1/send', { method: 'POST', retry: false, idempotencyKey: 'pulse-access-' + id,
+      body: { to: email, from: { name: 'NovrPulse', email: SENDER.from }, ...content } });
+  } catch (error) {
+    if (error.code === 'IDEMPOTENCY_KEY_REUSED' && error.originalStatus >= 200 && error.originalStatus < 300) return;
+    throw error;
+  }
+}
+
 export function sendConfirmation(email, link) {
   return plunkRequest('/v1/send', { method: 'POST', body: {
-    to: email, subject: 'Confirm your NovrPulse subscription',
+    to: email, from: { name:'NovrPulse', email:SENDER.from }, subject: 'Confirm your NovrPulse subscription',
     body: '<p>Confirm this address to receive the NovrPulse Daily Brief.</p><p><a href="' + link + '">Confirm subscription</a></p><p>The link expires in 24 hours.</p>',
   } });
 }

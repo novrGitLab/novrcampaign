@@ -2,7 +2,8 @@ import jwt from 'jsonwebtoken';
 import { createHash } from 'node:crypto';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { config } from '../config/env.js';
-import { resolveStaffProfile } from '../services/staffProfile.js';
+import { setRequestCookie, clearRequestCookie } from '../routes/staffAccessRoutes.js';
+import { resolveStaffLogin } from '../services/staffProfile.js';
 import { prisma } from '../utils/prisma.js';
 import { cookieOptions, sessionName, digest, issueSession, opaqueToken } from '../services/staffSession.js';
 
@@ -99,7 +100,13 @@ export async function callback(req, res) {
       payload.email_verified !== true
     )
       throw new Error('Identity unverified');
-    const user = await resolveStaffProfile(issuer, payload);
+    const { user, request } = await resolveStaffLogin(issuer, payload);
+    if (request) {
+      res.clearCookie(sessionName, cookieOptions);
+      setRequestCookie(res, request.id);
+      return res.redirect('/access-request');
+    }
+    clearRequestCookie(res);
     await issueSession(res, user.id);
     return res.redirect('/pulse');
   } catch {
@@ -111,6 +118,7 @@ export async function logout(req, res) {
   const token = req.cookies[sessionName];
   if (token) await prisma.staffSession.deleteMany({ where: { hash: digest(token) } });
   res.clearCookie(sessionName, cookieOptions);
+  clearRequestCookie(res);
   return res.sendStatus(204);
 }
 

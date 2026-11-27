@@ -1,3 +1,4 @@
+import { applicantRoutes, reviewRoutes } from './staffAccessRoutes.js';
 import newsroomMedia from './newsroomMedia.js';
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth.js';
@@ -23,7 +24,9 @@ const router = Router();
 // Public
 router.use('/health', healthRoutes);
 router.use('/webhooks', webhookRoutes);
+router.use('/auth/access', applicantRoutes);
 router.use('/auth', authRoutes);
+router.use('/staff-access', requireAuth, reviewRoutes);
 router.use('/media', newsroomMedia);
 
 // Pulse collection trigger — cron/ADMIN-guarded INSIDE the controller, so it
