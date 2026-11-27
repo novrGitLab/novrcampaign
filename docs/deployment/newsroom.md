@@ -6,7 +6,7 @@ The public newsroom and staff desk run on Next.js with TypeScript and Tailwind. 
 
 Use the authoritative DNS zone for cybernovr.com. At audit time the domain delegated to dns1.namecheaphosting.com and dns2.namecheaphosting.com. The hosting account's cPanel Zone Editor contains the `pulse` A record pointing to `213.136.94.10` with a 300-second TTL. Check for conflicting A, AAAA or CNAME records. Confirm the resolved name reaches this Contabo instance on 80 and 443.
 
-Register a server-based Zoho application, or an approved callback on an existing client for this relying party. Register exactly `https://pulse.cybernovr.com/api/auth/oidc/callback`. Put the client ID and secret in the VPS repository's untracked .env. The browser never receives the secret. The issuer and verified email domain must match the staff directory.
+Register a server-based Zoho application, or an approved callback on an existing client for this relying party. Register exactly `https://pulse.cybernovr.com/api/auth/oidc/callback`. Put the client ID and secret in the VPS repository's untracked .env. The browser never receives the secret. The issuer and verified email domain must match the staff directory. A first verified sign-in creates an applicant profile. The applicant selects Request access. A bound newsroom administrator reviews it under Staff access and selects a role. Approval links the verified Zoho subject to a staff account. A fresh Zoho sign-in then opens the desk. Existing bound staff keep their role. The verified domain restriction also applies on return.
 
 | Variable | Production value or purpose |
 | --- | --- |
@@ -16,11 +16,16 @@ Register a server-based Zoho application, or an approved callback on an existing
 | OIDC_CLIENT_ID, OIDC_CLIENT_SECRET | Registered server-based client |
 | OIDC_REDIRECT_URI | https://pulse.cybernovr.com/api/auth/oidc/callback |
 | OIDC_ALLOWED_EMAIL_DOMAINS | cybernovr.com |
-| PULSE_EDITOR_EMAILS | Explicit comma-separated initial administrators who have no existing Pulse account. Existing verified staff email matches retain their current role. |
 | JWT_SECRET | Existing high-entropy signing secret for the temporary OIDC flow |
 | PLUNK_API_KEY, NP_PULSE_SEGMENT | Existing Plunk secret key and the static newsletter audience segment |
 | PEXELS_API_KEY | Optional free Pexels photo search. Uploads work independently. |
 | INTERNAL_API_ORIGIN | Set to http://backend:4000 for the Next container in Compose |
+
+## Staff access and notifications
+
+Only a bound ADMIN can review requests. The review form defaults to Administrator and also offers Sender and Viewer. An email match with an older account still requires approval. New installations need one explicitly authorized administrator bound to a verified Zoho subject. Production has the approved Support Desk administrator. The review records the actor, timestamp and granted role. Declined applicants see their decision on subsequent sign-ins and receive no newsroom session.
+
+The first verified visit queues one email explaining how to request access. Submitting a request queues a receipt to the applicant and a review email to each eligible administrator. Approving or declining queues a decision email to the applicant. Plunk uses its existing verified sender and API key. Each notification is recorded in PostgreSQL alongside the change and retried with a stable idempotency key. For a delivery incident, check the staff_access_notice rows with sentAt unset and the Plunk transactional logs. These messages do not add anyone to the Daily Brief segment.
 
 ## Deploy
 

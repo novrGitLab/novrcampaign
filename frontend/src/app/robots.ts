@@ -8,6 +8,8 @@ export default function robots() {
         '/api/',
         '/admin',
         '/login',
+        '/access-request',
+        '/staff-access',
         '/pulse',
         '/contacts',
         '/campaigns',

@@ -22,6 +22,7 @@ const NAV = [
   { to: '/contacts', label: 'Contacts', icon: Users },
   { to: '/segments', label: 'Segments', icon: UsersRound },
   { to: '/analytics', label: 'Analytics', icon: BarChart3 },
+  { to: '/staff-access', label: 'Staff access', icon: UsersRound, adminOnly: true },
   { to: '/suppressions', label: 'Suppressions', icon: ShieldAlert },
 ];
 
@@ -204,7 +205,7 @@ export function Layout({children}: {children: React.ReactNode}) {
 
       <nav className={cn('mt-4 flex-1 space-y-4 overflow-y-auto pb-4', collapsed ? 'px-2' : 'px-3')}>
         <div className="space-y-0.5">
-          {NAV.map((item) => (
+          {NAV.filter(item => !item.adminOnly || user?.role === 'ADMIN').map((item) => (
             <NavItem key={item.to} {...item} collapsed={collapsed} onClick={isMobile ? () => setMobileOpen(false) : undefined} />
           ))}
         </div>

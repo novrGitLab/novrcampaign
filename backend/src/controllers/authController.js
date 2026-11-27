@@ -2,6 +2,8 @@ import jwt from 'jsonwebtoken';
 import { createHash } from 'node:crypto';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { config } from '../config/env.js';
+import { setRequestCookie, clearRequestCookie } from '../routes/staffAccessRoutes.js';
+import { resolveStaffLogin } from '../services/staffProfile.js';
 import { prisma } from '../utils/prisma.js';
 import { cookieOptions, sessionName, digest, issueSession, opaqueToken } from '../services/staffSession.js';
 
@@ -98,37 +100,13 @@ export async function callback(req, res) {
       payload.email_verified !== true
     )
       throw new Error('Identity unverified');
-    const email = String(payload.email || '')
-      .toLowerCase()
-      .trim();
-    const allowed = (process.env.OIDC_ALLOWED_EMAIL_DOMAINS || 'cybernovr.com')
-      .toLowerCase()
-      .split(',')
-      .map((s) => s.trim());
-    if (!allowed.includes(email.split('@')[1]) || email.split('@').length !== 2)
-      throw new Error('Domain unavailable');
-    const subject = issuer + '#' + payload.sub;
-    let user = await prisma.user.findUnique({ where: { oidcSubject: subject } });
-    if (!user) {
-      const existing = await prisma.user.findUnique({ where: { email } });
-      if (existing) {
-        const bound = await prisma.user.updateMany({
-          where: { id: existing.id, oidcSubject: null },
-          data: { oidcSubject: subject },
-        });
-        if (bound.count !== 1) throw new Error('Account already bound');
-        user = existing;
-      } else {
-        const editors = (process.env.PULSE_EDITOR_EMAILS || '')
-          .toLowerCase()
-          .split(',')
-          .map((s) => s.trim());
-        if (!editors.includes(email)) throw new Error('Staff account required');
-        user = await prisma.user.create({
-          data: { email, name: payload.name || email, oidcSubject: subject, role: 'ADMIN' },
-        });
-      }
+    const { user, request } = await resolveStaffLogin(issuer, payload);
+    if (request) {
+      res.clearCookie(sessionName, cookieOptions);
+      setRequestCookie(res, request.id);
+      return res.redirect('/access-request');
     }
+    clearRequestCookie(res);
     await issueSession(res, user.id);
     return res.redirect('/pulse');
   } catch {
@@ -140,6 +118,7 @@ export async function logout(req, res) {
   const token = req.cookies[sessionName];
   if (token) await prisma.staffSession.deleteMany({ where: { hash: digest(token) } });
   res.clearCookie(sessionName, cookieOptions);
+  clearRequestCookie(res);
   return res.sendStatus(204);
 }
 

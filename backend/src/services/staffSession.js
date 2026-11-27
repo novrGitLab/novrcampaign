@@ -21,7 +21,7 @@ export async function sessionUser(req) {
   const token = req.cookies?.[sessionName];
   if (!token) return null;
   const session = await prisma.staffSession.findFirst({
-    where: { hash: digest(token), expiresAt: { gt: new Date() } },
+    where: { hash: digest(token), expiresAt: { gt: new Date() }, user: { oidcSubject: { not: null } } },
     select: { user: { select: { id: true, email: true, name: true, role: true } } },
   });
   return session?.user ?? null;

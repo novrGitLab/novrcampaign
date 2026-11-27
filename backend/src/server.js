@@ -1,4 +1,5 @@
 import app from './app.js';
+import { deliverStaffNotices } from './services/staffAccessMail.js';
 import { config } from './config/env.js';
 import logger from './utils/logger.js';
 import prisma from './utils/prisma.js';
@@ -12,7 +13,18 @@ async function bootstrap() {
     logger.info(`API listening on http://localhost:${config.port} (${config.env})`);
   });
 
+  let delivering = false;
+  const mailTimer = setInterval(async () => {
+    if (delivering) return;
+    delivering = true;
+    try { await deliverStaffNotices(); }
+    catch { logger.warn('Staff access mail queue unavailable'); }
+    finally { delivering = false; }
+  }, 15000);
+  mailTimer.unref();
+
   const shutdown = async (signal) => {
+    clearInterval(mailTimer);
     logger.info({ signal }, 'Shutting down gracefully');
     server.close();
     await prisma.$disconnect().catch(() => {});

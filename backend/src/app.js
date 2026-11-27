@@ -54,7 +54,7 @@ app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 app.use(cookieParser());
 app.set('trust proxy', 1);
 app.use((req, res, next) => {
-  if (!['GET','HEAD','OPTIONS'].includes(req.method) && (req.cookies.pulse_staff || req.headers.origin)) {
+  if (!['GET','HEAD','OPTIONS'].includes(req.method) && (req.cookies.pulse_staff || req.cookies.pulse_access_request || req.headers.origin)) {
     const origins = config.frontendUrl.split(',').map(value => value.trim());
     if (!origins.includes(req.headers.origin) || req.get('sec-fetch-site') === 'cross-site') return res.sendStatus(403);
   }

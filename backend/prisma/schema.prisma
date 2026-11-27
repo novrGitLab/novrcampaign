@@ -23,6 +23,7 @@ model User {
   passwordHash String?
   oidcSubject  String? @unique
   sessions     StaffSession[]
+  accessDecisions StaffAccessRequest[]
   name         String?
   role         Role     @default(ADMIN)
   createdAt    DateTime @default(now())
@@ -657,4 +658,41 @@ model NewsroomImage {
   hash String @id
   bytes Bytes
   @@map("newsroom_image")
+}
+
+enum StaffAccessState {
+  NEW
+  PENDING
+  APPROVED
+  DECLINED
+}
+
+model StaffAccessRequest {
+  id          String @id @default(uuid())
+  oidcSubject String @unique
+  email       String
+  name        String
+  status      StaffAccessState @default(NEW)
+  requestedAt DateTime?
+  decidedAt   DateTime?
+  decidedBy   String?
+  reviewer    User? @relation(fields: [decidedBy], references: [id], onDelete: SetNull)
+  role        Role?
+  notices     StaffAccessNotice[]
+  @@index([status, requestedAt])
+  @@map("staff_access_request")
+}
+
+model StaffAccessNotice {
+  id          String @id @default(uuid())
+  requestId   String
+  request     StaffAccessRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  recipient   String
+  kind        String
+  attempts    Int @default(0)
+  availableAt DateTime @default(now())
+  sentAt      DateTime?
+  @@unique([requestId, recipient, kind])
+  @@index([sentAt, availableAt])
+  @@map("staff_access_notice")
 }
