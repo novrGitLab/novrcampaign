@@ -77,13 +77,8 @@
     gap: 2rem;
     padding-block: 1.1rem 1.35rem;
   }
-  .wordmark {
-    font: 700 clamp(3.8rem, 9vw, 9rem)/0.93 var(--display);
-    letter-spacing: -0.087em;
-  }
-  .wordmark i {
-    color: var(--accent);
-    font-weight: 500;
+  .mast .wordmark {
+    font-size: clamp(3.8rem, 9vw, 9rem);
   }
   .mast > a:hover {
     text-decoration: none;
@@ -397,21 +392,22 @@
     font-size: 0.8rem;
   }
   .publication-credit {
-    display: grid;
-    justify-items: start;
-    gap: .35rem;
+    display: flex;
+    align-items: center;
+    gap: .65rem;
   }
   .publication-credit em {
     display: flex;
     align-items: center;
-    gap: .25rem;
+    gap: .15rem;
+    padding-inline-start: .65rem;
+    border-inline-start: 1px solid var(--line);
     color: var(--subtle);
-    font-family: var(--display);
+    font: italic .73rem/1.35 var(--display);
+    white-space: nowrap;
   }
-  .publication-credit .publisher-logo { font-size: .7rem; }
-  .colophon b {
-    font: italic bold 1.5rem var(--display);
-  }
+  .publication-credit .publisher-logo { font-size: .55rem; }
+  .publication-credit .wordmark { font-size: 1.5rem; }
   .colophon > a {
     margin-left: auto;
   }

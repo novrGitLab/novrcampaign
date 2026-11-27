@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { Wordmark } from './ui/Wordmark';
 import { ThemeButton } from './ui/ReadingPreferences';
 
 export function StaffEntry({ children }: { children: ReactNode }) {
@@ -6,7 +7,7 @@ export function StaffEntry({ children }: { children: ReactNode }) {
     <main className="staff-login">
       <div className="login-top">
         <a href="/" className="desk-brand" aria-label="NovrPulse homepage">
-          Novr<i>Pulse</i>
+          <Wordmark />
         </a>
         <ThemeButton />
       </div>

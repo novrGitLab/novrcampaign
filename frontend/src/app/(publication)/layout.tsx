@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { newsDate } from '@/lib/news';
+import { Wordmark } from '@/components/ui/Wordmark';
 import { PublisherLogo } from '@/components/ui/PublisherLogo';
 import { Newsletter } from '@/components/public/Newsletter';
 import { PulseKingfisher } from '@/components/ui/PulseKingfisher';
@@ -20,9 +21,7 @@ export default function Publication({ children }: { children: ReactNode }) {
       </div>
       <header className="mast">
         <a href="/" aria-label="NovrPulse front page">
-          <span className="wordmark">
-            Novr<i>Pulse</i>
-          </span>
+          <Wordmark />
         </a>
         <p>
           Cybersecurity reporting
@@ -48,7 +47,7 @@ export default function Publication({ children }: { children: ReactNode }) {
         </div>
         <div className="colophon">
           <div className="publication-credit">
-            <b>NovrPulse</b>
+            <Wordmark />
             <em>A <PublisherLogo /> publication</em>
           </div>
           <a href="mailto:info@cybernovr.com">Contact the desk</a>

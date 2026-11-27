@@ -1,6 +1,7 @@
 :root {
   --pulse-purple: #632d8a;
   --pulse-blue: #4353a3;
+  --wordmark-purple: #8c5bb5;
   --pulse-red: #e3192a;
   --paper: #f8f6f0;
   --panel: #fffefa;
@@ -47,6 +48,7 @@
   --subtle: #bdb7bc;
   --line: #49444c;
   --accent: #d6a6f1;
+  --wordmark-purple: var(--accent);
   --link: #adb9ff;
   --signal: #ff8791;
   --on-signal: #201016;
@@ -390,6 +392,17 @@
 }
 
 
+.wordmark {
+  display: inline-block;
+  font: normal 700 1em/.93 var(--display);
+  letter-spacing: -.087em;
+  white-space: nowrap;
+}
+.wordmark i {
+  color: var(--wordmark-purple);
+  font-style: italic;
+  font-weight: 500;
+}
 .publisher-logo {
   position: relative;
   display: inline-flex;
