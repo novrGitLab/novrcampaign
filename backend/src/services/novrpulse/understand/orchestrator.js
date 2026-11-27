@@ -14,7 +14,7 @@ import { novrPulseAnalysers, normaliseAlias } from '../analysers.js';
  */
 
 let _llm = null;
-function getLlm() {
+export function getLlm() {
   if (!_llm) {
     const c = config.novrpulse.llm;
     _llm = createLlm({

@@ -208,6 +208,7 @@ model NpEvent {
   title         String
   summary       String   @default("")
   whatItMeans   String   @default("")
+  publicBriefAttemptedAt DateTime?
   body          String?
   publishedAt   DateTime?
   canonicalUrl  String?
