@@ -11,6 +11,7 @@ const select = {
   id: true,
   articlePublished: true,
   articleApprovedAt: true,
+  articleRegion: true,
   title: true,
   summary: true,
   whatItMeans: true,
@@ -60,7 +61,11 @@ export function eligibility(region) {
 }
 
 function visible(region) {
-  return { ...eligibility(region), articleApprovedAt: { not: null } };
+  return {
+    ...eligibility(),
+    articleApprovedAt: { not: null },
+    ...(region && { OR: [{ articleRegion: region }, { articleRegion: null, cyberRegion: region }] }),
+  };
 }
 
 export function publicStory(event) {
@@ -73,7 +78,7 @@ export function publicStory(event) {
   const source = event.sources[0]?.rawDocument;
   const sourceUrl = safeUrl(event.articlePublished?.sourceUrl) || safeUrl(event.canonicalUrl) || safeUrl(source?.url);
   if (!sourceUrl || !source?.source?.name) return null;
-  const region = event.cyberRegion;
+  const region = event.articleRegion ?? event.cyberRegion;
   const photo = event.publishItems
     ?.flatMap((item) => item.sectionItems)
     .find((item) => item.imageAlt && mediaUrl(item.imageUrl));

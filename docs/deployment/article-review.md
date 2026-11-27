@@ -2,7 +2,9 @@
 
 The public edition, detail API, related coverage and sitemaps require an approved article snapshot. Existing unreviewed links return 404. The source feed and review queue remain available to staff. Newsletter section preparation and mailing have separate approval controls.
 
-Open **Article review** and find a headline. **Prepare draft** reads the registered publisher and sends its available text to the configured newsroom model. Short, inaccessible or restricted sources can leave a story awaiting a draft. Check the source, figures, attribution and uncertainty against the editable sections. Saving stores a private draft. An administrator selects **Approve and publish** to replace the public snapshot. A conflicting edit returns 409 and requires reloading the draft.
+Open **Article review** and find a headline. **Prepare draft** reads the registered publisher and sends its available text to the configured newsroom model. Short, inaccessible or restricted sources can leave a story awaiting a draft. Check the source, figures, attribution and uncertainty against the editable sections. Choose Nigeria, Africa or World according to the reporting. Saving stores a private draft, including its edition. Approval moves the public story to the selected edition. An administrator selects **Approve and publish** to replace the public snapshot. A conflicting edit returns 409 and requires reloading the draft.
+
+The newsroom counts the items attached to today’s briefing. Other available drafts appear below that list. Review all ten categories in the send preview. For a single-address rehearsal, enter the recipient under **Test recipient** and use **Send test email**. An accepted test leaves the edition available for further editing.
 
 The scheduled `backend/scripts/newsroom-briefs.mjs --limit 10 --commit` now prepares private article drafts. The optional `--id` targets an individual story. Raw publisher text and unapproved revisions are private. The collector accepts an optional signed `fullText` flag. Existing consumers may omit it.
 

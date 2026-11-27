@@ -17,6 +17,7 @@ type Review = {
   version: number;
   draft: Article | null;
   approvedAt: string | null;
+  region: string | null;
   evidence: string | null;
   sourceUrl: string | null;
   source: string | null;
@@ -31,12 +32,14 @@ export default function StoryEditor({ params }: { params: Promise<{ id: string }
     refetchOnWindowFocus: false,
   });
   const [draft, setDraft] = useState<Article | null>(null);
+  const [region, setRegion] = useState('');
   const [version, setVersion] = useState(0);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   useEffect(() => {
     if (data) {
       setDraft(data.draft);
+      setRegion(data.region ?? '');
       setVersion(data.version);
     }
   }, [data]);
@@ -46,7 +49,7 @@ export default function StoryEditor({ params }: { params: Promise<{ id: string }
     try {
       const result = await api(path + (action === 'save' ? '' : '/' + action), {
         method: action === 'save' ? 'PUT' : 'POST',
-        body: { version, ...(action !== 'generate' && { article: draft }) },
+        body: { version, ...(action !== 'generate' && { article: draft, ...(region && { region }) }) },
       });
       setVersion(result.version);
       await refetch();
@@ -98,6 +101,17 @@ export default function StoryEditor({ params }: { params: Promise<{ id: string }
           )}
           {draft && (
             <fieldset disabled={!canEdit || busy} className="review-fields">
+              <div role="group" aria-label="Public edition" className="space-y-2">
+                <span className="label">Public edition</span>
+                <div className="flex flex-wrap gap-2">
+                  {Object.entries({ NG: 'Nigeria', AF: 'Africa', GLOBAL: 'World' }).map(([value, name]) => (
+                    <Button key={value} type="button" size="sm" aria-pressed={region === value}
+                      variant={region === value ? 'primary' : 'secondary'} onClick={() => setRegion(value)}>
+                      {name}
+                    </Button>
+                  ))}
+                </div>
+              </div>
               <label className="label">
                 Headline
                 <Input

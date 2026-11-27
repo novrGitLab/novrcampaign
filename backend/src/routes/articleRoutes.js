@@ -32,13 +32,14 @@ router.get(
   '/:id',
   asyncHandler(async (req, res) => {
     const row = await reviewRecord(req.params.id);
-    const { sourceUrl, sourceName, ...draft } = row.articleDraft || {};
+    const { sourceUrl, sourceName, region, ...draft } = row.articleDraft || {};
     res.json({
       id: row.id,
       title: row.title,
       version: row.articleVersion,
       draft: row.articleDraft ? draft : null,
       approvedAt: row.articleApprovedAt,
+      region: region ?? row.articleRegion ?? row.cyberRegion,
       evidence: row.articleEvidence,
       sourceUrl: sourceUrl || row.sources[0]?.rawDocument.url,
       source: sourceName || row.sources[0]?.rawDocument.source.name,
@@ -57,7 +58,7 @@ router.post(
 router.put(
   '/:id',
   asyncHandler(async (req, res) =>
-    res.json(await saveArticle(req.params.id, version(req.body), req.body.article)),
+    res.json(await saveArticle(req.params.id, version(req.body), req.body.article, { region: req.body.region })),
   ),
 );
 router.post(
@@ -65,7 +66,7 @@ router.post(
   asyncHandler(async (req, res) => {
     if (req.user.role !== 'ADMIN') throw Forbidden('Administrator approval required.');
     res.json(
-      await saveArticle(req.params.id, version(req.body), req.body.article, { publishBy: req.user.id }),
+      await saveArticle(req.params.id, version(req.body), req.body.article, { publishBy: req.user.id, region: req.body.region }),
     );
   }),
 );
