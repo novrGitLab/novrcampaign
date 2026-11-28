@@ -10,7 +10,11 @@ services = json.load(sys.stdin)["services"]
 settings = services["backend"]["environment"]
 site = "https://pulse.cybernovr.com"
 required = ["JWT_SECRET", "DATABASE_URL", "DIRECT_URL"]
-for feature, names in {"staff SSO": ["OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET"], "newsletter": ["PLUNK_API_KEY","NP_PULSE_SEGMENT"]}.items():
+for feature, names in {
+    "staff SSO": ["OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET"],
+    "newsletter": ["PLUNK_API_KEY", "NP_PULSE_SEGMENT"],
+    "Pexels photo search": ["PEXELS_API_KEY"],
+}.items():
     unset = [name for name in names if not str(settings.get(name) or "").strip()]
     if unset:
         print("Pending " + feature + " configuration: " + ", ".join(unset), file=sys.stderr)
@@ -24,6 +28,9 @@ if missing:
 '
 getent ahostsv4 pulse.cybernovr.com | awk '{print $1}' | grep -Fx '213.136.94.10' >/dev/null || { echo 'Awaiting pulse.cybernovr.com DNS on the Pulse VPS' >&2; exit 1; }
 if [[ "${1:-}" == "--check" ]]; then exit 0; fi
+if ! grep -Eq '^[[:blank:]]*(export[[:blank:]]+)?PEXELS_API_KEY([[:blank:]]*[=:]|[[:blank:]]*(#.*)?$)' .env; then
+  printf '\nPEXELS_API_KEY=\n' >> .env
+fi
 docker network inspect novrevents-edge >/dev/null 2>&1 || docker network create novrevents-edge >/dev/null
 docker network inspect novr-shared >/dev/null 2>&1 || docker network create novr-shared >/dev/null
 docker compose build backend frontend
