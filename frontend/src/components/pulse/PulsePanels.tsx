@@ -4,6 +4,7 @@ import { CheckCircle2, ChevronDown, ChevronUp, ClipboardList, Info, Loader2, Mai
 import { Badge, Button, EmptyState, InfoTip, Input, Label, Skeleton } from '../ui';
 import { Modal } from '../ui/Modal';
 import { usePreviewBriefing, usePublishBriefing } from '../../hooks/briefingQueries';
+import { useSegments } from '../../hooks/queries';
 import {
   useSupportingEvents, useSupportingOpportunities, useSupportingForumTopics,
   useCreateSupporting, useDeleteSupporting,
@@ -13,8 +14,10 @@ export function PulsePreviewModal({ open, onClose, briefing, publishMode = false
   const preview = usePreviewBriefing(briefingId);
   const publish = usePublishBriefing(briefingId);
   const { mutate: runPreview, reset } = preview;
+  const { data: segments = [] } = useSegments();
 
   const [testEmail, setTestEmail] = useState('');
+  const [segmentId, setSegmentId] = useState('');
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [result, setResult] = useState(null);
   const [errorText, setErrorText] = useState(null);
@@ -28,6 +31,7 @@ export function PulsePreviewModal({ open, onClose, briefing, publishMode = false
   useEffect(() => {
     setConfirmOpen(false);
     setTestEmail('');
+    setSegmentId('');
     setResult(null);
     setErrorText(null);
   }, [open, briefingId]);
@@ -37,6 +41,14 @@ export function PulsePreviewModal({ open, onClose, briefing, publishMode = false
   const segmentConfigured = briefing.publishSegmentConfigured !== false;
   const hasContent = (briefing.itemCount ?? 0) > 0;
   const alreadyPublished = briefing.status === 'published';
+
+  // The detail exposes whether a default segment is configured, but not its id,
+  // so default the reviewer to the first available segment (or force an explicit
+  // pick when there are none — the send stays disabled either way until chosen).
+  const selectedSegmentId = segmentId || segments[0]?.id || '';
+  const selectedSegmentName =
+    segments.find((s) => s.id === selectedSegmentId)?.name || 'subscribers';
+  const hasSegments = segments.length > 0;
 
   const onSendTest = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -55,7 +67,7 @@ export function PulsePreviewModal({ open, onClose, briefing, publishMode = false
     setErrorText(null);
     setResult(null);
     try {
-      const res = await publish.mutateAsync({});
+      const res = await publish.mutateAsync({ segments: [selectedSegmentId] });
       setResult({ kind: 'production', segments: res?.segments ?? [] });
       setConfirmOpen(false);
       onPublished?.(res);
@@ -66,8 +78,6 @@ export function PulsePreviewModal({ open, onClose, briefing, publishMode = false
       setConfirmOpen(false);
     }
   };
-
-  const segmentLabel = 'newsletter subscribers';
 
   return (
     <Modal
@@ -116,7 +126,7 @@ export function PulsePreviewModal({ open, onClose, briefing, publishMode = false
           {result?.kind === 'production' && (
             <p role="status" className="flex items-center gap-2 rounded-md bg-success/10 px-3 py-2 text-[13px] text-success">
               <CheckCircle2 className="h-4 w-4 shrink-0" />
-              The briefing has been sent to newsletter subscribers.
+              The briefing has been sent to {selectedSegmentName}.
             </p>
           )}
           {errorText && (
@@ -142,7 +152,7 @@ export function PulsePreviewModal({ open, onClose, briefing, publishMode = false
           {confirmOpen ? (
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2.5">
               <span className="text-[13px] text-foreground">
-                Send this briefing to {segmentLabel}? This emails real subscribers.
+                Send this briefing to {selectedSegmentName}? This emails real subscribers.
               </span>
               <div className="flex items-center gap-2">
                 <Button variant="ghost" size="sm" onClick={() => setConfirmOpen(false)} disabled={publish.isPending}>
@@ -173,17 +183,35 @@ export function PulsePreviewModal({ open, onClose, briefing, publishMode = false
                 Send test email
               </Button>
               </form>
+              <Label htmlFor="briefing-target-segment" className="grid gap-1">
+                Send to
+                <select
+                  id="briefing-target-segment"
+                  className="input w-full text-sm"
+                  value={selectedSegmentId}
+                  onChange={(e) => setSegmentId(e.target.value)}
+                  disabled={!hasSegments || publish.isPending}
+                >
+                  {!hasSegments && <option value="">No segments available</option>}
+                  {segments.map((s) => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </Label>
               <span className="inline-flex items-center gap-1">
                 <Button
                   size="sm"
                   onClick={() => setConfirmOpen(true)}
-                  disabled={!hasContent || !segmentConfigured || !briefing.reviewComplete || alreadyPublished || publish.isPending}
+                  disabled={!hasContent || !selectedSegmentId || !segmentConfigured || !briefing.reviewComplete || alreadyPublished || publish.isPending}
                 >
                   <Send className="h-4 w-4" />
-                  Send to subscribers
+                  Send to {selectedSegmentName}
                 </Button>
                 {!segmentConfigured && (
                   <InfoTip content="Select a newsletter audience in the delivery settings." label="No segment configured" />
+                )}
+                {segmentConfigured && !hasSegments && (
+                  <InfoTip content="No segments are available. Configure a newsletter audience in the delivery settings." label="No segments available" />
                 )}
               </span>
             </div>

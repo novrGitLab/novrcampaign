@@ -241,16 +241,18 @@ export function Layout({ children }: { children: React.ReactNode }) {
             {NAV_GROUPS.map((group) => (
               <div key={group.label}>
                 {!collapsed && <p className="desk-group">{group.label}</p>}
-                {group.items
-                  .filter((item) => !item.adminOnly || user?.role === 'ADMIN')
-                  .map((item) => (
-                    <NavItem
-                      key={item.to}
-                      {...item}
-                      collapsed={collapsed}
-                      onClick={isMobile ? () => setMobileOpen(false) : undefined}
-                    />
-                  ))}
+                <div className="space-y-1">
+                  {group.items
+                    .filter((item) => !item.adminOnly || user?.role === 'ADMIN')
+                    .map((item) => (
+                      <NavItem
+                        key={item.to}
+                        {...item}
+                        collapsed={collapsed}
+                        onClick={isMobile ? () => setMobileOpen(false) : undefined}
+                      />
+                    ))}
+                </div>
               </div>
             ))}
           </nav>
