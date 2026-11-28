@@ -5,12 +5,11 @@ const isProd = process.env.NODE_ENV === 'production';
 const logger = pino({
   level: process.env.LOG_LEVEL || (isProd ? 'info' : 'debug'),
   base: { service: 'novrpulse-backend' },
-  // Never log credentials, session cookies, or drive download tokens.
+  // Never log credentials, session cookies, or tokens.
   redact: {
     paths: [
       'req.headers.authorization',
       'req.headers.cookie',
-      'req.headers["x-drive-download-token"]',
       'res.headers["set-cookie"]',
       'req.query.token',
       'req.query',

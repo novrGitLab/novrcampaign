@@ -145,54 +145,6 @@ export const config = {
   // Contact sync batching (Plunk bulk-subscribe accepts up to 1,000 IDs)
   syncBatchSize: asInt('SYNC_BATCH_SIZE', 500),
 
-  // ── Encrypted file drive ────────────────────────────────────────────────────
-  // Password-only private drive. Files are encrypted at rest in an R2 bucket;
-  // the DB and bucket hold ciphertext only. See README "File drive" section.
-  drive: {
-    // When false the drive routes 404 and new sessions are refused; existing
-    // files stay intact and become readable again when re-enabled.
-    enabled: (process.env.DRIVE_ENABLED ?? 'false').toLowerCase() === 'true',
-
-    // 32-byte Key Encryption Key (base64) — wraps per-file data keys. Losing it
-    // is survivable ONLY if the recovery key is available.
-    kek: process.env.DRIVE_KEK || '',
-
-    // Drive-wide recovery key (base58). Also wraps every data key so files can
-    // be recovered if the KEK is lost. Printed once at setup; keep it offline.
-    recoveryKey: process.env.DRIVE_RECOVERY_KEY || '',
-
-    // Separate secret for signing short-lived per-file download tokens.
-    tokenSecret: process.env.DRIVE_TOKEN_SECRET || '',
-
-    // Bearer secret Vercel sends to the cron maintenance endpoint.
-    cronSecret: process.env.CRON_SECRET || '',
-
-    // Server-side salt for HMAC-hashing client IPs in the audit log.
-    ipHashSalt: process.env.DRIVE_IP_SALT || '',
-
-    sessionHours: asInt('DRIVE_SESSION_HOURS', 2),
-    maxFailedAttempts: asInt('DRIVE_MAX_FAILED_ATTEMPTS', 5),
-    lockoutMinutes: asInt('DRIVE_LOCKOUT_MINUTES', 15),
-    minPasswordLength: asInt('DRIVE_MIN_PASSWORD_LENGTH', 16),
-
-    maxFileBytes: asInt('DRIVE_MAX_FILE_BYTES', 500 * 1024 * 1024),
-    maxTotalBytes: asInt('DRIVE_MAX_TOTAL_BYTES', 2 * 1024 * 1024 * 1024),
-    chunkBytes: asInt('DRIVE_CHUNK_BYTES', 4 * 1024 * 1024),
-
-    auditRetentionDays: asInt('DRIVE_AUDIT_RETENTION_DAYS', 90),
-    partialUploadHours: asInt('DRIVE_PARTIAL_UPLOAD_HOURS', 24),
-
-    // Cloudflare R2 (S3-compatible). Empty values put storage in an inert state
-    // where non-storage code can still be exercised and unit-tested.
-    r2: {
-      accountId: process.env.R2_ACCOUNT_ID || '',
-      accessKeyId: process.env.R2_ACCESS_KEY_ID || '',
-      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY || '',
-      bucket: process.env.R2_BUCKET || '',
-      endpoint: process.env.R2_ENDPOINT || '',
-    },
-  },
-
   // ── NovrPulse understanding layer (LLM) ──────────────────────────────────────
   // Any OpenAI-compatible endpoint works (NVIDIA NIM, OpenAI, Mistral, OpenRouter,
   // a self-hosted Ollama). `NP_LLM_*` are the current names; the legacy

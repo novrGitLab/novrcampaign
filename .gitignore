@@ -52,9 +52,6 @@ postgres_data/
 coverage/
 .nyc_output/
 
-# Drive frontend build output
-drive-dist/
-
 # Local env backups (contain credentials)
 backend/.env.backup-*
 
