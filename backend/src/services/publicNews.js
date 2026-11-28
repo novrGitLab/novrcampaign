@@ -1,4 +1,4 @@
-import { mediaUrl } from './newsroomPhoto.js';
+import { displayPhotos, mediaUrl } from './newsroomPhoto.js';
 export { publicOrigin } from './newsroomPhoto.js';
 import { prisma } from '../utils/prisma.js';
 import { isArrestItem } from './novrpulse/project/templates/f7.js';
@@ -82,17 +82,21 @@ export function publicStory(event) {
   const photo = event.publishItems
     ?.flatMap((item) => item.sectionItems)
     .find((item) => item.imageAlt && mediaUrl(item.imageUrl));
+  const images = displayPhotos({
+    photos: event.articlePublished?.photos ?? (photo ? displayPhotos(photo) : []),
+  });
   return {
     id: event.id,
     title: event.articlePublished?.headline || event.title,
     summary: event.articlePublished?.standfirst || event.summary,
     context: event.articlePublished ? null : event.whatItMeans,
     sections: event.articlePublished?.sections || [],
-    format: event.articlePublished ? "article" : "brief",
+    format: event.articlePublished ? 'article' : 'brief',
     updatedAt: event.articleApprovedAt?.toISOString() || null,
     publishedAt: event.publishedAt.toISOString(),
     href: '/news/' + encodeURIComponent(event.id),
-    image: photo ? { url: mediaUrl(photo.imageUrl), alt: photo.imageAlt, credit: photo.imageCredit } : null,
+    images,
+    image: images[0] ?? null,
     source: event.articlePublished?.sourceName || source.source.name,
     sourceUrl,
     region,

@@ -22,6 +22,7 @@ import {
   useRunPulseCollection,
 } from '../hooks/mutations';
 import { useAvailablePublishItems, useBriefing, useBriefings, useCreateBriefing } from '../hooks/briefingQueries';
+import { StoryPhotos, type StoryPhoto } from '@/components/ui/StoryPhotos';
 import api from '../lib/api';
 
 // ── Data access for the write/attach flow ─────────────────────────────────────
@@ -202,6 +203,8 @@ function WriteOverlay({ open, onClose, mode, source, onSave, busy, error }) {
   const eventId = source?.eventId ?? null;
 
   const [functionId, setFunctionId] = useState(null);
+  const [photos, setPhotos] = useState<StoryPhoto[] | null>(null);
+  const [photoBusy, setPhotoBusy] = useState(false);
   const [headline, setHeadline] = useState('');
   const [text, setText] = useState('');
   const [referenceLink, setReferenceLink] = useState('');
@@ -227,6 +230,7 @@ function WriteOverlay({ open, onClose, mode, source, onSave, busy, error }) {
     if (!open || lastKey.current === resetKey) return;
     lastKey.current = resetKey;
     setFunctionId(source?.preselect ?? null);
+    setPhotos(null);
     setHeadline(source?.headline ?? '');
     setText(source?.text ?? '');
     setReferenceLink(source?.referenceLink ?? '');
@@ -247,7 +251,12 @@ function WriteOverlay({ open, onClose, mode, source, onSave, busy, error }) {
     ? PILLARS.map((p) => p.functionId)
     : (source?.eligible ?? []);
 
-  const canAdd = Boolean(functionId) && headline.trim().length > 0 && text.trim().length > 0;
+  const canAdd =
+    !photoBusy &&
+    !photos?.some((p) => !p.alt.trim()) &&
+    Boolean(functionId) &&
+    headline.trim().length > 0 &&
+    text.trim().length > 0;
   const submit = (addToEmail) => {
     if (!canAdd || busy) return;
     // PATCH the AI item only when the pillar still matches what it was drafted
@@ -259,6 +268,7 @@ function WriteOverlay({ open, onClose, mode, source, onSave, busy, error }) {
       headline: headline.trim(),
       text: text.trim(),
       referenceLink: referenceLink.trim(),
+      ...(photos && { photos }),
       itemId: aiPatchId,
       addToEmail,
       warning: aiPatchId ? aiWarnings : [],
@@ -313,7 +323,12 @@ function WriteOverlay({ open, onClose, mode, source, onSave, busy, error }) {
         {!isFree && source?.sourceName && (
           <p className="border-b border-border pb-4 text-[12.5px] text-muted-foreground">
             <b className="font-semibold text-foreground">{source.sourceName}</b>
-            {source.sourceHeadline ? <> — <q className="italic">{source.sourceHeadline}</q></> : null}
+            {source.sourceHeadline ? (
+              <>
+                {' '}
+                — <q className="italic">{source.sourceHeadline}</q>
+              </>
+            ) : null}
           </p>
         )}
 
@@ -321,7 +336,9 @@ function WriteOverlay({ open, onClose, mode, source, onSave, busy, error }) {
 
         {isFree && !isEdit && (
           <div>
-            <label htmlFor="pulse-ref-link" className="label">Reference link (optional)</label>
+            <label htmlFor="pulse-ref-link" className="label">
+              Reference link (optional)
+            </label>
             <input
               id="pulse-ref-link"
               type="url"
@@ -333,7 +350,6 @@ function WriteOverlay({ open, onClose, mode, source, onSave, busy, error }) {
             />
           </div>
         )}
-
 
         {!isFree && !isEdit && (
           <div className="flex flex-wrap items-center gap-2">
@@ -347,7 +363,11 @@ function WriteOverlay({ open, onClose, mode, source, onSave, busy, error }) {
               <Sparkles className={'h-3.5 w-3.5' + (ai.isPending ? ' animate-pulse' : '')} />
               {ai.isPending ? 'Drafting…' : 'Suggested draft'}
             </Button>
-            {aiError && <span role="alert" className="text-[12.5px] text-destructive">{aiError}</span>}
+            {aiError && (
+              <span role="alert" className="text-[12.5px] text-destructive">
+                {aiError}
+              </span>
+            )}
           </div>
         )}
 
@@ -356,7 +376,6 @@ function WriteOverlay({ open, onClose, mode, source, onSave, busy, error }) {
           onSelect={setFunctionId}
           enabledIds={isEdit && functionId ? [functionId] : enabledIds}
         />
-
 
         {!isFree && eventId && (
           <div className="rounded-lg border border-border">
@@ -377,7 +396,6 @@ function WriteOverlay({ open, onClose, mode, source, onSave, busy, error }) {
                   <p className="text-[12.5px] text-destructive">Could not load the source article.</p>
                 ) : (
                   <>
-
                     {eventDetail?.title && (
                       <div className="mb-2.5 border-b border-border pb-2.5">
                         <p className="text-[13.5px] font-semibold leading-snug text-foreground">
@@ -428,10 +446,26 @@ function WriteOverlay({ open, onClose, mode, source, onSave, busy, error }) {
           />
         </div>
 
-        {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+        <StoryPhotos
+          key={resetKey}
+          value={photos}
+          onChange={setPhotos}
+          onBusy={setPhotoBusy}
+          title={headline || source?.sourceHeadline}
+          summary={text}
+          eventId={eventId}
+          itemId={source?.itemId}
+        />
+        {error && (
+          <p role="alert" className="text-sm text-destructive">
+            {error}
+          </p>
+        )}
 
         <div className="flex items-center gap-2 border-t border-border pt-4">
-          <Button variant="ghost" size="sm" onClick={onClose} disabled={busy}>Cancel</Button>
+          <Button variant="ghost" size="sm" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
           <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
             <button
               type="button"
@@ -441,12 +475,7 @@ function WriteOverlay({ open, onClose, mode, source, onSave, busy, error }) {
             >
               <X className="h-4 w-4" />
             </button>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => submit(false)}
-              disabled={!canAdd || busy}
-            >
+            <Button variant="secondary" size="sm" onClick={() => submit(false)} disabled={!canAdd || busy}>
               Save draft
             </Button>
             <Button size="sm" onClick={() => submit(true)} disabled={!canAdd || busy}>
@@ -650,7 +679,17 @@ export default function PulseToday() {
   // server-side; this preserves the frozen preview/publish contract.
   // "Save draft" runs step (1) only — the piece exists and appears in the email
   // list, but is not yet attached to the briefing.
-  async function addToEmail({ functionId, headline, text, referenceLink, eventId, itemId, addToEmail: withEmail, warning }) {
+  async function addToEmail({
+    functionId,
+    headline,
+    text,
+    referenceLink,
+    photos = undefined,
+    eventId,
+    itemId,
+    addToEmail: withEmail,
+    warning,
+  }) {
     setWriteError(null);
     setActionError(null);
     try {
@@ -660,7 +699,7 @@ export default function PulseToday() {
       let item;
       if (itemId) {
         const body = [headline, text].filter(Boolean).join('\n\n');
-        item = await editPublish.mutateAsync({ id: itemId, body });
+        item = await editPublish.mutateAsync({ id: itemId, body, photos });
       } else if (eventId) {
         // Story mode: the server seeds the body from the event, then we PATCH in
         // the editor's typed headline/text (same "<headline>\n\n<text>" contract
@@ -668,11 +707,17 @@ export default function PulseToday() {
         item = await createFromEvent.mutateAsync({ eventId, functionId });
         if (headline || text) {
           const body = [headline, text].filter(Boolean).join('\n\n');
-          item = await editPublish.mutateAsync({ id: item.id, body });
+          item = await editPublish.mutateAsync({ id: item.id, body, photos });
         }
       } else {
         // Free mode: create the manual piece (server composes the body).
-        item = await createManualItem({ functionId, headline, text, referenceLink });
+        item = await createManualItem({
+          functionId,
+          headline,
+          text,
+          ...(referenceLink && { referenceLink }),
+          photos,
+        });
       }
 
       // (2)+(3) Ensure today's briefing exists, then attach — only for "Add".
@@ -682,11 +727,12 @@ export default function PulseToday() {
           const created = await createBriefing.mutateAsync({ briefingDate: dayKey });
           briefingId = created.id;
         }
-        if (!emailItems.some((attached) => attached.id === item.id)) await attachItemToSection({
-          briefingId,
-          functionId: item.functionId ?? functionId,
-          publishItemId: item.id,
-        });
+        if (!emailItems.some((attached) => attached.id === item.id))
+          await attachItemToSection({
+            briefingId,
+            functionId: item.functionId ?? functionId,
+            publishItemId: item.id,
+          });
       }
 
       // Carry any AI guard warnings onto the item so its email row shows an

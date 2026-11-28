@@ -1,3 +1,4 @@
+import { confirmationEmail } from './confirmationEmail.js';
 import { randomUUID } from 'node:crypto';
 import { config } from '../config/env.js';
 import { withRetry, sleep } from '../utils/backoff.js';
@@ -753,8 +754,13 @@ export async function sendStaffNotice(email, content, id) {
 }
 
 export function sendConfirmation(email, link) {
-  return plunkRequest('/v1/send', { method: 'POST', body: {
-    to: email, from: { name:'NovrPulse', email:SENDER.from }, subject: 'Confirm your NovrPulse subscription',
-    body: '<p>Confirm this address to receive the NovrPulse Daily Brief.</p><p><a href="' + link + '">Confirm subscription</a></p><p>The link expires in 24 hours.</p>',
-  } });
+  return plunkRequest('/v1/send', {
+    method: 'POST',
+    body: {
+      to: email,
+      from: { name: 'NovrPulse', email: SENDER.from },
+      subject: 'Confirm your NovrPulse subscription',
+      body: confirmationEmail(link),
+    },
+  });
 }

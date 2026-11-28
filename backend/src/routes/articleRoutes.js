@@ -3,7 +3,13 @@ import Joi from 'joi';
 import rateLimit from 'express-rate-limit';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { BadRequest, Forbidden } from '../utils/AppError.js';
-import { articleQueue, reviewRecord, generateArticle, saveArticle } from '../services/articleReview.js';
+import {
+  articleQueue,
+  reviewRecord,
+  generateArticle,
+  saveArticle,
+  saveArticlePhotos,
+} from '../services/articleReview.js';
 
 import { rejectedStories, restoreStory } from '../services/rejectedStories.js';
 
@@ -47,6 +53,7 @@ router.get(
       id: row.id,
       title: row.title,
       version: row.articleVersion,
+      photos: row.photos ?? [],
       draft: row.articleDraft ? draft : null,
       approvedAt: row.articleApprovedAt,
       region: region ?? row.articleRegion ?? row.cyberRegion,
@@ -66,9 +73,20 @@ router.post(
   asyncHandler(async (req, res) => res.json(await generateArticle(req.params.id, version(req.body)))),
 );
 router.put(
+  '/:id/photos',
+  asyncHandler(async (req, res) =>
+    res.json(await saveArticlePhotos(req.params.id, version(req.body), req.body.photos)),
+  ),
+);
+router.put(
   '/:id',
   asyncHandler(async (req, res) =>
-    res.json(await saveArticle(req.params.id, version(req.body), req.body.article, { region: req.body.region })),
+    res.json(
+      await saveArticle(req.params.id, version(req.body), req.body.article, {
+        region: req.body.region,
+        photos: req.body.photos,
+      }),
+    ),
   ),
 );
 router.post(
@@ -76,7 +94,11 @@ router.post(
   asyncHandler(async (req, res) => {
     if (req.user.role !== 'ADMIN') throw Forbidden('Administrator approval required.');
     res.json(
-      await saveArticle(req.params.id, version(req.body), req.body.article, { publishBy: req.user.id, region: req.body.region }),
+      await saveArticle(req.params.id, version(req.body), req.body.article, {
+        publishBy: req.user.id,
+        region: req.body.region,
+        photos: req.body.photos,
+      }),
     );
   }),
 );

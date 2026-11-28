@@ -1,27 +1,24 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import api from '../../lib/api';
-import { Button, Input, Label } from '../ui';
+import { Button } from '../ui';
 
-type ImageFields = { imageUrl: string | null; imageAlt: string | null; imageCredit: string | null };
-type SectionItem = ImageFields & { id: string; publishItem: { bodyPreview: string } };
+import { StoryPhotos, type StoryPhoto } from '@/components/ui/StoryPhotos';
+type SectionItem = { id: string; photos: StoryPhoto[]; publishItem: { bodyPreview: string; body: string } };
 type Section = { id: string; functionId: number; label: string; state: string; items: SectionItem[] };
-type Photo = { url: string; thumb: string; alt: string; credit: string; page: string };
 function ItemPhoto({ item, path, onChange }: { item: SectionItem; path: string; onChange: () => void }) {
-  const [url, setUrl] = useState(item.imageUrl || ''),
-    [alt, setAlt] = useState(item.imageAlt || ''),
-    [credit, setCredit] = useState(item.imageCredit || '');
-  const [query, setQuery] = useState(''),
-    [photos, setPhotos] = useState<Photo[]>([]),
-    [message, setMessage] = useState(''),
-    [busy, setBusy] = useState(false);
-  async function act(work: () => Promise<void>) {
+  const [photos, setPhotos] = useState<StoryPhoto[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [message, setMessage] = useState('');
+  async function save() {
     setBusy(true);
-    setMessage('');
     try {
-      await work();
-    } catch (e) {
-      setMessage(e instanceof Error ? e.message : 'Image update failed.');
+      await api(path, { method: 'PATCH', body: { photos } });
+      onChange();
+      setMessage('Photographs saved. Review this section before sending.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not save photographs.');
     } finally {
       setBusy(false);
     }
@@ -29,115 +26,25 @@ function ItemPhoto({ item, path, onChange }: { item: SectionItem; path: string; 
   return (
     <details className="border-t py-3">
       <summary className="cursor-pointer text-sm font-medium">
-        {item.publishItem.bodyPreview} · Photograph
+        {item.publishItem.bodyPreview} · Photographs
       </summary>
-      <div className="mt-3 grid gap-3">
-        {url && (
-          <img src={url} alt={alt || 'Selected photograph'} className="max-h-36 rounded-lg object-contain" />
-        )}
-        <Label>
-          Upload a photograph
-          <Input
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            disabled={busy}
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file)
-                void act(async () => {
-                  const form = new FormData();
-                  form.append('image', file);
-                  const result = await api('/media/upload', { method: 'POST', formData: form });
-                  setUrl(result.url);
-                });
-            }}
-          />
-        </Label>
-        <div>
-          <Label htmlFor={'search-' + item.id}>Search Pexels</Label>
-          <div className="flex gap-2">
-            <Input id={'search-' + item.id} value={query} onChange={(e) => setQuery(e.target.value)} />
-            <Button
-              size="sm"
-              variant="secondary"
-              disabled={busy || query.trim().length < 2}
-              onClick={() =>
-                act(async () => {
-                  const data = await api('/media/photos', { query: { q: query } });
-                  setPhotos(data.photos);
-                  if (!data.photos.length) setMessage('No matching photographs.');
-                })
-              }
-            >
-              Search
-            </Button>
-          </div>
-          <a className="text-xs underline" href="https://www.pexels.com/">
-            Photos provided by Pexels
-          </a>
-        </div>
-        {photos.length > 0 && (
-          <div className="grid grid-cols-3 gap-2">
-            {photos.map((photo) => (
-              <div key={photo.url}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setUrl(photo.url);
-                    setAlt(photo.alt);
-                    setCredit(photo.credit);
-                  }}
-                >
-                  <img src={photo.thumb} alt={photo.alt || photo.credit} />
-                </button>
-                <a className="text-xs" href={photo.page}>
-                  {photo.credit}
-                </a>
-              </div>
-            ))}
-          </div>
-        )}
-        {url && (
-          <>
-            <Label>
-              Image description
-              <Input value={alt} maxLength={250} onChange={(e) => setAlt(e.target.value)} />
-            </Label>
-            <Label>
-              Photo credit
-              <Input value={credit} maxLength={160} onChange={(e) => setCredit(e.target.value)} />
-            </Label>
-          </>
-        )}
-        <div className="flex gap-2">
-          <Button
-            size="sm"
-            disabled={busy || Boolean(url && !alt.trim())}
-            onClick={() =>
-              act(async () => {
-                await api(path, {
-                  method: 'PATCH',
-                  body: {
-                    imageUrl: url || null,
-                    imageAlt: url ? alt : null,
-                    imageCredit: url ? credit : null,
-                  },
-                });
-                onChange();
-                setMessage('Photograph saved. Review the section before sending.');
-              })
-            }
-          >
-            Save photograph
-          </Button>
-          {url && (
-            <Button size="sm" variant="ghost" onClick={() => setUrl('')}>
-              Remove
-            </Button>
-          )}
-        </div>
-        <p role="status">{message}</p>
-      </div>
+      <fieldset disabled={busy}>
+        <StoryPhotos
+          value={photos ?? item.photos ?? []}
+          onChange={setPhotos}
+          onBusy={setUploading}
+          title={item.publishItem.bodyPreview}
+          summary={item.publishItem.body}
+        />
+        <Button
+          size="sm"
+          disabled={!photos || busy || uploading || photos.some((p) => !p.alt.trim())}
+          onClick={save}
+        >
+          Save photographs
+        </Button>
+      </fieldset>
+      <p role="status">{message}</p>
     </details>
   );
 }

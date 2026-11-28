@@ -372,6 +372,7 @@ export default function CampaignBuilder() {
             <div className={cn('gap-4', feedPanelOpen && 'lg:flex lg:items-start')}>
               <div className="min-w-0 flex-1">
                 <RichEmailEditor
+                  subject={form.subject}
                   value={form.body}
                   onChange={(html) => setForm((f) => ({ ...f, body: html }))}
                   disabled={locked}

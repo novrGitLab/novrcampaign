@@ -1,3 +1,4 @@
+import { normalizePhotos, syncEditionPhotos } from '../services/newsroomPhoto.js';
 import Joi from 'joi';
 import { prisma } from '../utils/prisma.js';
 import { AppError, BadRequest, Conflict, Forbidden, NotFound } from '../utils/AppError.js';
@@ -72,6 +73,7 @@ const projectSchema = Joi.object({
 });
 
 const editSchema = Joi.object({
+  photos: Joi.array().max(12),
   body: Joi.string().min(1),
   // Pillar 01: the regulatory-impact field MUST be saved before approval, so it
   // is editable here (separate column, never composed into `body`).
@@ -111,10 +113,14 @@ const MANUAL_TEMPLATE_VERSION = 'manual@2.0.0';
  * `Reference: <link>` line when a reference link is supplied.
  */
 const manualPublishSchema = Joi.object({
+  photos: Joi.array().max(12),
   functionId: Joi.number().integer().min(1).max(10).required(),
   headline: Joi.string().trim().min(1).max(200).required(),
   text: Joi.string().trim().min(1).max(20000).required(),
-  referenceLink: Joi.string().trim().uri({ scheme: ['http', 'https'] }).max(2000),
+  referenceLink: Joi.string()
+    .trim()
+    .uri({ scheme: ['http', 'https'] })
+    .max(2000),
 });
 
 /**
@@ -184,7 +190,10 @@ function assertManualNameless(functionId, tier, body) {
 export async function createManualItem(req, res) {
   requireEditorRole(req);
 
-  const { functionId, headline, text, referenceLink } = await validate(manualPublishSchema, req.body ?? {});
+  const { functionId, headline, text, referenceLink, photos } = await validate(
+    manualPublishSchema,
+    req.body ?? {},
+  );
 
   const tier = 'public';
   const body = composeManualBody({ headline, text, referenceLink });
@@ -197,6 +206,7 @@ export async function createManualItem(req, res) {
     data: {
       functionId,
       eventId: null,
+      ...(photos && { photos: normalizePhotos(photos) }),
       contentType: 'briefing',
       tier,
       templateVersion: MANUAL_TEMPLATE_VERSION,
@@ -710,7 +720,7 @@ export async function rejectPublishItem(req, res) {
 export async function editPublishItem(req, res) {
   requireEditorRole(req);
 
-  const { body, regulatoryImpact, eventDate } = await validate(editSchema, req.body ?? {});
+  const { body, regulatoryImpact, eventDate, photos } = await validate(editSchema, req.body ?? {});
 
   const item = await prisma.publishItem.findUnique({ where: { id: req.params.id }, include:{sectionItems:{select:{section:{select:{id:true,briefing:{select:{publishedAt:true,sendingAt:true}}}}}}} });
   if (!item) throw NotFound('Publish item not found');
@@ -721,6 +731,7 @@ export async function editPublishItem(req, res) {
   // Persist ONLY what was provided; an explicit null clears the field, an
   // omitted field is left as-is.
   const data = {};
+  if (photos !== undefined) data.photos = normalizePhotos(photos);
   if (body !== undefined) data.body = body;
   if (regulatoryImpact !== undefined) data.regulatoryImpact = regulatoryImpact === '' ? null : regulatoryImpact;
   if (eventDate !== undefined) data.eventDate = eventDate ?? null;
@@ -731,6 +742,19 @@ export async function editPublishItem(req, res) {
 
   const sections=(item.sectionItems ?? []).map(link=>link.section);
   if(sections.some(section=>section.briefing.publishedAt || section.briefing.sendingAt)) throw Conflict('This story belongs to a closed edition.');
+  if (data.photos) {
+    const updated = await prisma.$transaction(async (tx) => {
+      const saved = await tx.publishItem.update({ where: { id: item.id, publishedAt: null }, data });
+      if (item.eventId)
+        await tx.npEvent.update({
+          where: { id: item.eventId },
+          data: { photos: data.photos, articleVersion: { increment: 1 } },
+        });
+      await syncEditionPhotos(tx, item.eventId ? { eventId: item.eventId } : { id: item.id }, data.photos);
+      return saved;
+    });
+    return res.json({ item: serializeItem(updated) });
+  }
   const save=prisma.publishItem.update({where:{id:item.id},data});
   const updated=sections.length ? (await prisma.$transaction([save, prisma.briefingSection.updateMany({where:{id:{in:sections.map(section=>section.id)}},data:{state:'awaiting'}})]))[0] : await save;
   return res.json({ item: serializeItem(updated) });

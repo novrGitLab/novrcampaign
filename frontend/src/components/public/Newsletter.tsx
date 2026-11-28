@@ -1,7 +1,9 @@
 'use client';
 import { useState, type FormEvent } from 'react';
+import { SubscriptionDialog } from './SubscriptionDialog';
 import { Button, Input, Label } from '../ui';
 export function Newsletter() {
+  const [submitted, setSubmitted] = useState(false);
   const [message, setMessage] = useState(''),
     [busy, setBusy] = useState(false);
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -15,13 +17,13 @@ export function Newsletter() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),
       });
-      setMessage(
-        response.ok
-          ? 'Check your inbox for a confirmation link.'
-          : response.status === 429
+      if (response.ok) setSubmitted(true);
+      else
+        setMessage(
+          response.status === 429
             ? 'Please try again later.'
             : 'Subscription unavailable. Please try again later.',
-      );
+        );
     } catch {
       setMessage('Could not connect. Please try again.');
     } finally {
@@ -45,7 +47,8 @@ export function Newsletter() {
           {busy ? 'Subscribing…' : 'Subscribe'}
         </Button>
       </div>
-      <p aria-live="polite">{message}</p>
+      {message && <p role="status">{message}</p>}
+      {submitted && <SubscriptionDialog onClose={() => setSubmitted(false)} />}
     </form>
   );
 }

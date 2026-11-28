@@ -16,6 +16,7 @@ import {
   useAcceptJudgement, useAiDraft,
   useRecommendEvents, useRejectJudgement,
 } from '../hooks/mutations';
+import { StoryPhotos, type StoryPhoto } from '@/components/ui/StoryPhotos';
 import api from '../lib/api';
 
 /**
@@ -297,6 +298,8 @@ function DraftCard({ eventId, functionId, sourceName, onDraftReady, initial, oth
   // The parsed slot blocks for the body, or null when the body is free text
   // (an old piece the AI did not shape) — then we render the single textarea.
   const [slots, setSlots] = useState(() => parseSlots(initial?.body) ?? null);
+  const [photos, setPhotos] = useState<StoryPhoto[] | null>(initial?.photos ?? null);
+  const [photoBusy, setPhotoBusy] = useState(false);
   const [headline, setHeadline] = useState(initial?.headline ?? '');
   const [body, setBody] = useState(initial?.body ?? '');
   const [itemId, setItemId] = useState(initial?.itemId ?? null);
@@ -425,13 +428,25 @@ function DraftCard({ eventId, functionId, sourceName, onDraftReady, initial, oth
     setStatus('approved');
     setEditing(false);
     setConfirmApprove(false);
-    onDraftReady(eventId, functionId, { itemId, headline: headline.trim(), body: composedBody.trim(), status: 'approved' });
+    onDraftReady(eventId, functionId, {
+      itemId,
+      headline: headline.trim(),
+      body: composedBody.trim(),
+      ...(photos && { photos }),
+      status: 'approved',
+    });
   };
 
   const doneEditing = () => {
     setEditing(false);
     setConfirmApprove(false);
-    onDraftReady(eventId, functionId, { itemId, headline: headline.trim(), body: composedBody.trim(), status: 'draft' });
+    onDraftReady(eventId, functionId, {
+      itemId,
+      headline: headline.trim(),
+      body: composedBody.trim(),
+      ...(photos && { photos }),
+      status: 'draft',
+    });
   };
 
   return (
@@ -459,7 +474,11 @@ function DraftCard({ eventId, functionId, sourceName, onDraftReady, initial, oth
         <span
           className={
             'ml-auto rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.04em] ' +
-            (status === 'approved' ? 'bg-success/10 text-success' : editing ? 'bg-warning/10 text-warning' : 'bg-secondary text-secondary-foreground')
+            (status === 'approved'
+              ? 'bg-success/10 text-success'
+              : editing
+                ? 'bg-warning/10 text-warning'
+                : 'bg-secondary text-secondary-foreground')
           }
         >
           {status === 'approved' ? '✓ approved' : editing ? '✎ editing' : '● awaiting review'}
@@ -467,7 +486,6 @@ function DraftCard({ eventId, functionId, sourceName, onDraftReady, initial, oth
       </header>
 
       <div className="grid gap-4 p-4 lg:grid-cols-2">
-
         <div className="min-w-0">
           <p className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
             Suggested draft
@@ -498,7 +516,10 @@ function DraftCard({ eventId, functionId, sourceName, onDraftReady, initial, oth
               {slots ? (
                 <div className="mt-2">
                   {slots.map((slot, i) => (
-                    <div key={`${slot.label}-${i}`} className={i > 0 ? 'mt-3 border-t border-border pt-3' : ''}>
+                    <div
+                      key={`${slot.label}-${i}`}
+                      className={i > 0 ? 'mt-3 border-t border-border pt-3' : ''}
+                    >
                       <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                         {slot.label}
                       </label>
@@ -527,43 +548,80 @@ function DraftCard({ eventId, functionId, sourceName, onDraftReady, initial, oth
             </>
           )}
 
-          {error && <p role="alert" className="mt-2 text-[12.5px] text-destructive">{error}</p>}
+          {editing && (
+            <StoryPhotos
+              value={photos}
+              onChange={setPhotos}
+              onBusy={setPhotoBusy}
+              title={headline}
+              summary={composedBody}
+              eventId={eventId}
+              itemId={itemId}
+            />
+          )}
+          {error && (
+            <p role="alert" className="mt-2 text-[12.5px] text-destructive">
+              {error}
+            </p>
+          )}
 
           <div className="mt-3 flex flex-wrap items-center gap-2">
             {editing ? (
-              <Button size="sm" onClick={doneEditing}><Check className="h-3.5 w-3.5" />Done</Button>
+              <Button
+                size="sm"
+                disabled={photoBusy || photos?.some((p) => !p.alt.trim())}
+                onClick={doneEditing}
+              >
+                <Check className="h-3.5 w-3.5" />
+                Done
+              </Button>
             ) : (
               <>
                 <Button
                   size="sm"
                   onClick={approve}
                   disabled={drafting || status === 'approved'}
-                  className={confirmApprove ? 'bg-warning text-warning-foreground hover:bg-warning/90' : undefined}
+                  className={
+                    confirmApprove ? 'bg-warning text-warning-foreground hover:bg-warning/90' : undefined
+                  }
                 >
-                  {confirmApprove ? <AlertTriangle className="h-3.5 w-3.5" /> : <Check className="h-3.5 w-3.5" />}
+                  {confirmApprove ? (
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                  ) : (
+                    <Check className="h-3.5 w-3.5" />
+                  )}
                   {status === 'approved' ? 'Approved' : confirmApprove ? 'Approve anyway' : 'Approve'}
                 </Button>
                 <Button variant="secondary" size="sm" onClick={retry} disabled={drafting}>
                   <Sparkles className={'h-3.5 w-3.5' + (drafting ? ' animate-pulse' : '')} />
                   {drafting ? 'Retrying…' : 'Retry'}
                 </Button>
-                <Button variant="ghost" size="sm" onClick={() => { setConfirmApprove(false); setEditing(true); }} disabled={drafting}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setConfirmApprove(false);
+                    setEditing(true);
+                  }}
+                  disabled={drafting}
+                >
                   ✎ Edit
                 </Button>
               </>
             )}
           </div>
 
-
           {!editing && warnings.length > 0 && (
             <div className="mt-2 rounded-md bg-warning/10 px-3 py-2 text-[12px] text-warning">
-              {warnings.map(warningMessage).filter(Boolean).map((m) => (
-                <p key={m}>⚠ {m}.</p>
-              ))}
+              {warnings
+                .map(warningMessage)
+                .filter(Boolean)
+                .map((m) => (
+                  <p key={m}>⚠ {m}.</p>
+                ))}
             </div>
           )}
         </div>
-
 
         <div className="min-w-0">
           <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
@@ -578,9 +636,7 @@ function DraftCard({ eventId, functionId, sourceName, onDraftReady, initial, oth
               </p>
               <p className="mt-0.5 mb-2 text-[11.5px] text-muted-foreground">
                 {eventDetail.sourceName || 'Unknown source'}
-                {eventDetail.publishedAt && (
-                  <> · {formatDate(eventDetail.publishedAt)}</>
-                )}
+                {eventDetail.publishedAt && <> · {formatDate(eventDetail.publishedAt)}</>}
               </p>
               <div className="max-h-[420px] overflow-y-auto whitespace-pre-wrap rounded-md border border-border bg-secondary/30 p-3 text-[12.5px] leading-[1.65] text-muted-foreground">
                 {eventDetail.sourceBody}
@@ -616,6 +672,8 @@ function errorText(e) {
  */
 function WriteOverlay({ open, section, onClose, onSave, busy, error }) {
   const [functionId, setFunctionId] = useState(section);
+  const [photos, setPhotos] = useState<StoryPhoto[]>([]);
+  const [photoBusy, setPhotoBusy] = useState(false);
   const [headline, setHeadline] = useState('');
   const [text, setText] = useState('');
   const [referenceLink, setReferenceLink] = useState('');
@@ -626,6 +684,7 @@ function WriteOverlay({ open, section, onClose, onSave, busy, error }) {
     if (!open || lastKey.current === resetKey) return;
     lastKey.current = resetKey;
     setFunctionId(section);
+    setPhotos([]);
     setHeadline('');
     setText('');
     setReferenceLink('');
@@ -633,10 +692,17 @@ function WriteOverlay({ open, section, onClose, onSave, busy, error }) {
 
   if (!open) return null;
 
-  const canAdd = Boolean(functionId) && headline.trim() && text.trim();
+  const canAdd =
+    !photoBusy && !photos.some((p) => !p.alt.trim()) && Boolean(functionId) && headline.trim() && text.trim();
   const submit = () => {
     if (!canAdd || busy) return;
-    onSave({ functionId, headline: headline.trim(), text: text.trim(), referenceLink: referenceLink.trim() });
+    onSave({
+      functionId,
+      photos,
+      headline: headline.trim(),
+      text: text.trim(),
+      referenceLink: referenceLink.trim(),
+    });
   };
 
   return (
@@ -644,7 +710,9 @@ function WriteOverlay({ open, section, onClose, onSave, busy, error }) {
       <div className="w-full max-w-3xl rounded-xl border border-border bg-card shadow-xl">
         <div className="flex items-center gap-3 border-b border-border px-5 py-4">
           <h2 className="text-[16px] font-bold text-foreground">Write a piece</h2>
-          <span className="text-[13px] text-muted-foreground">for {sectionNumber(section)} {pillarLabel(section)}</span>
+          <span className="text-[13px] text-muted-foreground">
+            for {sectionNumber(section)} {pillarLabel(section)}
+          </span>
           <button
             type="button"
             onClick={onClose}
@@ -677,7 +745,9 @@ function WriteOverlay({ open, section, onClose, onSave, busy, error }) {
           </div>
 
           <div>
-            <label htmlFor="wiz-ref-link" className="label">Reference link (optional)</label>
+            <label htmlFor="wiz-ref-link" className="label">
+              Reference link (optional)
+            </label>
             <input
               id="wiz-ref-link"
               type="url"
@@ -707,10 +777,23 @@ function WriteOverlay({ open, section, onClose, onSave, busy, error }) {
             className="w-full resize-y bg-transparent font-display text-[16px] leading-[1.7] text-foreground placeholder:italic placeholder:text-muted-foreground focus-visible:outline-none"
           />
 
-          {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+          {error && (
+            <p role="alert" className="text-sm text-destructive">
+              {error}
+            </p>
+          )}
 
+          <StoryPhotos
+            value={photos}
+            onChange={setPhotos}
+            onBusy={setPhotoBusy}
+            title={headline}
+            summary={text}
+          />
           <div className="flex items-center justify-end gap-2 border-t border-border pt-4">
-            <Button variant="ghost" size="sm" onClick={onClose} disabled={busy}>Cancel</Button>
+            <Button variant="ghost" size="sm" onClick={onClose} disabled={busy}>
+              Cancel
+            </Button>
             <Button size="sm" onClick={submit} disabled={!canAdd || busy}>
               {busy ? 'Adding…' : 'Add piece'}
             </Button>
@@ -896,14 +979,20 @@ export default function PulseWizard() {
     setWriteSection(functionId);
   };
 
-  const saveWrite = async ({ functionId, headline, text, referenceLink }) => {
+  const saveWrite = async ({ functionId, headline, text, referenceLink, photos }) => {
     setWriteBusy(true);
     setWriteError(null);
     try {
-      const res = await api('/publish', { method: 'POST', body: { functionId, headline, text, referenceLink } });
+      const res = await api('/publish', {
+        method: 'POST',
+        body: { functionId, headline, text, ...(referenceLink && { referenceLink }), photos },
+      });
       const item = res?.item;
       if (!item) throw new Error('The piece could not be created.');
-      setDrafts((prev) => ({ ...prev, [`manual:${functionId}`]: { itemId: item.id, headline, body: text, status: 'approved' } }));
+      setDrafts((prev) => ({
+        ...prev,
+        [`manual:${functionId}`]: { itemId: item.id, headline, body: text, status: 'approved' },
+      }));
       setWrites((prev) => ({ ...prev, [functionId]: true }));
       setWriteSection(null);
     } catch (e) {
@@ -962,7 +1051,7 @@ export default function PulseWizard() {
         if (!d?.itemId) continue;
         const body = [d.headline, d.body].filter(Boolean).join('\n\n');
         if (d.headline || d.body) {
-          await api(`/publish/${d.itemId}`, { method: 'PATCH', body: { body } });
+          await api(`/publish/${d.itemId}`, { method: 'PATCH', body: { body, photos: d.photos } });
         }
         await attach(p.functionId, d.itemId);
       }

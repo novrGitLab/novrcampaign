@@ -1,10 +1,15 @@
-import { completeEdition, mediaUrl } from '../services/editionReview.js';
+import { displayPhotos, normalizePhotos, leadColumns, syncEditionPhotos } from '../services/newsroomPhoto.js';
+import { completeEdition } from '../services/editionReview.js';
 import Joi from 'joi';
 import { prisma } from '../utils/prisma.js';
 import { BadRequest, BadGateway, Conflict, Gone, NotFound } from '../utils/AppError.js';
 import { deriveStatus } from './publishController.js';
 import { PILLARS, pillarLabel } from '../services/novrpulse/pillars.js';
-import { renderBriefingPreview, groupStories, formatBriefingDate } from '../services/novrpulse/briefingPreview.js';
+import {
+  renderBriefingPreview,
+  groupStories,
+  formatBriefingDate,
+} from '../services/novrpulse/briefingPreview.js';
 import * as plunk from '../services/plunkService.js';
 import { config } from '../config/env.js';
 
@@ -28,7 +33,15 @@ import { config } from '../config/env.js';
  */
 
 // The seven briefing lifecycle states.
-const BRIEFING_STATUSES = ['not_started', 'draft', 'in_review', 'approved', 'scheduled', 'published', 'archived'];
+const BRIEFING_STATUSES = [
+  'not_started',
+  'draft',
+  'in_review',
+  'approved',
+  'scheduled',
+  'published',
+  'archived',
+];
 // The four per-section states.
 const SECTION_STATES = ['empty', 'no_updates', 'ready', 'awaiting'];
 // The two publish-item content types.
@@ -64,11 +77,14 @@ const listBriefingSchema = Joi.object({
 // address — the client sends a real address, not a URI.
 const publishBriefingSchema = Joi.object({
   test: Joi.boolean().default(false),
-  email: Joi.string().trim().email({ tlds: { allow: false } }).when('test', {
-    is: true,
-    then: Joi.optional(),
-    otherwise: Joi.forbidden(),
-  }),
+  email: Joi.string()
+    .trim()
+    .email({ tlds: { allow: false } })
+    .when('test', {
+      is: true,
+      then: Joi.optional(),
+      otherwise: Joi.forbidden(),
+    }),
   segments: Joi.array().items(Joi.string().trim().min(1)).max(50),
 });
 
@@ -89,7 +105,9 @@ const reorderSchema = Joi.object({
 
 const authorSchema = Joi.object({
   body: Joi.string().trim().min(1).required(),
-  contentType: Joi.string().valid(...CONTENT_TYPES).default('briefing'),
+  contentType: Joi.string()
+    .valid(...CONTENT_TYPES)
+    .default('briefing'),
 });
 
 const supportingEventSchema = Joi.object({
@@ -98,8 +116,16 @@ const supportingEventSchema = Joi.object({
   organiser: Joi.string().trim().min(1).max(300).required(),
   startsAt: Joi.string().isoDate().required(),
   venue: Joi.string().trim().max(300).allow('', null),
-  onlineUrl: Joi.string().trim().uri({ scheme: ['http', 'https'] }).max(2000).allow('', null),
-  registrationUrl: Joi.string().trim().uri({ scheme: ['http', 'https'] }).max(2000).allow('', null),
+  onlineUrl: Joi.string()
+    .trim()
+    .uri({ scheme: ['http', 'https'] })
+    .max(2000)
+    .allow('', null),
+  registrationUrl: Joi.string()
+    .trim()
+    .uri({ scheme: ['http', 'https'] })
+    .max(2000)
+    .allow('', null),
   verified: Joi.boolean(),
 });
 
@@ -114,21 +140,26 @@ const opportunitySchema = Joi.object({
   kind: Joi.string().valid('scholarship', 'course', 'programme', 'other').required(),
   provider: Joi.string().trim().max(300).allow('', null),
   deadline: Joi.string().isoDate().allow(null),
-  url: Joi.string().trim().uri({ scheme: ['http', 'https'] }).max(2000).allow('', null),
+  url: Joi.string()
+    .trim()
+    .uri({ scheme: ['http', 'https'] })
+    .max(2000)
+    .allow('', null),
   verified: Joi.boolean(),
 });
 
-const opportunityUpdateSchema = opportunitySchema.fork(
-  ['title', 'description', 'kind'],
-  (s) => s.optional(),
-);
+const opportunityUpdateSchema = opportunitySchema.fork(['title', 'description', 'kind'], (s) => s.optional());
 
 const forumTopicSchema = Joi.object({
   title: Joi.string().trim().min(1).max(300).required(),
   prompt: Joi.string().trim().min(1).max(5000).required(),
   scheduledFor: Joi.string().isoDate().allow(null),
   publishItemId: Joi.string().trim().min(1).allow(null),
-  forumUrl: Joi.string().trim().uri({ scheme: ['http', 'https'] }).max(2000).allow('', null),
+  forumUrl: Joi.string()
+    .trim()
+    .uri({ scheme: ['http', 'https'] })
+    .max(2000)
+    .allow('', null),
 });
 
 const forumTopicUpdateSchema = forumTopicSchema.fork(['title', 'prompt'], (s) => s.optional());
@@ -170,6 +201,7 @@ function bodyPreview(body) {
 function serializePublishItemSummary(item) {
   return {
     id: item.id,
+    eventId: item.eventId,
     functionId: item.functionId,
     contentType: item.contentType,
     status: deriveStatus(item),
@@ -188,7 +220,10 @@ function serializeSection(section) {
       id: link.id,
       position: link.position,
       publishItemId: link.publishItemId,
-      imageUrl: link.imageUrl ?? null, imageAlt: link.imageAlt ?? null, imageCredit: link.imageCredit ?? null,
+      photos: displayPhotos(link),
+      imageUrl: link.imageUrl ?? null,
+      imageAlt: link.imageAlt ?? null,
+      imageCredit: link.imageCredit ?? null,
       publishItem: link.publishItem ? serializePublishItemSummary(link.publishItem) : null,
     }));
 
@@ -447,7 +482,10 @@ export async function previewBriefing(req, res) {
  * fallback — mirrors the campaign desk's fixed-sender pattern.
  */
 function briefingSubject(briefing) {
-  return (briefing.title && briefing.title.trim()) || `NovrPulse Daily Briefing — ${formatBriefingDate(briefing.briefingDate)}`;
+  return (
+    (briefing.title && briefing.title.trim()) ||
+    `NovrPulse Daily Briefing — ${formatBriefingDate(briefing.briefingDate)}`
+  );
 }
 
 /**
@@ -532,26 +570,33 @@ export async function publishBriefing(req, res) {
       });
     }
     await recordPublication(briefing.id, {
-      kind: 'test', segments: [], recipientSummary: { test: true, to, providerId },
+      kind: 'test',
+      segments: [],
+      recipientSummary: { test: true, to, providerId },
     });
 
     return res.json({ sent: true, test: true, to });
   }
 
   // ── Production send ────────────────────────────────────────────────────────
-  const configured = Array.isArray(value.segments) && value.segments.length
-    ? [...new Set(value.segments)]
-    : (config.novrpulse.pulseSegment ? [config.novrpulse.pulseSegment] : []);
+  const configured =
+    Array.isArray(value.segments) && value.segments.length
+      ? [...new Set(value.segments)]
+      : config.novrpulse.pulseSegment
+        ? [config.novrpulse.pulseSegment]
+        : [];
 
   if (configured.length === 0) {
-    throw Object.assign(
-      BadRequest('Set NP_PULSE_SEGMENT or pass segments'),
-      { code: 'NO_SEGMENT_CONFIGURED' },
-    );
+    throw Object.assign(BadRequest('Set NP_PULSE_SEGMENT or pass segments'), {
+      code: 'NO_SEGMENT_CONFIGURED',
+    });
   }
 
   if (!completeEdition(briefing.sections)) throw BadRequest('Review all ten sections before sending.');
-  const claim = await prisma.briefing.updateMany({ where: { id: briefing.id, publishedAt: null, sendingAt: null }, data: { sendingAt: new Date() } });
+  const claim = await prisma.briefing.updateMany({
+    where: { id: briefing.id, publishedAt: null, sendingAt: null },
+    data: { sendingAt: new Date() },
+  });
   if (claim.count !== 1) throw Conflict('Delivery is in progress or has already completed.');
   const sentCampaigns = [];
   let sendError;
@@ -577,13 +622,18 @@ export async function publishBriefing(req, res) {
   }
 
   if (sendError) {
-    if (!dispatchAttempted) await prisma.briefing.updateMany({ where: { id: briefing.id, publishedAt: null }, data: { sendingAt: null } });
+    if (!dispatchAttempted)
+      await prisma.briefing.updateMany({
+        where: { id: briefing.id, publishedAt: null },
+        data: { sendingAt: null },
+      });
     // Fail loudly and honestly: 502 with the provider message; the briefing is
     // NOT marked published.
-    throw BadGateway(
-      `Could not send the briefing: ${sendError.message}`,
-      { provider: 'plunk', status: sendError.status ?? null, segments: configured },
-    );
+    throw BadGateway(`Could not send the briefing: ${sendError.message}`, {
+      provider: 'plunk',
+      status: sendError.status ?? null,
+      segments: configured,
+    });
   }
 
   const publication = await recordPublication(briefing.id, {
@@ -597,18 +647,14 @@ export async function publishBriefing(req, res) {
   // in a transaction, so the record is consistent.
   const now = new Date();
   const publishItemIds = [
-    ...new Set(
-      (briefing.sections ?? []).flatMap((s) => (s.items ?? []).map((i) => i.publishItemId)),
-    ),
+    ...new Set((briefing.sections ?? []).flatMap((s) => (s.items ?? []).map((i) => i.publishItemId))),
   ];
   await prisma.$transaction([
     prisma.briefing.update({
       where: { id: briefing.id },
       data: { status: 'published', publishedAt: now, sendingAt: null },
     }),
-    ...publishItemIds.map((id) =>
-      prisma.publishItem.update({ where: { id }, data: { publishedAt: now } }),
-    ),
+    ...publishItemIds.map((id) => prisma.publishItem.update({ where: { id }, data: { publishedAt: now } })),
   ]);
 
   return res.json({
@@ -710,8 +756,10 @@ export async function updateSection(req, res) {
   const section = await requireSection(req.params.id, req.params.functionId);
 
   const data = {};
-  if (value.state === 'ready' && !section.items.length) throw BadRequest('Confirm no updates for an empty section.');
-  if (value.state === 'no_updates' && section.items.length) throw BadRequest('Review the stories in this section.');
+  if (value.state === 'ready' && !section.items.length)
+    throw BadRequest('Confirm no updates for an empty section.');
+  if (value.state === 'no_updates' && section.items.length)
+    throw BadRequest('Review the stories in this section.');
   if (value.state !== undefined) data.state = value.state;
   if (value.note !== undefined) data.note = value.note || null;
   if (value.position !== undefined) data.position = value.position;
@@ -751,7 +799,24 @@ export async function attachSectionItem(req, res) {
   }
 
   try {
-    await prisma.$transaction([prisma.briefingSectionItem.create({data: { sectionId: section.id, publishItemId, position: targetPosition }}), prisma.briefingSection.update({where: {id:section.id},data:{state:'awaiting'}})]);
+    await prisma.$transaction(async (tx) => {
+      if (publishItem.eventId)
+        await tx.$queryRaw`SELECT id FROM "np_event" WHERE id = ${publishItem.eventId} FOR SHARE`;
+      else await tx.$queryRaw`SELECT id FROM "publish_item" WHERE id = ${publishItemId} FOR SHARE`;
+      const open =
+        await tx.$queryRaw`SELECT id FROM "briefing" WHERE id = ${section.briefingId} AND "publishedAt" IS NULL AND "sendingAt" IS NULL FOR UPDATE`;
+      if (!open.length) throw Conflict('This edition is closed for editing.');
+      const current = await tx.publishItem.findUnique({
+        where: { id: publishItemId },
+        include: { event: { select: { photos: true } } },
+      });
+      if (!current) throw NotFound('Publish item not found');
+      const photos = displayPhotos({ photos: current.event?.photos ?? current.photos });
+      await tx.briefingSectionItem.create({
+        data: { sectionId: section.id, publishItemId, position: targetPosition, ...leadColumns(photos) },
+      });
+      await tx.briefingSection.update({ where: { id: section.id }, data: { state: 'awaiting' } });
+    });
   } catch (err) {
     if (isUniqueViolation(err)) throw Conflict('Publish item is already attached to this section');
     throw err;
@@ -772,7 +837,10 @@ export async function detachSectionItem(req, res) {
   // Scope the link to this section: a link id from another section is a 404.
   if (!link || link.sectionId !== section.id) throw NotFound('Section item not found');
 
-  await prisma.$transaction([prisma.briefingSectionItem.delete({where:{id:link.id}}), prisma.briefingSection.update({where:{id:section.id},data:{state:'awaiting'}})]);
+  await prisma.$transaction([
+    prisma.briefingSectionItem.delete({ where: { id: link.id } }),
+    prisma.briefingSection.update({ where: { id: section.id }, data: { state: 'awaiting' } }),
+  ]);
 
   const fresh = await reloadSection(section.id);
   return res.json({ section: serializeSection(fresh) });
@@ -1080,15 +1148,24 @@ export {
   serializePublishItemSummary,
 };
 
-export async function updatePhoto(req,res) {
-  const value=await validate(Joi.object({imageUrl:Joi.string().max(2048).allow(null).required(),imageAlt:Joi.string().trim().max(250).allow(null,''),imageCredit:Joi.string().trim().max(160).allow(null,'')}),req.body);
-  if(value.imageUrl && (!mediaUrl(value.imageUrl) || !value.imageAlt))throw BadRequest('Provide an approved photograph and an image description.');
-  const section=await requireSection(req.params.id,req.params.functionId);
-  const link=section.items.find(item=>item.id===req.params.itemId);
-  if(!link)throw NotFound('Story unavailable');
-  await prisma.$transaction([
-    prisma.briefingSectionItem.update({where:{id:link.id},data:{imageUrl:value.imageUrl,imageAlt:value.imageAlt||null,imageCredit:value.imageCredit||null}}),
-    prisma.briefingSection.update({where:{id:section.id},data:{state:'awaiting'}}),
-  ]);
+export async function updatePhoto(req, res) {
+  const { imageUrl, imageAlt, imageCredit } = req.body;
+  if (req.body.photos === undefined && imageUrl === undefined) throw BadRequest('Choose a photograph.');
+  const photos = normalizePhotos(
+    req.body.photos ?? (imageUrl === null ? [] : [{ url: imageUrl, alt: imageAlt, credit: imageCredit }]),
+  );
+  const section = await requireSection(req.params.id, req.params.functionId);
+  const link = section.items.find((item) => item.id === req.params.itemId);
+  if (!link) throw NotFound('Story unavailable.');
+  await prisma.$transaction(async (tx) => {
+    const { eventId, id } = link.publishItem;
+    if (eventId)
+      await tx.npEvent.update({ where: { id: eventId }, data: { photos, articleVersion: { increment: 1 } } });
+    else await tx.publishItem.update({ where: { id }, data: { photos } });
+    const open =
+      await tx.$queryRaw`SELECT id FROM "briefing" WHERE id = ${section.briefingId} AND "publishedAt" IS NULL AND "sendingAt" IS NULL FOR UPDATE`;
+    if (!open.length) throw Conflict('This edition is closed for editing.');
+    await syncEditionPhotos(tx, eventId ? { eventId } : { id }, photos);
+  });
   return res.sendStatus(204);
 }

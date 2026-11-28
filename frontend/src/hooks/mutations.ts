@@ -257,7 +257,16 @@ export function useEditPublish() {
   return useMutation({
     // `payload` may carry `body`, `regulatoryImpact`, and/or `eventDate`; only
     // the keys present are sent, so PATCH persists exactly what the writer saved.
-    mutationFn: ({ id, ...payload }: { id:string; body?:string;eventDate?:string;regulatoryImpact?:string }) => api(`/publish/${id}`, { method: 'PATCH', body: payload }).then((r) => r.item),
+    mutationFn: ({
+      id,
+      ...payload
+    }: {
+      id: string;
+      body?: string;
+      photos?: import('@/components/ui/StoryPhotos').StoryPhoto[];
+      eventDate?: string;
+      regulatoryImpact?: string;
+    }) => api(`/publish/${id}`, { method: 'PATCH', body: payload }).then((r) => r.item),
     onSuccess: () => invalidatePulse(qc),
   });
 }

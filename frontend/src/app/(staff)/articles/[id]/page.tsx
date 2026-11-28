@@ -1,5 +1,6 @@
 'use client';
 import { use, useEffect, useState } from 'react';
+import { StoryPhotos, type StoryPhoto } from '@/components/ui/StoryPhotos';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
@@ -13,6 +14,7 @@ type Article = {
   sections: { heading: string; paragraphs: string[] }[];
 };
 type Review = {
+  photos: StoryPhoto[];
   id: string;
   title: string;
   version: number;
@@ -33,6 +35,8 @@ export default function StoryEditor({ params }: { params: Promise<{ id: string }
     refetchOnWindowFocus: false,
   });
   const [draft, setDraft] = useState<Article | null>(null);
+  const [photos, setPhotos] = useState<StoryPhoto[]>([]);
+  const [photoBusy, setPhotoBusy] = useState(false);
   const [region, setRegion] = useState('');
   const [version, setVersion] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -40,17 +44,25 @@ export default function StoryEditor({ params }: { params: Promise<{ id: string }
   useEffect(() => {
     if (data) {
       setDraft(data.draft);
+      setPhotos(data.photos || []);
       setRegion(data.region ?? '');
       setVersion(data.version);
     }
   }, [data]);
-  async function submit(action: 'generate' | 'save' | 'publish') {
+  async function submit(action: 'generate' | 'save' | 'publish' | 'photos') {
     setBusy(true);
     setMessage('');
     try {
       const result = await api(path + (action === 'save' ? '' : '/' + action), {
-        method: action === 'save' ? 'PUT' : 'POST',
-        body: { version, ...(action !== 'generate' && { article: draft, ...(region && { region }) }) },
+        method: action === 'photos' || action === 'save' ? 'PUT' : 'POST',
+        body: {
+          version,
+          ...(action !== 'generate' && {
+            photos,
+            ...(action !== 'photos' && { article: draft }),
+            ...(region && { region }),
+          }),
+        },
       });
       setVersion(result.version);
       await refetch();
@@ -59,7 +71,9 @@ export default function StoryEditor({ params }: { params: Promise<{ id: string }
           ? 'Published to the public edition.'
           : action === 'generate'
             ? 'Draft ready for review.'
-            : 'Draft saved.',
+            : action === 'photos'
+              ? 'Photographs saved.'
+              : 'Draft saved.',
       );
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'The change could not be saved.');
@@ -91,10 +105,31 @@ export default function StoryEditor({ params }: { params: Promise<{ id: string }
               <p>{data.evidence}</p>
             </details>
           )}
+          <fieldset disabled={!canEdit || busy}>
+            <StoryPhotos
+              value={photos}
+              onChange={setPhotos}
+              title={draft?.headline || data.title}
+              summary={draft?.standfirst}
+              onBusy={setPhotoBusy}
+            />
+            {!draft && canEdit && (
+              <Button
+                variant="secondary"
+                disabled={busy || photoBusy || photos.some((p) => !p.alt.trim())}
+                onClick={() => submit('photos')}
+              >
+                Save photographs
+              </Button>
+            )}
+          </fieldset>
           {!draft && (
             <div>
               {canEdit && (
-                <Button disabled={busy} onClick={() => submit('generate')}>
+                <Button
+                  disabled={busy || photoBusy || JSON.stringify(photos) !== JSON.stringify(data.photos || [])}
+                  onClick={() => submit('generate')}
+                >
                   {busy ? 'Preparing draft…' : 'Prepare draft'}
                 </Button>
               )}
@@ -162,11 +197,20 @@ export default function StoryEditor({ params }: { params: Promise<{ id: string }
                 </Button>
               )}
               <div className="flex flex-wrap gap-2">
-                <Button variant="secondary" onClick={() => submit('save')}>
+                <Button
+                  variant="secondary"
+                  disabled={photoBusy || photos.some((p) => !p.alt.trim())}
+                  onClick={() => submit('save')}
+                >
                   Save draft
                 </Button>
                 {user?.role === 'ADMIN' && (
-                  <Button onClick={() => submit('publish')}>Approve and publish</Button>
+                  <Button
+                    disabled={photoBusy || photos.some((p) => !p.alt.trim())}
+                    onClick={() => submit('publish')}
+                  >
+                    Approve and publish
+                  </Button>
                 )}
               </div>
             </fieldset>

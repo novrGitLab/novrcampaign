@@ -37,12 +37,19 @@ function IndexStory({ story }: { story: Story }) {
     </article>
   );
 }
-export function Photograph({ image }: { image?: Story['image'] } = {}) {
+export function Photograph({ image, inline = false }: { image?: Story['image']; inline?: boolean } = {}) {
   if (image)
     return (
       <figure className="cover">
-        <img src={image.url} alt={image.alt} fetchPriority="high" />
-        {image.credit && <figcaption>{image.credit}</figcaption>}
+        <img
+          src={image.url}
+          alt={image.alt}
+          fetchPriority={inline ? 'auto' : 'high'}
+          loading={inline ? 'lazy' : 'eager'}
+        />
+        {image.credit && (
+          <figcaption>{image.page ? <a href={image.page}>{image.credit}</a> : image.credit}</figcaption>
+        )}
       </figure>
     );
   return (

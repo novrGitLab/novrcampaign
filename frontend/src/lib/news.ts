@@ -7,12 +7,13 @@ export interface Story {
   title: string;
   summary: string;
   context: string | null;
-  format: "article" | "brief";
-  sections: {heading:string; paragraphs:string[]}[];
+  format: 'article' | 'brief';
+  sections: { heading: string; paragraphs: string[] }[];
   updatedAt: string | null;
   publishedAt: string;
   href: string;
-  image: { url: string; alt: string; credit: string | null } | null;
+  images?: { url: string; alt: string; credit: string | null; page?: string }[];
+  image: { url: string; alt: string; credit: string | null; page?: string } | null;
   source: string;
   sourceUrl: string;
   region: string | null;

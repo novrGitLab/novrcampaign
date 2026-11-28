@@ -1,3 +1,4 @@
+import { normalizePhotos } from '../services/newsroomPhoto.js';
 import Joi from 'joi';
 import { prisma } from '../utils/prisma.js';
 import { BadRequest, NotFound } from '../utils/AppError.js';
@@ -7,14 +8,23 @@ const SOURCE_TYPES = ['x', 'news', 'regulator', 'other'];
 const STATUSES = ['draft', 'ready', 'archived'];
 
 const createSchema = Joi.object({
-  sourceType: Joi.string().valid(...SOURCE_TYPES).required(),
+  photos: Joi.array().max(12),
+  sourceType: Joi.string()
+    .valid(...SOURCE_TYPES)
+    .required(),
   sourceName: Joi.string().trim().min(1).max(200).required(),
-  url: Joi.string().trim().uri({ scheme: ['http', 'https'] }).max(2000).required(),
+  url: Joi.string()
+    .trim()
+    .uri({ scheme: ['http', 'https'] })
+    .max(2000)
+    .required(),
   author: Joi.string().trim().max(200).allow('', null),
   publishedAt: Joi.string().isoDate().required(),
   title: Joi.string().trim().min(1).max(300).required(),
   summary: Joi.string().trim().min(1).max(5000).required(),
-  status: Joi.string().valid(...STATUSES).default('draft'),
+  status: Joi.string()
+    .valid(...STATUSES)
+    .default('draft'),
 });
 
 const updateSchema = createSchema.fork(
@@ -118,6 +128,7 @@ export async function createFeedEntry(req, res) {
       publishedAt: new Date(value.publishedAt),
       title: value.title,
       summary: value.summary,
+      ...(value.photos && { photos: normalizePhotos(value.photos) }),
       status: value.status,
       createdBy: req.user.id,
     },
@@ -142,6 +153,7 @@ export async function updateFeedEntry(req, res) {
   if (value.author !== undefined) data.author = value.author || null;
   if (value.publishedAt !== undefined) data.publishedAt = new Date(value.publishedAt);
   if (value.title !== undefined) data.title = value.title;
+  if (value.photos !== undefined) data.photos = normalizePhotos(value.photos);
   if (value.summary !== undefined) data.summary = value.summary;
   if (value.status !== undefined) data.status = value.status;
 
