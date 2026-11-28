@@ -17,7 +17,9 @@ import {
   AlignRight, Minus, Eraser, Code, Eye, PenLine, User, BellOff, TriangleAlert, Trash2,
 } from './ui/icons';
 import { cn } from '../lib/utils';
-import { PillButton } from './ui';
+import { StoryPhotos, type StoryPhoto } from './ui/StoryPhotos';
+import { renderEmailGallery } from '../lib/feedEmail';
+import { Button, PillButton } from './ui';
 
 const BLOCK_TAGS = new Set([
   'html', 'head', 'body', 'table', 'thead', 'tbody', 'tfoot', 'tr', 'td', 'th',
@@ -161,8 +163,17 @@ function ToolButton({ active=false, disabled, onClick, title, children }) {
  * Rich email body editor: richtext (Tiptap) + raw HTML code + live preview.
  * `value` is the HTML string stored in Plunk; `onChange` receives updated HTML.
  */
-export default function RichEmailEditor({ value, onChange, disabled=false, insertRef=null }) {
+export default function RichEmailEditor({
+  value,
+  onChange,
+  disabled = false,
+  insertRef = null,
+  subject = '',
+}) {
   // Table layouts open in Preview — Write mode is for simple rich text
+  const [photos, setPhotos] = useState<StoryPhoto[]>([]);
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [showPhotos, setShowPhotos] = useState(false);
   const [view, setView] = useState(() => (hasTableLayout(value) ? 'preview' : 'rich'));
 
   const emitHtml = (html) => onChange?.(normalizeEmpty(html));
@@ -206,7 +217,9 @@ export default function RichEmailEditor({ value, onChange, disabled=false, inser
     editable: !disabled,
     editorProps: {
       // Email canvas stays light in both modes — it previews the sent email
-      attributes: { class: 'tiptap min-h-[280px] w-full bg-card px-4 py-3 text-sm text-foreground focus:outline-none' },
+      attributes: {
+        class: 'tiptap min-h-[280px] w-full bg-card px-4 py-3 text-sm text-foreground focus:outline-none',
+      },
     },
     onUpdate: ({ editor: e }) => emitHtml(e.getHTML()),
   });
@@ -256,6 +269,16 @@ export default function RichEmailEditor({ value, onChange, disabled=false, inser
     editor.chain().focus().insertContent(token).run();
   };
 
+  function insertPhotos() {
+    const html = renderEmailGallery(photos);
+    if (view === 'rich' && editor) editor.chain().focus().insertContent(html).run();
+    else {
+      const body = value || '';
+      onChange(/<\/body>/i.test(body) ? body.replace(/<\/body>/i, () => html + '</body>') : body + html);
+    }
+    setPhotos([]);
+    setShowPhotos(false);
+  }
   const tabs = [
     { id: 'rich', label: 'Write', icon: PenLine },
     { id: 'code', label: 'HTML', icon: Code },
@@ -264,6 +287,41 @@ export default function RichEmailEditor({ value, onChange, disabled=false, inser
 
   return (
     <div>
+      {!disabled && (
+        <div className="mb-3">
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            aria-expanded={showPhotos}
+            onClick={() => setShowPhotos(!showPhotos)}
+          >
+            Add photographs
+          </Button>
+          {showPhotos && (
+            <>
+              <StoryPhotos
+                value={photos}
+                onChange={setPhotos}
+                onBusy={setPhotoBusy}
+                title={subject}
+                summary={(value || '')
+                  .replace(/<[^>]*>/g, ' ')
+                  .replace(/\s+/g, ' ')
+                  .trim()}
+              />
+              <Button
+                type="button"
+                size="sm"
+                disabled={photoBusy || !photos.length || photos.some((p) => !p.alt.trim())}
+                onClick={insertPhotos}
+              >
+                Insert photographs
+              </Button>
+            </>
+          )}
+        </div>
+      )}
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <div role="group" aria-label="Editor view" className="flex flex-wrap gap-1">
           {tabs.map(({ id, label, icon: Icon }) => (

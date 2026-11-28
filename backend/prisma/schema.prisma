@@ -204,6 +204,7 @@ model NpRawDocument {
 // filtered and rendered eight ways. `summary` is NovrPulse's own words and is
 // left empty by collection — the understanding layer writes it.
 model NpEvent {
+  photos Json?
   id            String   @id @default(uuid())
   title         String
   summary       String   @default("")
@@ -345,6 +346,7 @@ model NpEventEntity {
 // `eventId`/`functionId` are nullable so a non-event-bound briefing can exist;
 // the retired `analyst`/`client` tiers are gone (tier is 'public'|'paid').
 model PublishItem {
+  photos Json?
   id              String   @id @default(uuid())
   eventId         String?
   event           NpEvent? @relation(fields: [eventId], references: [id], onDelete: Cascade)
@@ -486,6 +488,7 @@ model Correction {
 // image, tag, or severity field at this phase.
 
 model FeedEntry {
+  photos Json?
   id          String   @id @default(uuid())
   sourceType  String // 'x' | 'news' | 'regulator' | 'other'
   sourceName  String
@@ -589,6 +592,7 @@ model BriefingSection {
 }
 
 model BriefingSectionItem {
+  photos Json?
   imageUrl      String?
   imageAlt      String?
   imageCredit   String?

@@ -50,3 +50,13 @@ Reviewed novrGitLab/novrcollector at 22f69b8. The service already supports per-c
 ## References
 
 [Zoho OIDC](https://www.zoho.com/developer/oauth/sign-in-using-zoho-oidc.html) · [Plunk transactional delivery](https://docs.useplunk.com/api-reference/public-api/sendEmail) · [Pexels API](https://www.pexels.com/api/documentation/)
+
+## Story photographs
+
+Open an item in Article review and use **Story photographs**. Drop JPEG, PNG or WebP files into the upload area or choose **Suggest photos for this story**. The suggestion button uses the headline and summary to find existing stock photographs through Pexels. Editors can refine the search, select up to 12 images, describe each one, add credits and reorder them. The first photograph is the lead.
+
+The briefing desk, wizard and section review share the gallery for an event-linked story. Saving a photo change returns affected open sections to review. **Approve and publish** takes a separate snapshot for the public article. Sent editions keep their photographs. Standalone briefing pieces have their own gallery. Feed updates carry their photos into a campaign when inserted. Campaign and template composers also support inserting photographs directly.
+
+Use the existing `PEXELS_API_KEY` for library search and the newsroom’s configured language model for keyword suggestions. Only search terms go to Pexels. Uploads work independently of those services. Set `PUBLIC_SITE_URL` to the canonical HTTPS publication origin so email images and confirmation links resolve outside the newsroom.
+
+The landing-page form sends a 24-hour confirmation email. Opening the link displays the confirmation action. The address joins the newsletter only after confirmation succeeds.

@@ -1,4 +1,5 @@
 import Joi from 'joi';
+import { normalizePhotos, syncEditionPhotos } from './newsroomPhoto.js';
 import { Prisma } from '../generated/prisma/client.js';
 import { fetchText } from '@novr/ingest/fetch';
 import { extractArticle } from '@novr/ingest/article';
@@ -110,6 +111,7 @@ const staffRecord = {
   articleDraft: true,
   articlePublished: true,
   articleEvidence: true,
+  photos: true,
   canonicalUrl: true,
   body: true,
   eventType: true,
@@ -188,8 +190,8 @@ export async function generateArticle(id, version, { evidence = evidenceFor, llm
   });
 }
 
-async function updateArticle(id, version, data) {
-  const saved = await prisma.npEvent.updateMany({
+async function updateArticle(id, version, data, tx = prisma) {
+  const saved = await tx.npEvent.updateMany({
     where: { ...eligibility(), id, articleVersion: version },
     data: { ...data, articleVersion: { increment: 1 } },
   });
@@ -197,12 +199,23 @@ async function updateArticle(id, version, data) {
   return { version: version + 1 };
 }
 
-export async function saveArticle(id, version, article, { publishBy, region } = {}) {
+export async function saveArticlePhotos(id, version, input) {
+  await reviewRecord(id);
+  const photos = normalizePhotos(input);
+  return prisma.$transaction(async (tx) => {
+    const result = await updateArticle(id, version, { photos }, tx);
+    await syncEditionPhotos(tx, { eventId: id }, photos);
+    return result;
+  });
+}
+
+export async function saveArticle(id, version, article, { publishBy, region, photos } = {}) {
   const row = await reviewRecord(id);
   if (row.articleVersion !== version) throw Conflict('The draft has changed. Reload before editing.');
   if (!row.articleEvidence || !row.articleDraft) throw Conflict('Prepare a source-backed draft first.');
   const edition = region ?? row.articleDraft.region ?? row.articleRegion ?? row.cyberRegion ?? null;
-  if (edition !== null && !['NG', 'AF', 'GLOBAL'].includes(edition)) throw BadRequest('Select a valid edition.');
+  if (edition !== null && !['NG', 'AF', 'GLOBAL'].includes(edition))
+    throw BadRequest('Select a valid edition.');
   const content = validateArticle(article, row.articleEvidence);
   const draft = {
     ...content,
@@ -210,14 +223,27 @@ export async function saveArticle(id, version, article, { publishBy, region } = 
     sourceUrl: row.articleDraft.sourceUrl,
     sourceName: row.articleDraft.sourceName,
   };
-  return updateArticle(id, version, {
-    articleDraft: draft,
-    ...(publishBy && {
-      articlePublished: draft,
-      articleApprovedBy: publishBy,
-      articleRegion: edition,
-      articleApprovedAt: new Date(),
-    }),
+  const gallery = photos === undefined ? row.photos : normalizePhotos(photos);
+  const changed =
+    photos !== undefined && JSON.stringify(normalizePhotos(row.photos || [])) !== JSON.stringify(gallery);
+  return prisma.$transaction(async (tx) => {
+    const result = await updateArticle(
+      id,
+      version,
+      {
+        articleDraft: draft,
+        ...(changed && { photos: gallery }),
+        ...(publishBy && {
+          articlePublished: { ...draft, photos: gallery ?? [] },
+          articleApprovedBy: publishBy,
+          articleRegion: edition,
+          articleApprovedAt: new Date(),
+        }),
+      },
+      tx,
+    );
+    if (changed) await syncEditionPhotos(tx, { eventId: id }, gallery);
+    return result;
   });
 }
 

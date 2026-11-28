@@ -56,15 +56,33 @@ test('a new article is private until approval and later changes cannot overwrite
     llm: () => ({ complete: async () => ({ ...article, sufficient: true }) }),
   });
   assert.equal(await findNews(id), null);
-  await saveArticle(id, 1, article, { publishBy: 'fixture-editor', region: 'NG' });
+  const lead = {
+    url: 'https://images.pexels.com/photos/1/one.jpeg',
+    alt: 'Library archive shelves',
+    credit: 'News desk',
+  };
+  const detail = {
+    url: 'https://images.pexels.com/photos/2/two.jpeg',
+    alt: 'A public reading room',
+    credit: 'Photo desk',
+  };
+  await saveArticle(id, 1, article, { publishBy: 'fixture-editor', region: 'NG', photos: [lead, detail] });
   const publicCopy = await findNews(id);
+  assert.deepEqual(publicCopy.images, [lead, detail]);
+  assert.deepEqual(publicCopy.image, lead);
   assert.equal(publicCopy.title, article.headline);
   assert.equal(publicCopy.region, 'NG');
   assert.ok((await listNews({ region: 'NG' })).items.some((item) => item.id === id));
   assert.ok(!(await listNews({ region: 'AF' })).items.some((item) => item.id === id));
   assert.deepEqual(publicCopy.sections, article.sections);
   assert.equal(publicCopy.articleEvidence, undefined);
-  await saveArticle(id, 2, { ...article, headline: 'Another draft headline' }, { region: 'GLOBAL' });
+  await saveArticle(
+    id,
+    2,
+    { ...article, headline: 'Another draft headline' },
+    { region: 'GLOBAL', photos: [detail, lead] },
+  );
+  assert.deepEqual((await findNews(id)).images, [lead, detail]);
   assert.equal((await findNews(id)).region, 'NG');
   assert.equal((await findNews(id)).title, article.headline);
   await assert.rejects(saveArticle(id, 2, article, { publishBy: 'fixture-editor' }), { statusCode: 409 });
@@ -88,4 +106,8 @@ test('a new article is private until approval and later changes cannot overwrite
   assert.ok(!(await rejectedStories(null, 'Records audit at two libraries')).items.some((item) => item.id === id));
   await saveArticle(id, 4, article, { publishBy: 'fixture-editor' });
   assert.equal((await findNews(id)).region, 'AF');
+  assert.deepEqual((await findNews(id)).images, [detail, lead]);
+  await saveArticle(id, 5, article, { publishBy: 'fixture-editor', photos: [] });
+  assert.deepEqual((await findNews(id)).images, []);
+  assert.equal((await findNews(id)).image, null);
 });

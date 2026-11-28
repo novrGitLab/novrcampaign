@@ -292,6 +292,13 @@ function makeStore(seed = {}) {
   const $transaction = async (arg) => (typeof arg === 'function' ? arg(store) : Promise.all(arg));
 
   const store = {
+    async $queryRaw(sql, id) {
+      if (sql[0].includes('FROM "briefing"'))
+        return briefings.filter((b) => b.id === id && !b.publishedAt && !b.sendingAt);
+      if (sql[0].includes('FROM "publish_item"')) return publishItems.filter((item) => item.id === id);
+      if (sql[0].includes('FROM "np_event"')) return [{ id }];
+      throw new Error('Unexpected query in briefing fixture');
+    },
     briefings,
     sections,
     sectionItems,

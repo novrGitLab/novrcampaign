@@ -549,3 +549,58 @@
     }
   }
 }
+
+.subscription-dialog {
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 1.25rem;
+  width: min(26rem, calc(100% - 2rem));
+  max-height: 90dvh;
+  padding: clamp(1.5rem, 5vw, 2.5rem);
+  margin: auto;
+  box-shadow: 0 1.2rem 5rem color-mix(in srgb, var(--ink) 18%, transparent);
+}
+.subscription-dialog::backdrop {
+  background: rgb(18 12 30 / 0.63);
+}
+.subscription-stamp {
+  width: 5.5rem;
+  display: grid;
+  place-items: center;
+  padding: 0.55rem;
+  background: var(--control-fill);
+  border-radius: 0.6rem;
+  transform: rotate(-4deg);
+}
+.subscription-stamp .pulse-kingfisher {
+  width: 100%;
+  height: auto;
+}
+.subscription-dialog .subscription-kicker {
+  color: var(--link);
+  font: 650 0.76rem/1.25 var(--utility);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin: 1.4rem 0 0.55rem;
+}
+.subscription-dialog h2 {
+  font: 700 clamp(2rem, 6vw, 3rem)/1 var(--display);
+  letter-spacing: -0.045em;
+}
+.subscription-dialog p {
+  margin: 1rem 0 1.4rem;
+  color: var(--subtle);
+  font: 400 1rem/1.55 var(--utility);
+}
+.subscription-dialog .btn-primary {
+  min-width: 7rem;
+}
+.article .article-section figure {
+  margin: 1.6rem 0;
+}
+.article .cover img {
+  height: auto;
+  max-height: none;
+  object-fit: contain;
+}

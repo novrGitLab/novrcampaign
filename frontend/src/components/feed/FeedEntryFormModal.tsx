@@ -1,3 +1,4 @@
+import { StoryPhotos, type StoryPhoto } from '@/components/ui/StoryPhotos';
 import { useEffect, useState } from 'react';
 import { Modal } from '../ui/Modal';
 import { Button, Input, Label } from '../ui';
@@ -47,6 +48,7 @@ const emptyForm = () => ({
   publishedAt: toLagosInput(new Date().toISOString()),
   title: '',
   summary: '',
+  photos: [] as StoryPhoto[],
   status: 'draft',
 });
 
@@ -56,6 +58,7 @@ const emptyForm = () => ({
  */
 export default function FeedEntryFormModal({ open, onClose, entry, onSubmit, saving, error }) {
   const [form, setForm] = useState(emptyForm);
+  const [photoBusy, setPhotoBusy] = useState(false);
   const [touchedType, setTouchedType] = useState(false);
 
   useEffect(() => {
@@ -68,6 +71,7 @@ export default function FeedEntryFormModal({ open, onClose, entry, onSubmit, sav
         author: entry.author ?? '',
         publishedAt: toLagosInput(entry.publishedAt),
         title: entry.title ?? '',
+        photos: entry.photos ?? [],
         summary: entry.summary ?? '',
         status: entry.status ?? 'draft',
       });
@@ -108,6 +112,7 @@ export default function FeedEntryFormModal({ open, onClose, entry, onSubmit, sav
       title: form.title.trim(),
       summary: form.summary.trim(),
       status: form.status,
+      photos: form.photos,
     };
     onSubmit(payload);
   };
@@ -123,13 +128,7 @@ export default function FeedEntryFormModal({ open, onClose, entry, onSubmit, sav
       <form onSubmit={submit} className="space-y-4">
         <div className="space-y-2">
           <Label htmlFor="feed-url">Source URL</Label>
-          <Input
-            id="feed-url"
-            value={form.url}
-            onChange={onUrlChange}
-            placeholder="https://…"
-            required
-          />
+          <Input id="feed-url" value={form.url} onChange={onUrlChange} placeholder="https://…" required />
         </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -138,35 +137,65 @@ export default function FeedEntryFormModal({ open, onClose, entry, onSubmit, sav
             <select
               id="feed-sourceType"
               value={form.sourceType}
-              onChange={(e) => { setTouchedType(true); set('sourceType')(e); }}
+              onChange={(e) => {
+                setTouchedType(true);
+                set('sourceType')(e);
+              }}
               className="input"
             >
               {SOURCE_TYPES.map((s) => (
-                <option key={s.value} value={s.value}>{s.label}</option>
+                <option key={s.value} value={s.value}>
+                  {s.label}
+                </option>
               ))}
             </select>
           </div>
           <div className="space-y-2">
             <Label htmlFor="feed-sourceName">Source name</Label>
-            <Input id="feed-sourceName" value={form.sourceName} onChange={set('sourceName')} placeholder="NCC" required />
+            <Input
+              id="feed-sourceName"
+              value={form.sourceName}
+              onChange={set('sourceName')}
+              placeholder="NCC"
+              required
+            />
           </div>
         </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="space-y-2">
             <Label htmlFor="feed-author">Author (optional)</Label>
-            <Input id="feed-author" value={form.author} onChange={set('author')} placeholder="@handle or reporter" />
+            <Input
+              id="feed-author"
+              value={form.author}
+              onChange={set('author')}
+              placeholder="@handle or reporter"
+            />
           </div>
           <div className="space-y-2">
             <Label htmlFor="feed-publishedAt">Published at</Label>
-            <Input id="feed-publishedAt" type="datetime-local" value={form.publishedAt} onChange={set('publishedAt')} required />
-            <p className="text-xs text-muted-foreground">Africa/Lagos time — drives which week this update shows in.</p>
+            <Input
+              id="feed-publishedAt"
+              type="datetime-local"
+              value={form.publishedAt}
+              onChange={set('publishedAt')}
+              required
+            />
+            <p className="text-xs text-muted-foreground">
+              Africa/Lagos time — drives which week this update shows in.
+            </p>
           </div>
         </div>
 
         <div className="space-y-2">
           <Label htmlFor="feed-title">Title</Label>
-          <Input id="feed-title" value={form.title} onChange={set('title')} placeholder="Short headline" required />
+          <Input
+            id="feed-title"
+            value={form.title}
+            onChange={set('title')}
+            placeholder="Short headline"
+            required
+          />
         </div>
 
         <div className="space-y-2">
@@ -182,11 +211,20 @@ export default function FeedEntryFormModal({ open, onClose, entry, onSubmit, sav
           />
         </div>
 
+        <StoryPhotos
+          value={form.photos}
+          onChange={(photos) => setForm((f) => ({ ...f, photos }))}
+          onBusy={setPhotoBusy}
+          title={form.title}
+          summary={form.summary}
+        />
         <div className="space-y-2">
           <Label htmlFor="feed-status">Status</Label>
           <select id="feed-status" value={form.status} onChange={set('status')} className="input">
             {STATUSES.map((s) => (
-              <option key={s.value} value={s.value}>{s.label}</option>
+              <option key={s.value} value={s.value}>
+                {s.label}
+              </option>
             ))}
           </select>
         </div>
@@ -194,8 +232,12 @@ export default function FeedEntryFormModal({ open, onClose, entry, onSubmit, sav
         {error && <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>}
 
         <div className="flex justify-end gap-2 pt-1">
-          <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button type="submit" disabled={saving}>{saving ? 'Saving…' : entry ? 'Save changes' : 'Add update'}</Button>
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={saving || photoBusy || form.photos.some((p) => !p.alt.trim())}>
+            {saving ? 'Saving…' : entry ? 'Save changes' : 'Add update'}
+          </Button>
         </div>
       </form>
     </Modal>

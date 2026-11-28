@@ -17,6 +17,8 @@ export async function generateMetadata({ params }: Props) {
 }
 export default async function Article({ params }: Props) {
   const { story, related } = await getStory((await params).id);
+  const images = story.images ?? (story.image ? [story.image] : []);
+  const sections = story.sections ?? [];
   const schema = {
     '@context': 'https://schema.org',
     '@type': 'NewsArticle',
@@ -25,11 +27,11 @@ export default async function Article({ params }: Props) {
     mainEntityOfPage: site + story.href,
     publisher: { '@type': 'Organization', name: 'NovrPulse' },
     citation: story.sourceUrl,
-    ...(story.updatedAt && {dateModified:story.updatedAt}),
+    ...(story.updatedAt && { dateModified: story.updatedAt }),
     articleSection: story.desk,
     description: story.summary,
     inLanguage: 'en',
-    ...(story.image ? { image: story.image.url } : {}),
+    ...(images.length ? { image: images.map((photo) => photo.url) } : {}),
   };
   return (
     <>
@@ -43,11 +45,22 @@ export default async function Article({ params }: Props) {
           ← Front page
         </a>
         <Byline story={story} />
-        {story.format === "brief" && <p className="article-format">News brief</p>}
+        {story.format === 'brief' && <p className="article-format">News brief</p>}
         <h1>{story.title}</h1>
         {story.image && <Photograph image={story.image} />}
         {story.summary && <p className="standfirst">{story.summary}</p>}
-        {story.sections?.map((section,i) => <section className="article-section" key={i}><h2>{section.heading}</h2>{section.paragraphs.map((p,j) => <p key={j}>{p}</p>)}</section>)}
+        {sections.map((section, i) => (
+          <section className="article-section" key={i}>
+            <h2>{section.heading}</h2>
+            {section.paragraphs.map((p, j) => (
+              <p key={j}>{p}</p>
+            ))}
+            {images[i + 1] && <Photograph image={images[i + 1]} inline />}
+          </section>
+        ))}
+        {images.slice(sections.length + 1).map((photo) => (
+          <Photograph key={photo.url} image={photo} inline />
+        ))}
         {story.context && story.context !== story.summary && (
           <>
             <h2>Why it matters</h2>

@@ -1,6 +1,11 @@
 'use client';
+import { SubscriptionDialog } from '@/components/public/SubscriptionDialog';
+import { Button } from '@/components/ui';
+import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 export default function Confirm() {
+  const router = useRouter();
+  const [confirmed, setConfirmed] = useState(false);
   const [token, setToken] = useState(''),
     [status, setStatus] = useState(''),
     [busy, setBusy] = useState(false);
@@ -26,7 +31,11 @@ export default function Confirm() {
             ? 'This link has expired. Request a new email below.'
             : 'Confirmation unavailable. Please try again.',
       );
-      if (r.ok) setToken('');
+      if (r.ok) {
+        setToken('');
+        setConfirmed(true);
+        setStatus('');
+      }
     } catch {
       setStatus('Could not connect. Please try again.');
     } finally {
@@ -36,9 +45,18 @@ export default function Confirm() {
   return (
     <section className="notice">
       <h1>Confirm subscription.</h1>
-      <button disabled={!token || busy} onClick={confirm}>
+      <Button disabled={!token || busy} onClick={confirm}>
         Subscribe to the Daily Brief
-      </button>
+      </Button>
+      {confirmed && (
+        <SubscriptionDialog
+          confirmed
+          onClose={() => {
+            setConfirmed(false);
+            router.replace('/');
+          }}
+        />
+      )}
       <p role="status">{status}</p>
     </section>
   );

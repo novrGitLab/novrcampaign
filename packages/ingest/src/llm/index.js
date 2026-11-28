@@ -200,7 +200,7 @@ export function createLlm(config) {
   }
 
   /** One request attempt against a specific model/credential target. */
-  async function requestOnce({ model, tier, target, system, prompt, schema, maxTokens, attempt }) {
+  async function requestOnce({ model, tier, target, system, prompt, schema, maxTokens, attempt, signal }) {
     const client = await getClient(target);
     const startedAt = Date.now();
     let res;
@@ -217,7 +217,7 @@ export function createLlm(config) {
       // `response_format` is sent only when the model is known to honour it; a
       // reasoning model that ignores it is opted out via `jsonMode: false`.
       if (jsonMode) payload.response_format = { type: 'json_object' };
-      res = await client.chat.completions.create(payload);
+      res = await client.chat.completions.create(payload, signal ? { signal } : undefined);
     } catch (err) {
       throw new LlmError(`LLM request failed: ${err.message}`, { status: err.status ?? err.response?.status });
     }
@@ -247,7 +247,7 @@ export function createLlm(config) {
    * Run a structured completion.
    * @returns {Promise<object>} validated parsed object
    */
-  async function complete({ tier = 'bulk', system, prompt, schema, maxTokens }) {
+  async function complete({ tier = 'bulk', system, prompt, schema, maxTokens, signal }) {
     const model = tierModel[tier] ?? tierModel.bulk;
     if (!model) throw new LlmError(`No model configured for tier "${tier}"`);
 
@@ -262,8 +262,9 @@ export function createLlm(config) {
     let exhaustedRetryable = false;
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       try {
-        return await requestOnce({ model, tier, target: primary, system, prompt, schema, maxTokens, attempt });
+        return await requestOnce({ model, tier, target: primary, system, prompt, schema, maxTokens, attempt, signal });
       } catch (err) {
+        signal?.throwIfAborted();
         lastErr = err;
         const retryable =
           err instanceof LlmError &&
@@ -302,8 +303,10 @@ export function createLlm(config) {
           schema,
           maxTokens,
           attempt: maxAttempts + 1,
+          signal,
         });
       } catch (err) {
+        signal?.throwIfAborted();
         lastErr = err;
       }
     }
